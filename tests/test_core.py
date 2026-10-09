@@ -52,3 +52,15 @@ def test_card_data_not_stored(tmp_path):
     row = c.execute("SELECT * FROM profiles").fetchone()
     assert row["card_last4"] == "1111"
     assert "4111111111111111" not in "".join(str(v) for v in tuple(row)) and '"123"' not in row["raw"]
+
+
+def test_aycd_style(tmp_path):
+    c = db.connect(str(tmp_path / "a.db"))
+    data = [{"name": "Group1 #1", "shipping": {"name": "Bob Smith", "email": "b@x.com", "phone": "5125550100",
+             "line1": "10 Pine Street", "line2": "Apt 2", "postCode": "78701", "city": "Austin", "state": "TX", "country": "US"},
+             "billing": {"name": "Bob Smith", "line1": "10 Pine Street", "postCode": "78701", "city": "Austin", "state": "TX"},
+             "payment": {"cardNumber": "4111 1111 1111 9999", "cardCvv": "321", "cardMonth": "01", "cardYear": "30"}}]
+    assert profiles.ingest(c, json.dumps(data), "Valor") == 1
+    r = c.execute("SELECT * FROM profiles").fetchone()
+    assert (r["ship_address1"], r["ship_zip"], r["card_last4"]) == ("10 Pine Street", "78701", "9999")
+    assert "4111" not in r["raw"] and "321" not in r["raw"]
