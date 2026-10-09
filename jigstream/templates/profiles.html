@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block body %}
+<table><tr><th>Profile</th><th>Bot</th><th>Shipping</th><th>Issues</th></tr>
+{% for p,i in rows %}<tr><td>{{p.name}}</td><td>{{p.bot}}</td><td>{{p.ship_address1}} {{p.ship_address2}}, {{p.ship_city}} {{p.ship_state}} {{p.ship_zip}}</td><td class="{{'bad' if i}}">{{i|join("; ") or "ok"}}</td></tr>{% endfor %}</table>
+{% endblock %}
