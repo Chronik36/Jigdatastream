@@ -53,6 +53,19 @@ def _addr(d, prefix_keys, flat_prefixes):
     return out
 
 
+SENSITIVE = ("card", "cvv", "cvc", "cvn", "security", "expir", "payment", "pan", "number", "exp")
+
+
+def _scrub(node):
+    """Drop anything card-related so card data never reaches the database."""
+    if isinstance(node, dict):
+        return {k: _scrub(v) for k, v in node.items()
+                if not any(w in _norm_key(k) for w in SENSITIVE)}
+    if isinstance(node, list):
+        return [_scrub(x) for x in node]
+    return node
+
+
 def _looks_like_profile(d):
     low = {_norm_key(k) for k in d}
     has_addr = any(k in low for k in ("shipping", "billing", "shippingaddress", "billingaddress")) or any(
@@ -88,7 +101,7 @@ def parse_profiles(text, bot=""):
         bill = _addr(d, BILL_KEYS, ("bill", "billing", ""))
         if not any(bill.values()):
             bill = dict(ship)
-        card = d.get("card") or d.get("payment") or {}
+        card = d.get("card") or d.get("payment") or d.get("payments") or {}
         out.append({
             "name": _get(d, "name") or f"{_get(d, 'first_name')} {_get(d, 'last_name')}".strip(),
             "bot": bot, "first_name": _get(d, "first_name"), "last_name": _get(d, "last_name"),
@@ -96,7 +109,7 @@ def parse_profiles(text, bot=""):
             **{"ship_" + k: v for k, v in ship.items()},
             **{"bill_" + k: v for k, v in bill.items()},
             "card_last4": (str(card.get("number", ""))[-4:] if isinstance(card, dict) else "") or _get(d, "card_last4"),
-            "raw": json.dumps(d),
+            "raw": json.dumps(_scrub(d)),
         })
     return out
 
