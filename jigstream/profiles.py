@@ -66,6 +66,16 @@ def _scrub(node):
     return node
 
 
+def _last4(card):
+    if not isinstance(card, dict):
+        return ""
+    for k, v in card.items():
+        if _norm_key(k) in ("number", "cardnumber", "pan", "ccnumber"):
+            digits = "".join(ch for ch in str(v) if ch.isdigit())
+            return digits[-4:]
+    return ""
+
+
 def _looks_like_profile(d):
     low = {_norm_key(k) for k in d}
     has_addr = any(k in low for k in ("shipping", "billing", "shippingaddress", "billingaddress")) or any(
@@ -108,7 +118,7 @@ def parse_profiles(text, bot=""):
             "phone": _get(d, "phone"), "email": _get(d, "email"),
             **{"ship_" + k: v for k, v in ship.items()},
             **{"bill_" + k: v for k, v in bill.items()},
-            "card_last4": (str(card.get("number", ""))[-4:] if isinstance(card, dict) else "") or _get(d, "card_last4"),
+            "card_last4": _last4(card) or _get(d, "card_last4"),
             "raw": json.dumps(_scrub(d)),
         })
     return out
