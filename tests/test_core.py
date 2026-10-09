@@ -42,3 +42,13 @@ def test_web(tmp_path):
     assert app.test_client().get("/").status_code == 200
     for p in ("/checkouts", "/orders", "/profiles"):
         assert app.test_client().get(p).status_code == 200
+
+
+def test_card_data_not_stored(tmp_path):
+    c = db.connect(str(tmp_path / "c.db"))
+    prof = {"name": "p", "shipping": {"address1": "1 A St", "city": "X", "state": "TX", "zip": "78701"},
+            "card": {"number": "4111111111111111", "cvv": "123", "exp": "12/30"}}
+    profiles.ingest(c, json.dumps([prof]), "Valor")
+    row = c.execute("SELECT * FROM profiles").fetchone()
+    assert row["card_last4"] == "1111"
+    assert "4111111111111111" not in "".join(str(v) for v in tuple(row)) and '"123"' not in row["raw"]
