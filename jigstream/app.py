@@ -1,6 +1,19 @@
-from flask import Flask, redirect, render_template, request, url_for, flash
+import threading
 
-from . import analysis, db, emails, parsers, profiles
+from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
+
+from . import analysis, db, parsers, profiles
+from .config import Config
+from .orderstore import Store
+from .sync import run_sync
+
+TRACK_URLS = {
+    "UPS": "https://www.ups.com/track?tracknum={}",
+    "USPS": "https://tools.usps.com/go/TrackConfirmAction?tLabels={}",
+    "FedEx": "https://www.fedex.com/fedextrack/?trknbr={}",
+    "DHL": "https://www.dhl.com/us-en/home/tracking/tracking-express.html?tracking-id={}",
+    "OnTrac": "https://www.ontrac.com/tracking/?number={}",
+}
 
 
 def create_app(db_path=None):
@@ -9,6 +22,30 @@ def create_app(db_path=None):
 
     def con():
         return db.connect(db_path)
+
+    # Email sync calls the local model once per email, so it runs in the background.
+    sync_state = {"running": False, "last": None}
+
+    def background_sync():
+        try:
+            counts = run_sync(Config.from_env(), Store(con()), log=lambda *a, **k: None)
+            sync_state["last"] = (f"Last Gmail sync: {counts['order']} order emails, "
+                                  f"{counts['botting_expense']} botting receipts, {counts['error']} errors.")
+        except Exception as e:
+            sync_state["last"] = f"Gmail sync failed: {e}"
+        finally:
+            sync_state["running"] = False
+
+    @app.template_filter("money")
+    def money(amount, currency="USD"):
+        if amount is None:
+            return "-"
+        return ("$" if currency in (None, "USD") else f"{currency} ") + f"{amount:,.2f}"
+
+    @app.template_filter("track_url")
+    def track_url(order):
+        url = TRACK_URLS.get(order["carrier"] or "")
+        return url.format(order["tracking_number"]) if url and order["tracking_number"] else None
 
     @app.get("/")
     def dashboard():
@@ -28,7 +65,21 @@ def create_app(db_path=None):
 
     @app.get("/orders")
     def orders():
-        return render_template("orders.html", rows=con().execute("SELECT * FROM orders ORDER BY ts DESC LIMIT 500").fetchall())
+        store = Store(con())
+        return render_template("orders.html", rows=store.orders(), stats=store.stats(), sync=sync_state)
+
+    @app.get("/expenses")
+    def expenses():
+        store = Store(con())
+        return render_template("expenses.html", rows=store.expenses(), stats=store.stats(), sync=sync_state)
+
+    @app.get("/api/orders")
+    def api_orders():
+        return jsonify(Store(con()).orders())
+
+    @app.get("/api/expenses")
+    def api_expenses():
+        return jsonify(Store(con()).expenses())
 
     @app.get("/profiles")
     def profile_list():
@@ -55,10 +106,10 @@ def create_app(db_path=None):
 
     @app.post("/sync/gmail")
     def sync():
-        try:
-            flash(f"Added {emails.sync_gmail(con())} order emails")
-        except Exception as e:
-            flash(f"Gmail sync failed: {e}")
+        if not sync_state["running"]:
+            sync_state["running"] = True
+            threading.Thread(target=background_sync, daemon=True).start()
+            flash("Gmail sync started. Refresh in a minute to see new orders.")
         return redirect(url_for("orders"))
 
     return app

@@ -6,6 +6,11 @@ main{padding:20px;max-width:1200px;margin:auto}
 table{border-collapse:collapse;width:100%;margin-bottom:24px}td,th{border-bottom:1px solid #333;padding:6px 8px;text-align:left}
 .ok{color:#6d6}.bad{color:#f66}.card{background:#1c1c1c;padding:12px 16px;border-radius:8px;display:inline-block;margin-right:12px}
 form{display:inline-block;margin-right:20px}.flash{background:#243;padding:8px;margin-bottom:12px}
+td.num{text-align:right;font-variant-numeric:tabular-nums}.muted{color:#999}a{color:#9cf}
+ul.items{margin:0;padding-left:16px}.pill{border:1px solid currentColor;border-radius:999px;padding:1px 8px;font-size:12px;white-space:nowrap}
+.s-delivered{color:#6d6}.s-shipped,.s-in_transit,.s-out_for_delivery{color:#9cf}.s-cancelled,.s-returned,.s-refunded{color:#f66}
+.s-ordered,.s-processing{color:#fb5}.s-unknown{color:#999}
+input,select{background:#1c1c1c;color:#e8e8e8;border:1px solid #333;padding:5px 8px;margin:0 8px 12px 0}
 </style></head><body>
-<nav><a href="/">Dashboard</a><a href="/checkouts">Checkouts</a><a href="/profiles">Profiles</a><a href="/orders">Emails</a></nav>
+<nav><a href="/">Dashboard</a><a href="/checkouts">Checkouts</a><a href="/profiles">Profiles</a><a href="/orders">Orders</a><a href="/expenses">Botting expenses</a></nav>
 <main>{% for m in get_flashed_messages() %}<div class="flash">{{m}}</div>{% endfor %}{% block body %}{% endblock %}</main></body></html>

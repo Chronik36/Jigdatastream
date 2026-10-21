@@ -1,6 +1,8 @@
 import os
 import sqlite3
 
+from . import orderstore
+
 DB_PATH = os.environ.get("JIGSTREAM_DB", os.path.join("data", "jigstream.db"))
 
 SCHEMA = """
@@ -21,12 +23,6 @@ CREATE TABLE IF NOT EXISTS profiles (
     bill_zip TEXT, bill_country TEXT,
     card_last4 TEXT, raw TEXT
 );
-CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    message_id TEXT UNIQUE,
-    retailer TEXT, kind TEXT, order_number TEXT, product TEXT,
-    total TEXT, ts TEXT, subject TEXT, sender TEXT
-);
 """
 
 
@@ -38,4 +34,5 @@ def connect(path=None):
     con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
+    con.executescript(orderstore.SCHEMA)
     return con
