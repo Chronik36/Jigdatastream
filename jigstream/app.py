@@ -2,7 +2,7 @@ import threading
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
 
-from . import analysis, db, parsers, profiles
+from . import analysis, db, parsers, profiles, tracking
 from .config import Config
 from .orderstore import Store
 from .sync import run_sync, summary
@@ -35,6 +35,12 @@ def create_app(db_path=None):
             config.full_history = full
             counts = run_sync(config, Store(con()), log=lambda *a, **k: None, progress=progress)
             sync_state["last"] = f"Last Gmail sync{' (whole mailbox)' if full else ''}: {summary(counts)}"
+            provider = tracking.provider_from_env()
+            if provider:
+                progress("Refreshing live tracking...")
+                n = tracking.refresh(con(), provider, log=lambda *a, **k: None)
+                sync_state["last"] = f"Last Gmail sync{' (whole mailbox)' if full else ''}: {summary(counts)} " \
+                                     f"Live tracking updated for {n} shipments."
         except Exception as e:
             sync_state["last"] = f"Gmail sync failed: {e}"
         finally:
@@ -71,7 +77,8 @@ def create_app(db_path=None):
     def orders():
         store = Store(con())
         return render_template("orders.html", rows=store.orders(), stats=store.stats(), sync=sync_state,
-                               accounts=store.accounts())
+                               accounts=store.accounts(), scans=tracking.latest_events(store.db),
+                               live=bool(tracking.provider_from_env()))
 
     @app.get("/expenses")
     def expenses():

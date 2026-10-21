@@ -5,8 +5,19 @@ from datetime import datetime
 
 STATUSES = [
     "ordered", "processing", "shipped", "in_transit", "out_for_delivery",
-    "delivered", "cancelled", "returned", "refunded", "unknown",
+    "delivered", "exception", "cancelled", "returned", "refunded", "unknown",
 ]
+# Normal progress order. A status never moves back down this list; cancelled,
+# returned, refunded and exception can replace any status.
+PROGRESS = ["ordered", "processing", "shipped", "in_transit", "out_for_delivery", "delivered"]
+
+
+def status_advances(old, new):
+    if new in (None, "unknown") or new == old:
+        return False
+    if old in (None, "unknown") or new not in PROGRESS or old not in PROGRESS:
+        return True
+    return PROGRESS.index(new) > PROGRESS.index(old)
 EXPENSE_CATEGORIES = ["proxy", "bot", "cook_group", "captcha", "server", "aco_service", "account", "other"]
 BILLING_PERIODS = ["one_time", "weekly", "monthly", "yearly"]
 

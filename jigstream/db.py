@@ -1,7 +1,7 @@
 import os
 import sqlite3
 
-from . import orderstore
+from . import orderstore, tracking
 
 DB_PATH = os.environ.get("JIGSTREAM_DB", os.path.join("data", "jigstream.db"))
 
@@ -35,4 +35,5 @@ def connect(path=None):
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
     con.executescript(orderstore.SCHEMA)
+    con.executescript(tracking.SCHEMA)
     return con

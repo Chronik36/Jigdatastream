@@ -5,7 +5,7 @@ import json
 import re
 from datetime import datetime, timezone
 
-from .extract import STATUSES
+from .extract import PROGRESS, STATUSES, status_advances
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS mail_accounts (
@@ -167,7 +167,10 @@ class Store:
         if result["items"] and not json.loads(row["items"] or "[]"):
             updates["items"] = json.dumps(result["items"])
         status = result["shipping_status"]
-        if status != "unknown" and (newer or row["shipping_status"] == "unknown"):
+        old = row["shipping_status"]
+        # Newer emails can cancel or advance an order; an older email arriving late can only
+        # move it forward (e.g. a missed "shipped" email after "ordered").
+        if status_advances(old, status) and (newer or status in PROGRESS or old in (None, "unknown")):
             updates["shipping_status"] = status
         if newer:
             updates["last_email_date"] = email.date
