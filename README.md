@@ -21,3 +21,7 @@ Bots change embed layouts. Field-name aliases live in `jigstream/parsers.py` (`A
 column aliases in `jigstream/profiles.py` (`FIELD_ALIASES`). Add real samples under `samples/` and extend.
 
 Data stays in `data/jigstream.db` (git-ignored). Keep webhook/profile exports out of the repo.
+
+## Auto-sync
+Set `JIGSTREAM_AUTO_SYNC_MIN=15` (with the Gmail variables) before `python run.py` to poll Gmail every 15 minutes in the
+background so cancellations appear without pressing Sync.

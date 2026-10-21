@@ -52,8 +52,17 @@ def link(con):
                 matches.append(o)
             how = "retailer+product+time" if matches else ""
         best = max(matches, key=lambda o: RANK[o["kind"]], default=None)
-        out.append({"checkout": c, "status": best["kind"] if best else "no email",
-                    "emails": matches, "matched_by": how})
+        status = best["kind"] if best else "no email"
+        cancel_min, speed = None, ""
+        canc = [o for o in matches if o["kind"] == "cancelled" and _dt(o["ts"])]
+        if canc and cts:
+            first = min(canc, key=lambda o: _dt(o["ts"]))
+            cancel_min = max(0, int((_dt(first["ts"]) - cts).total_seconds() // 60))
+            shipped_before = any(o["kind"] == "shipped" and _dt(o["ts"]) and _dt(o["ts"]) <= _dt(first["ts"]) for o in matches)
+            speed = ("instant (<1h)" if cancel_min < 60 else "same day" if cancel_min < 1440
+                     else "after shipping notice" if shipped_before else "1+ days")
+        out.append({"checkout": c, "status": status, "emails": matches, "matched_by": how,
+                    "cancel_min": cancel_min, "cancel_speed": speed})
     return out
 
 
@@ -67,3 +76,15 @@ def retailer_stats(con):
     for s in stats.values():
         s["cancel_rate"] = round(100 * s["cancelled"] / s["checkouts"]) if s["checkouts"] else 0
     return dict(sorted(stats.items(), key=lambda kv: -kv[1]["checkouts"]))
+
+
+def cancel_by_profile(con):
+    stats = {}
+    for r in link(con):
+        p = r["checkout"]["profile"] or "unknown"
+        s = stats.setdefault(p, {"checkouts": 0, "cancelled": 0})
+        s["checkouts"] += 1
+        s["cancelled"] += r["status"] == "cancelled"
+    for s in stats.values():
+        s["rate"] = round(100 * s["cancelled"] / s["checkouts"])
+    return dict(sorted((kv for kv in stats.items() if kv[1]["cancelled"]), key=lambda kv: -kv[1]["rate"]))

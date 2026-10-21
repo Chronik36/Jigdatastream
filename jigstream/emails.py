@@ -25,10 +25,17 @@ SITE_KEYS = {
     "P-Bandai": ["bandai"], "Crunchyroll": ["crunchyroll"], "Topps": ["topps"],
     "Pokemon Center": ["pokemoncenter", "pokemon center"],
 }
-KIND_RULES = [
+# Subject lines decide first. Body text is only used for unmistakable phrases, so a footer like
+# "to cancel your order visit..." in a shipping email is not read as a cancellation.
+SUBJECT_RULES = [
     ("cancelled", r"cancel"),
     ("shipped", r"shipped|shipment|on its way|on the way|tracking|out for delivery|delivered"),
     ("confirmed", r"order (confirm|receiv|placed)|thanks for (your )?(order|shopping)|thank you for your order|we got your order|confirmed"),
+]
+BODY_RULES = [
+    ("cancelled", r"(has|have|had|was|been|were) (been )?(successfully )?cancel(l)?ed|we('ve| have)? cancel(l)?ed|unable to (fulfill|process) your order|order (could not|couldn't) be (fulfilled|processed)"),
+    ("shipped", r"(has|have) shipped|is on (its|the) way|tracking number"),
+    ("confirmed", r"we('ve| have) received your order|your order (is|has been) confirmed"),
 ]
 ORDER_RE = re.compile(
     r"(\d{3}-\d{7}-\d{7})"                                   # Amazon
@@ -49,9 +56,12 @@ def store_name(sender):
 
 
 def classify_kind(subject, body=""):
-    text = f"{subject} {body[:500]}".lower()
-    for kind, pat in KIND_RULES:
-        if re.search(pat, text):
+    for kind, pat in SUBJECT_RULES:
+        if re.search(pat, subject, re.I):
+            return kind
+    head = body[:1500]
+    for kind, pat in BODY_RULES:
+        if re.search(pat, head, re.I):
             return kind
     return None
 
@@ -93,14 +103,16 @@ def store(con, rec):
     return cur.rowcount
 
 
-def sync_gmail(con, since="01-Jan-2024", limit=500):
+def sync_gmail(con, since="2024/01/01", limit=2000):
     user, pw = os.environ.get("GMAIL_ADDRESS"), os.environ.get("GMAIL_APP_PASSWORD")
     if not (user and pw):
         raise RuntimeError("Set GMAIL_ADDRESS and GMAIL_APP_PASSWORD (a Google App Password).")
+    domains = sorted({d for doms in RETAILERS.values() for d in doms})
+    query = f"from:({' OR '.join(domains)}) after:{since}"
     imap = imaplib.IMAP4_SSL("imap.gmail.com")
     imap.login(user, pw)
     imap.select('"[Gmail]/All Mail"', readonly=True)
-    _, data = imap.search(None, f'(SINCE "{since}")')
+    _, data = imap.search(None, "X-GM-RAW", f'"{query}"')
     ids = data[0].split()[-limit:]
     added = 0
     for i in ids:

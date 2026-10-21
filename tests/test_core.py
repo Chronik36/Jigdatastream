@@ -97,3 +97,21 @@ def test_order_number_regex():
     assert ORDER_RE.search("Your order has been confirmed") is None
     m = ORDER_RE.search("Order #1001 confirmed")
     assert (m.group(1) or m.group(2)) == "1001"
+
+
+def test_cancel_speed_and_classification(tmp_path):
+    from jigstream import tracker
+    assert emails.classify_kind("Your order has shipped", "to cancel your order visit...") == "shipped"
+    assert emails.classify_kind("Update on your order", "Your order has been canceled.") == "cancelled"
+    c = db.connect(str(tmp_path / "x.db"))
+    hook = {"username": "Valor", "embeds": [{"title": "Successful Checkout", "timestamp": "2026-03-01T10:00:00Z",
+            "fields": [{"name": "Product", "value": "Pack"}, {"name": "Site", "value": "target.com"},
+                       {"name": "Order #", "value": "555111"}, {"name": "Profile", "value": "p9"}]}]}
+    parsers.ingest(c, json.dumps([hook]))
+    emails.store(c, {"message_id": "k", "retailer": "Target", "kind": "cancelled", "order_number": "555111", "product": "",
+                     "total": "", "ts": "2026-03-01T10:05:00+00:00", "subject": "Order canceled", "sender": "t@target.com",
+                     "store": "Target", "body": ""})
+    c.commit()
+    r = tracker.link(c)[0]
+    assert r["cancel_min"] == 5 and r["cancel_speed"].startswith("instant")
+    assert tracker.cancel_by_profile(c)["p9"]["rate"] == 100

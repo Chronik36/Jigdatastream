@@ -29,7 +29,8 @@ def create_app(db_path=None):
     @app.get("/tracker")
     def order_tracker():
         c = con()
-        return render_template("tracker.html", rows=tracker.link(c), stats=tracker.retailer_stats(c))
+        return render_template("tracker.html", rows=tracker.link(c), stats=tracker.retailer_stats(c),
+                               profile_cancels=tracker.cancel_by_profile(c))
 
     @app.get("/orders")
     def orders():

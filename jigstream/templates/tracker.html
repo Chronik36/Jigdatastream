@@ -2,8 +2,11 @@
 <h3>By retailer</h3>
 <table><tr><th>Site</th><th>Checkouts</th><th>Confirmed</th><th>Shipped</th><th>Cancelled</th><th>No email</th><th>Cancel rate</th></tr>
 {% for site,s in stats.items() %}<tr><td>{{site}}</td><td>{{s.checkouts}}</td><td>{{s.confirmed}}</td><td>{{s.shipped}}</td><td class="{{'bad' if s.cancelled}}">{{s.cancelled}}</td><td>{{s['no email']}}</td><td>{{s.cancel_rate}}%</td></tr>{% endfor %}</table>
+{% if profile_cancels %}<h3>Cancellations by profile</h3>
+<table><tr><th>Profile</th><th>Checkouts</th><th>Cancelled</th><th>Rate</th></tr>
+{% for p,s in profile_cancels.items() %}<tr><td>{{p}}</td><td>{{s.checkouts}}</td><td class="bad">{{s.cancelled}}</td><td>{{s.rate}}%</td></tr>{% endfor %}</table>{% endif %}
 <h3>Orders</h3>
-<table><tr><th>Checkout</th><th>Site</th><th>Product</th><th>Profile</th><th>Order</th><th>Status</th><th>Matched by</th></tr>
+<table><tr><th>Checkout</th><th>Site</th><th>Product</th><th>Profile</th><th>Order</th><th>Status</th><th>Matched by</th><th>Cancelled after</th></tr>
 {% for r in rows %}<tr><td>{{r.checkout.ts}}</td><td>{{r.checkout.site}}</td><td>{{r.checkout.product}}</td><td>{{r.checkout.profile}}</td><td>{{r.checkout.order_number}}</td>
-<td class="{{'bad' if r.status=='cancelled' else ('ok' if r.status in ('shipped','confirmed') else '')}}">{{r.status}}</td><td>{{r.matched_by}}</td></tr>{% endfor %}</table>
+<td class="{{'bad' if r.status=='cancelled' else ('ok' if r.status in ('shipped','confirmed') else '')}}">{{r.status}}</td><td>{{r.matched_by}}</td><td>{% if r.cancel_min is not none %}{{r.cancel_min}} min ({{r.cancel_speed}}){% endif %}</td></tr>{% endfor %}</table>
 {% endblock %}
