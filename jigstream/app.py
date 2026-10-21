@@ -4,7 +4,7 @@ import json
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for, flash
 
-from . import analysis, db, discord, emails, parsers, llm, profiles, redact, tracker, updater
+from . import analysis, db, discord, emails, parsers, licensing, llm, profiles, redact, tracker, updater
 
 
 def create_app(db_path=None):
@@ -13,6 +13,25 @@ def create_app(db_path=None):
 
     def con():
         return db.connect(db_path)
+
+    @app.before_request
+    def require_license():
+        # No-op unless JIGSTREAM_REQUIRE_LICENSE=1
+        if not licensing.enforcement_enabled() or request.endpoint in ("license_page", "static"):
+            return None
+        if not licensing.status()["ok"]:
+            return redirect(url_for("license_page"))
+
+    @app.route("/license", methods=["GET", "POST"])
+    def license_page():
+        if request.method == "POST":
+            key = request.form.get("key", "")
+            ok, msg, _ = licensing.verify(key) if licensing.enforcement_enabled() else (True, "Licensing is off", {})
+            if ok and licensing.enforcement_enabled():
+                licensing.save_key(key)
+                return redirect(url_for("dashboard"))
+            flash(msg)
+        return render_template("license.html", active="", st=licensing.status())
 
     @app.get("/")
     def dashboard():

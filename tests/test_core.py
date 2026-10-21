@@ -254,3 +254,33 @@ def test_discord_json_sources_and_live(tmp_path, monkeypatch):
     assert cl.get("/live").status_code == 200
     r = redact.redact('{"u": "https://discord.com/api/webhooks/123/abcDEF", "e": "a@b.com", "c": "4111 1111 1111 1111", "password": "hunter2"}')
     assert not any(x in r for x in ("webhooks/123", "a@b.com", "4111", "hunter2"))
+
+
+def test_licensing(tmp_path, monkeypatch):
+    import base64, subprocess, sys, time
+    from jigstream import licensing
+    tool = "tools/license_tool.py"
+    priv = str(tmp_path / "priv.key")
+    out = subprocess.run([sys.executable, tool, "keygen", priv], capture_output=True, text=True, check=True).stdout.split()
+    pub = out[-1]
+    monkeypatch.setenv("JIGSTREAM_LICENSE_PUBKEY", pub)
+    key = subprocess.run([sys.executable, tool, "issue", priv, "Bob", "--days", "30"], capture_output=True, text=True, check=True).stdout.strip()
+    ok, msg, p = licensing.verify(key)
+    assert ok and p["name"] == "Bob"
+    assert not licensing.verify(key, now=time.time() + 40 * 86400)[0]             # expired
+    assert not licensing.verify(key[:-3] + "AAA")[0]                              # tampered signature
+    forged = "JDS1-" + base64.urlsafe_b64encode(b'{"id":"x","name":"Eve"}').decode().rstrip("=") + "." + key.split(".")[1]
+    assert not licensing.verify(forged)[0]                                        # payload swapped
+    monkeypatch.setattr(licensing, "REVOKED", {p["id"]})
+    assert not licensing.verify(key)[0]
+    monkeypatch.setattr(licensing, "REVOKED", set())
+    # app: off by default; when on, redirects until a valid key is activated
+    monkeypatch.setattr(licensing, "KEY_FILE", str(tmp_path / "license.key"))
+    cl = create_app(str(tmp_path / "lic.db")).test_client()
+    assert cl.get("/").status_code == 200
+    monkeypatch.setenv("JIGSTREAM_REQUIRE_LICENSE", "1")
+    assert cl.get("/").status_code == 302 and cl.get("/license").status_code == 200
+    assert cl.get("/static/app.css").status_code == 200
+    assert cl.post("/license", data={"key": "JDS1-bad.bad"}).status_code == 200
+    assert cl.post("/license", data={"key": key}).status_code == 302
+    assert cl.get("/").status_code == 200

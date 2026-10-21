@@ -57,3 +57,11 @@ Copy `.env.example` to `.env` and fill in your tokens once; `run.py` loads it on
 Set `JIGSTREAM_DISCORD_POLL_SEC=30` in `.env` to poll your Discord channels continuously. The **Live feed** page shows the
 newest messages as raw JSON (embeds, ```json code blocks and attached .json files are all read) alongside what the app understood,
 with a "Copy redacted JSON" button that strips webhook URLs, emails, card-like numbers and tokens before you share a sample.
+
+## Licensing (off by default)
+Dormant unless `JIGSTREAM_REQUIRE_LICENSE=1`. Keys are Ed25519-signed; the app holds only the public key.
+Seller workflow (keep the private key OUT of this repo):
+    python tools/license_tool.py keygen ~/secret/jds-private.key      # once; paste printed public key into jigstream/licensing.py
+    python tools/license_tool.py issue ~/secret/jds-private.key "Customer" --days 365
+Limits: a local check can be removed by editing the source and offline keys can't be revoked remotely
+(`REVOKED` in licensing.py is a stopgap shipped via updates). Real enforcement needs a validation server.

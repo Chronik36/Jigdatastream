@@ -4,3 +4,6 @@ __pycache__/
 data/
 .env
 *.db
+*.key
+*.pem
+license-private*
