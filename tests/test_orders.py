@@ -67,6 +67,7 @@ class ExtractTests(unittest.TestCase):
     def test_parse_json_with_fences(self):
         self.assertEqual(parse_json('```json\n{"a": 1}\n```'), {"a": 1})
         self.assertEqual(parse_json('Sure! {"a": 2} hope that helps'), {"a": 2})
+        self.assertEqual(parse_json('<think>maybe {x}?</think>\n{"a": 3}'), {"a": 3})
 
 
 class MailTests(unittest.TestCase):
