@@ -12,7 +12,8 @@ class LLMError(RuntimeError):
 
 def parse_json(text):
     """Pull a JSON object out of a model reply, tolerating code fences or chatter."""
-    text = text.strip()
+    # Reasoning models (qwen3, deepseek-r1) may prepend their thinking.
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
     try:
         return json.loads(text)
