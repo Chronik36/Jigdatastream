@@ -1,6 +1,6 @@
 import json
 
-from jigstream import analysis, db, emails, parsers, profiles
+from jigstream import analysis, db, parsers, profiles
 from jigstream.app import create_app
 
 HOOK_OK = {"username": "Valor AIO", "embeds": [{"title": "Successful Checkout", "timestamp": "2026-01-01T00:00:00Z",
@@ -32,15 +32,10 @@ def test_profiles_csv():
     assert profiles.parse_profiles(csv_text)[0]["ship_zip"] == "89501"
 
 
-def test_email_classify():
-    assert emails.classify_kind("Your order has been cancelled") == "cancelled"
-    assert emails.retailer_for("Foot Locker <orders@footlocker.com>") == "Footlocker"
-
-
 def test_web(tmp_path):
     app = create_app(str(tmp_path / "w.db"))
     assert app.test_client().get("/").status_code == 200
-    for p in ("/checkouts", "/orders", "/profiles"):
+    for p in ("/checkouts", "/orders", "/expenses", "/profiles", "/api/orders"):
         assert app.test_client().get(p).status_code == 200
 
 
