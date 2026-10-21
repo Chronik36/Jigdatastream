@@ -1,18 +1,18 @@
 {% extends "base.html" %}{% block body %}
 <div class="card">Orders <b>{{stats.order_count}}</b></div><div class="card">Spend <b>{{stats.order_total|money}}</b></div>
 <div class="card">On the way <b>{{stats.in_flight}}</b></div><div class="card ok">Delivered <b>{{stats.by_status.get("delivered", 0)}}</b></div>
-<p><form method="post" action="/sync/gmail"><button {{"disabled" if sync.running}}>{{"Syncing..." if sync.running else "Sync Gmail"}}</button></form>
-<span class="muted">{{sync.last or ""}}</span></p>
+{% include "sync.html" %}
+{% if accounts %}<p class="muted">{% for a in accounts %}{{a.address}}: synced {{(a.last_synced_at or "never")[:16]|replace("T", " ")}}{% if a.backfilled_at %}, whole mailbox done{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
 <input id="q" placeholder="Search retailer, item, tracking, address" size="40">
 <select id="f"><option value="">All statuses</option>{% for s, n in stats.by_status.items() %}<option value="{{s}}">{{s|replace("_", " ")}} ({{n}})</option>{% endfor %}</select>
-<table><thead><tr><th>Date</th><th>Retailer / order #</th><th>Items</th><th>Total</th><th>Status</th><th>Tracking</th><th>Ship to</th></tr></thead><tbody>
+<table><thead><tr><th>Date</th><th>Retailer / order #</th><th>Items</th><th>Total</th><th>Status</th><th>Tracking</th><th>Ship to</th><th>Inbox</th></tr></thead><tbody>
 {% for o in rows %}{% set status = o.shipping_status or "unknown" %}<tr data-f="{{status}}">
 <td>{{o.order_date or "-"}}</td><td><b>{{o.retailer or "-"}}</b><div class="muted">{{o.order_number or ""}}</div></td>
 <td><ul class="items">{% for i in o["items"] %}<li>{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}</li>{% endfor %}</ul></td>
 <td class="num">{{o.total|money(o.currency)}}</td>
 <td><span class="pill s-{{status}}">{{status|replace("_", " ")}}</span>{% if o.estimated_delivery %}<div class="muted">ETA {{o.estimated_delivery}}</div>{% endif %}</td>
 <td>{% if o.tracking_number %}{% set url = o|track_url %}{% if url %}<a href="{{url}}" target="_blank" rel="noopener">{{o.carrier}} {{o.tracking_number}}</a>{% else %}{{o.carrier or ""}} {{o.tracking_number}}{% endif %}{% else %}-{% endif %}</td>
-<td>{{o.shipping_address or "-"}}</td></tr>
-{% else %}<tr><td colspan="7" class="muted">No orders yet. Press Sync Gmail.</td></tr>{% endfor %}</tbody></table>
+<td>{{o.shipping_address or "-"}}</td><td class="muted">{{o.account or ""}}</td></tr>
+{% else %}<tr><td colspan="8" class="muted">No orders yet. Press Sync Gmail.</td></tr>{% endfor %}</tbody></table>
 {% include "filter.html" %}
 {% endblock %}

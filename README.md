@@ -15,20 +15,39 @@ Import webhook JSON and profile exports (.json/.csv) from the dashboard.
 ## Gmail order tracking (local AI)
 Email content never leaves your Mac: Gmail is read over IMAP (read-only) and a local model does the extraction.
 
-1. Install [Ollama](https://ollama.com) and pull a model: `ollama pull llama3.1:8b`
-   (`qwen2.5:14b` is more accurate if you have 16 GB+ RAM). LM Studio or llama.cpp work too; any
+1. With [Ollama](https://ollama.com) installed, pull a model: `ollama pull llama3.1:8b`
+   (`qwen2.5:14b` is more accurate if you have 32 GB of RAM). LM Studio or llama.cpp work too; any
    OpenAI-compatible endpoint does.
-2. Create a Google App Password at https://myaccount.google.com/apppasswords (requires 2FA).
-3. `cp .env.example .env` and fill in `GMAIL_ADDRESS` and `GMAIL_APP_PASSWORD`.
+2. Create a Google App Password for each inbox at https://myaccount.google.com/apppasswords (requires 2FA).
+3. `cp .env.example .env` and list your inboxes in `GMAIL_ACCOUNTS` as `address:app password`, comma-separated.
 4. `python -m jigstream check` confirms the model answers.
-5. `python -m jigstream sync --days 30 --limit 50` for a first small run, or press "Sync Gmail" on the
-   Orders page (it runs in the background).
+5. Sync from the Orders page, or from the terminal:
 
-For each order it captures retailer, order number, items, total, ship-to address, order date, tracking
-number, carrier, shipping status and ETA. Confirmation, shipping and delivery emails for one order merge
-into one row, and the newest email sets the status. Orders the retailer cancelled after a bot reported
-success show on the dashboard. Each sync skips emails already processed and retries ones that failed.
-JSON is at `/api/orders` and `/api/expenses`. Settings are listed in `.env.example`.
+        python -m jigstream sync --limit 50     # quick trial: 50 new emails per inbox
+        python -m jigstream sync                # every inbox in turn
+        python -m jigstream sync --all          # whole-mailbox backfill
+        python -m jigstream sync --inbox you@gmail.com
+
+**How far back.** An inbox's first sync covers the last year. After that, each sync only searches mail since the
+previous one. "Backfill whole inboxes" (or `--all`) searches each entire mailbox. Processed emails are
+remembered, so a backfill that is stopped part way picks up where it left off, and it never repeats model work.
+
+**What gets read.** Gmail's search narrows mail to anything with order, shipping, receipt, invoice,
+subscription or payment wording. A quick local check then skips emails with no price or tracking number.
+Only the rest go to the model, which is the slow step (a few seconds per email on Apple silicon).
+
+**Orders.** Retailer, order number, items, total, ship-to address, order date, tracking number, carrier,
+status, ETA and which inbox it came from. Confirmation, shipping and delivery emails for one order merge into
+one row, and the newest email sets the status. Orders the retailer cancelled after a bot reported success
+show on the dashboard.
+
+**Botting expenses.** There is no vendor list. The model decides from the receipt itself whether it is for
+proxies, bots, cook groups, captcha solving, servers, ACO services or accounts, so new providers are picked
+up automatically. It names the actual seller even when the receipt comes from Stripe, PayPal, Whop or a
+similar platform, and records whether the charge is one-time, monthly and so on. The page totals spend by
+category, month and vendor.
+
+JSON is at `/api/orders` and `/api/expenses`.
 
 ## Tuning parsers
 Bots change embed layouts. Field-name aliases live in `jigstream/parsers.py` (`ALIASES`) and profile

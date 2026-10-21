@@ -8,8 +8,14 @@ from datetime import datetime, timezone
 from .extract import STATUSES
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS mail_accounts (
+    address TEXT PRIMARY KEY,
+    last_synced_at TEXT,
+    backfilled_at TEXT
+);
 CREATE TABLE IF NOT EXISTS emails (
     message_id TEXT PRIMARY KEY,
+    account TEXT,
     sender TEXT,
     subject TEXT,
     date TEXT,
@@ -32,7 +38,8 @@ CREATE TABLE IF NOT EXISTS tracked_orders (
     shipping_status TEXT,
     estimated_delivery TEXT,
     last_email_date TEXT,
-    message_ids TEXT
+    message_ids TEXT,
+    account TEXT
 );
 CREATE TABLE IF NOT EXISTS expenses (
     id INTEGER PRIMARY KEY,
@@ -43,7 +50,9 @@ CREATE TABLE IF NOT EXISTS expenses (
     amount REAL,
     currency TEXT,
     date TEXT,
-    order_number TEXT
+    order_number TEXT,
+    billing_period TEXT,
+    account TEXT
 );
 """
 
@@ -68,11 +77,27 @@ class Store:
 
     def record_email(self, email, kind, error=None):
         self.db.execute(
-            "INSERT OR REPLACE INTO emails VALUES (?,?,?,?,?,?,?)",
-            (email.message_id, email.sender, email.subject, email.date, kind, error,
+            "INSERT OR REPLACE INTO emails VALUES (?,?,?,?,?,?,?,?)",
+            (email.message_id, email.account, email.sender, email.subject, email.date, kind, error,
              datetime.now(timezone.utc).isoformat()),
         )
         self.db.commit()
+
+    def account_state(self, address):
+        row = self.db.execute("SELECT * FROM mail_accounts WHERE address = ?", (address,)).fetchone()
+        return dict(row) if row else None
+
+    def mark_synced(self, address, started_at, full=False):
+        """Record a finished sync. started_at is when it began, so mail that
+        arrived during a long sync is picked up next time."""
+        self.db.execute("INSERT OR IGNORE INTO mail_accounts (address) VALUES (?)", (address,))
+        self.db.execute("UPDATE mail_accounts SET last_synced_at = ? WHERE address = ?", (started_at, address))
+        if full:
+            self.db.execute("UPDATE mail_accounts SET backfilled_at = ? WHERE address = ?", (started_at, address))
+        self.db.commit()
+
+    def accounts(self):
+        return [dict(r) for r in self.db.execute("SELECT * FROM mail_accounts ORDER BY address")]
 
     def save(self, email, result):
         kind = result["kind"]
@@ -81,10 +106,11 @@ class Store:
         elif kind == "botting_expense":
             self.db.execute(
                 "INSERT OR REPLACE INTO expenses"
-                " (message_id, vendor, category, description, amount, currency, date, order_number)"
-                " VALUES (?,?,?,?,?,?,?,?)",
+                " (message_id, vendor, category, description, amount, currency, date, order_number,"
+                " billing_period, account) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (email.message_id, result["vendor"], result["category"], result["description"],
-                 result["amount"], result["currency"], result["date"], result["order_number"]),
+                 result["amount"], result["currency"], result["date"], result["order_number"],
+                 result.get("billing_period"), email.account),
             )
         self.record_email(email, kind)
 
@@ -118,13 +144,13 @@ class Store:
             self.db.execute(
                 "INSERT INTO tracked_orders (merge_key, retailer, order_number, order_date, items, total,"
                 " currency, shipping_address, tracking_number, carrier, shipping_status,"
-                " estimated_delivery, last_email_date, message_ids)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " estimated_delivery, last_email_date, message_ids, account)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (merge_key, result["retailer"], result["order_number"], result["order_date"],
                  json.dumps(result["items"]), result["total"], result["currency"],
                  result["shipping_address"], result["tracking_number"], result["carrier"],
                  result["shipping_status"], result["estimated_delivery"], email.date,
-                 json.dumps([email.message_id])),
+                 json.dumps([email.message_id]), email.account),
             )
             self.db.commit()
             return
@@ -176,9 +202,11 @@ class Store:
         expenses = self.expenses()
         by_category = {}
         by_month = {}
+        by_vendor = {}
         for e in expenses:
             amount = e["amount"] or 0
             by_category[e["category"]] = by_category.get(e["category"], 0) + amount
+            by_vendor[e["vendor"] or "?"] = by_vendor.get(e["vendor"] or "?", 0) + amount
             month = (e["date"] or "")[:7] or "unknown"
             by_month[month] = by_month.get(month, 0) + amount
         return {
@@ -189,4 +217,5 @@ class Store:
             "expense_total": sum(by_category.values()),
             "expense_by_category": dict(sorted(by_category.items(), key=lambda kv: -kv[1])),
             "expense_by_month": dict(sorted(by_month.items(), reverse=True)),
+            "expense_by_vendor": dict(sorted(by_vendor.items(), key=lambda kv: -kv[1])),
         }
