@@ -33,6 +33,9 @@ Email content never leaves your Mac: Gmail is read over IMAP (read-only) and a l
 previous one. "Backfill whole inboxes" (or `--all`) searches each entire mailbox. Processed emails are
 remembered, so a backfill that is stopped part way picks up where it left off, and it never repeats model work.
 
+**Spam folder.** Each inbox's Spam folder is read too, since forwarded receipts often land there (Trash is
+not). Gmail deletes spam after 30 days, so sync at least every couple of weeks to catch it.
+
 **What gets read.** Gmail's search narrows mail to anything with order, shipping, receipt, invoice,
 subscription or payment wording. A quick local check then skips emails with no price or tracking number.
 Only the rest go to the model, which is the slow step (a few seconds per email on Apple silicon).
