@@ -1,6 +1,6 @@
 from flask import Flask, redirect, render_template, request, url_for, flash
 
-from . import analysis, db, emails, parsers, profiles
+from . import analysis, db, emails, parsers, profiles, tracker
 
 
 def create_app(db_path=None):
@@ -25,6 +25,11 @@ def create_app(db_path=None):
         q = "SELECT * FROM checkouts" + (" WHERE status=?" if status else "") + " ORDER BY ts DESC LIMIT 500"
         rows = con().execute(q, (status,) if status else ()).fetchall()
         return render_template("checkouts.html", rows=rows)
+
+    @app.get("/tracker")
+    def order_tracker():
+        c = con()
+        return render_template("tracker.html", rows=tracker.link(c), stats=tracker.retailer_stats(c))
 
     @app.get("/orders")
     def orders():

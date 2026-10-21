@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     message_id TEXT UNIQUE,
     retailer TEXT, kind TEXT, order_number TEXT, product TEXT,
-    total TEXT, ts TEXT, subject TEXT, sender TEXT
+    total TEXT, ts TEXT, subject TEXT, sender TEXT, store TEXT, body TEXT
 );
 """
 
@@ -38,4 +38,8 @@ def connect(path=None):
     con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(orders)")}
+    for c in ("store", "body"):
+        if c not in cols:
+            con.execute(f"ALTER TABLE orders ADD COLUMN {c} TEXT")
     return con

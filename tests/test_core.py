@@ -34,7 +34,8 @@ def test_profiles_csv():
 
 def test_email_classify():
     assert emails.classify_kind("Your order has been cancelled") == "cancelled"
-    assert emails.retailer_for("Foot Locker <orders@footlocker.com>") == "Footlocker"
+    assert emails.retailer_for("Target <orders@oe1.target.com>") == "Target"
+    assert emails.retailer_for("Some Store <store+123@shopifyemail.com>") == "Shopify"
 
 
 def test_web(tmp_path):
@@ -64,3 +65,35 @@ def test_aycd_style(tmp_path):
     r = c.execute("SELECT * FROM profiles").fetchone()
     assert (r["ship_address1"], r["ship_zip"], r["card_last4"]) == ("10 Pine Street", "78701", "9999")
     assert "4111" not in r["raw"] and "321" not in r["raw"]
+
+
+def test_tracker(tmp_path):
+    from jigstream import tracker
+    c = db.connect(str(tmp_path / "t2.db"))
+    hooks = [{"username": "Valor", "embeds": [{"title": "Successful Checkout", "timestamp": "2026-02-01T10:00:00Z",
+              "fields": [{"name": "Product", "value": "Pokemon Prismatic ETB"}, {"name": "Site", "value": "pokemoncenter.com"},
+                         {"name": "Profile", "value": "p1"}]}]},
+             {"username": "Valor", "embeds": [{"title": "Successful Checkout", "timestamp": "2026-02-01T11:00:00Z",
+              "fields": [{"name": "Product", "value": "Pack"}, {"name": "Site", "value": "target.com"},
+                         {"name": "Order #", "value": "912003"}, {"name": "Profile", "value": "p2"}]}]}]
+    parsers.ingest(c, json.dumps(hooks))
+    emails.store(c, {"message_id": "1", "retailer": "Pokemon Center", "kind": "confirmed", "order_number": "",
+                     "product": "", "total": "", "ts": "2026-02-01T10:20:00+00:00", "subject": "Thanks for your order",
+                     "sender": "orders@pokemoncenter.com", "store": "Pokemon Center", "body": "Prismatic ETB x1"})
+    emails.store(c, {"message_id": "2", "retailer": "Target", "kind": "cancelled", "order_number": "912003",
+                     "product": "", "total": "", "ts": "2026-02-02T10:00:00+00:00", "subject": "Order cancelled",
+                     "sender": "orders@target.com", "store": "Target", "body": ""})
+    c.commit()
+    st = {r["checkout"]["site"]: (r["status"], r["matched_by"]) for r in tracker.link(c)}
+    assert st["pokemoncenter.com"] == ("confirmed", "retailer+product+time")
+    assert st["target.com"] == ("cancelled", "order #")
+    assert tracker.retailer_stats(c)["target.com"]["cancel_rate"] == 100
+
+
+def test_order_number_regex():
+    from jigstream.emails import ORDER_RE
+    m = ORDER_RE.search("Your order #112-1234567-7654321 has shipped")
+    assert (m.group(1) or m.group(2)) == "112-1234567-7654321"
+    assert ORDER_RE.search("Your order has been confirmed") is None
+    m = ORDER_RE.search("Order #1001 confirmed")
+    assert (m.group(1) or m.group(2)) == "1001"

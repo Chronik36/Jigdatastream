@@ -12,17 +12,27 @@ from email.header import decode_header, make_header
 from email.utils import parsedate_to_datetime
 
 RETAILERS = {
-    "Nike/SNKRS": ["nike.com"], "Footlocker": ["footlocker.com", "champssports.com", "eastbay.com"],
-    "Finish Line": ["finishline.com"], "JD Sports": ["jdsports.com"], "Shopify": ["shopify.com"],
-    "Best Buy": ["bestbuy.com"], "Target": ["target.com"], "Walmart": ["walmart.com"],
-    "Adidas": ["adidas.com"], "Amazon": ["amazon.com"], "GameStop": ["gamestop.com"],
+    "Target": ["target.com"], "Amazon": ["amazon.com"], "Walmart": ["walmart.com"],
+    "Best Buy": ["bestbuy.com"], "P-Bandai": ["p-bandai.com", "bandai.com", "bandai-hobby"],
+    "Crunchyroll": ["crunchyroll.com"], "Topps": ["topps.com"],
+    "Pokemon Center": ["pokemoncenter.com"],
+    # Shopify stores send from shopifyemail.com with the store name as sender name
+    "Shopify": ["shopifyemail.com", "shopify.com"],
+}
+# Site keywords used to match a webhook's "site" field to a retailer.
+SITE_KEYS = {
+    "Target": ["target"], "Amazon": ["amazon"], "Walmart": ["walmart"], "Best Buy": ["bestbuy", "best buy"],
+    "P-Bandai": ["bandai"], "Crunchyroll": ["crunchyroll"], "Topps": ["topps"],
+    "Pokemon Center": ["pokemoncenter", "pokemon center"],
 }
 KIND_RULES = [
     ("cancelled", r"cancel"),
-    ("shipped", r"shipped|on its way|tracking|out for delivery"),
-    ("confirmed", r"order (confirm|receiv)|thanks for (your )?order|thank you for your order|order placed|we got your order"),
+    ("shipped", r"shipped|shipment|on its way|on the way|tracking|out for delivery|delivered"),
+    ("confirmed", r"order (confirm|receiv|placed)|thanks for (your )?(order|shopping)|thank you for your order|we got your order|confirmed"),
 ]
-ORDER_RE = re.compile(r"(?:order\s*(?:#|number|no\.?|id)?\s*[:\-]?\s*)([A-Z0-9][A-Z0-9\-]{5,})", re.I)
+ORDER_RE = re.compile(
+    r"(\d{3}-\d{7}-\d{7})"                                   # Amazon
+    r"|order\s*(?:#|number|no\.?|id)?\s*[:\-]?\s*#?\s*([A-Z0-9][A-Z0-9\-]{3,})", re.I)
 TOTAL_RE = re.compile(r"(?:order )?total[^$\d]{0,20}\$\s?([\d,]+\.\d{2})", re.I)
 
 
@@ -32,6 +42,10 @@ def retailer_for(sender):
         if any(d in s for d in doms):
             return name
     return None
+
+
+def store_name(sender):
+    return re.sub(r"<.*?>|\"", "", sender).strip()
 
 
 def classify_kind(subject, body=""):
@@ -59,20 +73,23 @@ def parse_message(msg):
     if not kind:
         return None
     m = ORDER_RE.search(subject) or ORDER_RE.search(body)
+    order = (m.group(1) or m.group(2)).upper() if m else ""
     t = TOTAL_RE.search(body)
+    body = re.sub(r"\s+", " ", body).strip()[:3000]
     try:
         ts = parsedate_to_datetime(msg.get("Date")).isoformat()
     except Exception:
         ts = ""
     return {"message_id": msg.get("Message-ID", ""), "retailer": retailer, "kind": kind,
-            "order_number": m.group(1).upper() if m else "", "product": "",
-            "total": t.group(1) if t else "", "ts": ts, "subject": subject, "sender": sender}
+            "order_number": order, "product": "",
+            "total": t.group(1) if t else "", "ts": ts, "subject": subject, "sender": sender,
+            "store": store_name(sender), "body": body}
 
 
 def store(con, rec):
     cur = con.execute(
-        """INSERT OR IGNORE INTO orders (message_id,retailer,kind,order_number,product,total,ts,subject,sender)
-        VALUES (:message_id,:retailer,:kind,:order_number,:product,:total,:ts,:subject,:sender)""", rec)
+        """INSERT OR IGNORE INTO orders (message_id,retailer,kind,order_number,product,total,ts,subject,sender,store,body)
+        VALUES (:message_id,:retailer,:kind,:order_number,:product,:total,:ts,:subject,:sender,:store,:body)""", rec)
     return cur.rowcount
 
 
