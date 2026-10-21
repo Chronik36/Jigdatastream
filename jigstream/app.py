@@ -5,7 +5,7 @@ from flask import Flask, flash, jsonify, redirect, render_template, request, url
 from . import analysis, db, parsers, profiles
 from .config import Config
 from .orderstore import Store
-from .sync import run_sync
+from .sync import run_sync, summary
 
 TRACK_URLS = {
     "UPS": "https://www.ups.com/track?tracknum={}",
@@ -26,11 +26,15 @@ def create_app(db_path=None):
     # Email sync calls the local model once per email, so it runs in the background.
     sync_state = {"running": False, "last": None}
 
-    def background_sync():
+    def progress(text):
+        sync_state["last"] = text
+
+    def background_sync(full):
         try:
-            counts = run_sync(Config.from_env(), Store(con()), log=lambda *a, **k: None)
-            sync_state["last"] = (f"Last Gmail sync: {counts['order']} order emails, "
-                                  f"{counts['botting_expense']} botting receipts, {counts['error']} errors.")
+            config = Config.from_env()
+            config.full_history = full
+            counts = run_sync(config, Store(con()), log=lambda *a, **k: None, progress=progress)
+            sync_state["last"] = f"Last Gmail sync{' (whole mailbox)' if full else ''}: {summary(counts)}"
         except Exception as e:
             sync_state["last"] = f"Gmail sync failed: {e}"
         finally:
@@ -66,7 +70,8 @@ def create_app(db_path=None):
     @app.get("/orders")
     def orders():
         store = Store(con())
-        return render_template("orders.html", rows=store.orders(), stats=store.stats(), sync=sync_state)
+        return render_template("orders.html", rows=store.orders(), stats=store.stats(), sync=sync_state,
+                               accounts=store.accounts())
 
     @app.get("/expenses")
     def expenses():
@@ -107,9 +112,13 @@ def create_app(db_path=None):
     @app.post("/sync/gmail")
     def sync():
         if not sync_state["running"]:
+            full = request.form.get("full") == "1"
             sync_state["running"] = True
-            threading.Thread(target=background_sync, daemon=True).start()
-            flash("Gmail sync started. Refresh in a minute to see new orders.")
+            sync_state["last"] = "Starting Gmail sync..."
+            threading.Thread(target=background_sync, args=(full,), daemon=True).start()
+            flash("Whole-mailbox backfill started. It can take hours; already processed mail is skipped, "
+                  "so it is safe to stop and run again." if full else
+                  "Gmail sync started. Refresh to see progress.")
         return redirect(url_for("orders"))
 
     return app

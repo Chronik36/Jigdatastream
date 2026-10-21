@@ -2,7 +2,8 @@ import unittest
 from email.message import EmailMessage
 
 from jigstream.config import Config
-from jigstream.extract import botting_hint, find_tracking, normalize
+from jigstream.config import parse_accounts
+from jigstream.extract import botting_signals, find_tracking, looks_like_purchase, normalize
 from jigstream.llm import parse_json
 from jigstream.mail import Email, html_to_text, parse_message
 from jigstream.orderstore import Store
@@ -20,8 +21,9 @@ class FakeLLM:
         return self.replies[subject]
 
 
-def mail(subject, sender="Nike <orders@nike.com>", date="2026-10-01T10:00:00+00:00", body="", mid=None):
-    return Email(mid or f"<{subject}@x>", sender, subject, date, body)
+def mail(subject, sender="Nike <orders@nike.com>", date="2026-10-01T10:00:00+00:00",
+         body="Your order total: $130.00", mid=None, account="me@gmail.com"):
+    return Email(mid or f"<{subject}@x>", sender, subject, date, body, account)
 
 
 class ExtractTests(unittest.TestCase):
@@ -31,11 +33,17 @@ class ExtractTests(unittest.TestCase):
         self.assertEqual(find_tracking("FedEx tracking number: 123456789012"), ("123456789012", "FedEx"))
         self.assertEqual(find_tracking("order 123456789012"), (None, None))
 
-    def test_botting_hint(self):
-        self.assertEqual(botting_hint("Whop <no-reply@whop.com>", "Your receipt"), "cook_group")
-        self.assertEqual(botting_hint("billing@iproyal.com", "Invoice"), "proxy")
-        self.assertEqual(botting_hint("Cybersole", "Renewal"), "bot")
-        self.assertIsNone(botting_hint("Nike <orders@nike.com>", "Your order"))
+    def test_purchase_prepass_and_botting_signals(self):
+        self.assertTrue(looks_like_purchase(mail("Receipt", body="Payment of $45.00 received")))
+        self.assertTrue(looks_like_purchase(mail("Shipped", body="Tracking 1Z999AA10123456784")))
+        self.assertFalse(looks_like_purchase(mail("Weekly newsletter", body="Big news this week")))
+        self.assertFalse(looks_like_purchase(mail("Hello", body="see you at 5.00 tomorrow")))
+        e = mail("Your receipt from Stripe", body="Residential proxies 10GB plan, $45.00, renewal monthly")
+        self.assertIn("residential", botting_signals(e))
+
+    def test_parse_accounts(self):
+        self.assertEqual(parse_accounts("a@gmail.com:abcd efgh, b@gmail.com:wxyz ,bad"),
+                         [("a@gmail.com", "abcdefgh"), ("b@gmail.com", "wxyz")])
 
     def test_normalize_order_fills_tracking_from_body(self):
         e = mail("Shipped", body="Your UPS tracking 1Z999AA10123456784")
@@ -47,12 +55,14 @@ class ExtractTests(unittest.TestCase):
         self.assertEqual(r["shipping_status"], "shipped")
         self.assertEqual(r["order_date"], "2026-10-01")
 
-    def test_hint_overrides_order_kind(self):
-        e = mail("Payment received", sender="Whop <no-reply@whop.com>")
-        r = normalize({"kind": "order", "retailer": "Whop", "total": 45}, e)
-        self.assertEqual(r["kind"], "botting_expense")
-        self.assertEqual(r["category"], "cook_group")
-        self.assertEqual(r["amount"], 45.0)
+    def test_botting_expense_from_unknown_vendor(self):
+        e = mail("Your receipt", sender="Stripe <receipts@stripe.com>")
+        r = normalize({"kind": "botting_expense", "vendor": "Brand New Proxies", "expense_category": "proxy",
+                       "billing_period": "monthly", "total": "$45.00"}, e)
+        self.assertEqual((r["vendor"], r["category"], r["billing_period"], r["amount"]),
+                         ("Brand New Proxies", "proxy", "monthly", 45.0))
+        bad = normalize({"kind": "botting_expense", "expense_category": "weird", "billing_period": "daily"}, e)
+        self.assertEqual((bad["category"], bad["billing_period"], bad["vendor"]), ("other", None, "Stripe"))
 
     def test_parse_json_with_fences(self):
         self.assertEqual(parse_json('```json\n{"a": 1}\n```'), {"a": 1})
@@ -88,7 +98,8 @@ class SyncTests(unittest.TestCase):
             mail("Your order shipped", date="2026-10-03T10:00:00+00:00"),
             mail("Delivered", date="2026-10-06T10:00:00+00:00"),
             mail("Whop receipt", sender="Whop <no-reply@whop.com>"),
-            mail("Weekly deals"),
+            mail("Weekly deals", body="Order now and save, everything $99.00"),
+            mail("Account notice", body="We updated our privacy policy"),
         ]
         llm = FakeLLM({
             "Order confirmed": {"kind": "order", "retailer": "Nike", "order_number": "C001", "total": 130,
@@ -103,7 +114,8 @@ class SyncTests(unittest.TestCase):
             "Weekly deals": {"kind": "other"},
         })
         counts = run_sync(Config(), store, emails=emails, llm=llm, log=lambda *a, **k: None)
-        self.assertEqual(counts, {"order": 3, "botting_expense": 1, "other": 1, "error": 0})
+        self.assertEqual(counts, {"order": 3, "botting_expense": 1, "other": 1, "skipped": 1, "error": 0,
+                                  "failed_inboxes": []})
 
         orders = store.orders()
         self.assertEqual(len(orders), 1)
@@ -161,6 +173,58 @@ class SyncTests(unittest.TestCase):
         counts = run_sync(Config(), store, emails=[mail("X")], llm=Broken(), log=lambda *a, **k: None)
         self.assertEqual(counts["error"], 1)
         self.assertEqual(store.seen_ids(), set())
+
+
+class InboxTests(unittest.TestCase):
+    def setUp(self):
+        import jigstream.sync as sync
+        self.sync = sync
+        self.calls = []
+        self.real_fetch = sync.fetch_emails
+        boxes = {
+            "a@gmail.com": [mail("A order", account="a@gmail.com")],
+            "b@gmail.com": [mail("B receipt", sender="Whop <no-reply@whop.com>", account="b@gmail.com")],
+        }
+
+        def fake_fetch(config, address, password, days, skip_ids, on_total):
+            self.calls.append((address, days))
+            if address == "bad@gmail.com":
+                raise RuntimeError("Gmail login failed for bad@gmail.com")
+            new = [e for e in boxes[address] if e.message_id not in skip_ids]
+            on_total(len(new))
+            yield from new
+
+        sync.fetch_emails = fake_fetch
+        self.llm = FakeLLM({
+            "A order": {"kind": "order", "retailer": "Target", "order_number": "9", "total": 130},
+            "B receipt": {"kind": "botting_expense", "vendor": "Some Cook Group", "expense_category": "cook_group",
+                          "total": 30},
+        })
+
+    def tearDown(self):
+        self.sync.fetch_emails = self.real_fetch
+
+    def test_inboxes_in_succession_with_incremental_ranges(self):
+        store = Store(db.connect(":memory:"))
+        config = Config(accounts=[("a@gmail.com", "x"), ("bad@gmail.com", "x"), ("b@gmail.com", "x")])
+        counts = self.sync.run_sync(config, store, llm=self.llm, log=lambda *a, **k: None)
+        self.assertEqual([c[0] for c in self.calls], ["a@gmail.com", "bad@gmail.com", "b@gmail.com"])
+        self.assertTrue(all(days == 365 for _, days in self.calls))  # first sync: one year
+        self.assertEqual(counts["failed_inboxes"], ["bad@gmail.com"])
+        self.assertEqual(store.orders()[0]["account"], "a@gmail.com")
+        self.assertEqual(store.expenses()[0]["account"], "b@gmail.com")
+        self.assertIsNone(store.account_state("bad@gmail.com"))
+
+        self.calls.clear()
+        self.sync.run_sync(config, store, llm=self.llm, log=lambda *a, **k: None)
+        self.assertEqual(dict(self.calls)["a@gmail.com"], 2)  # later syncs: only recent mail
+        self.assertEqual(dict(self.calls)["bad@gmail.com"], 365)  # never synced, still a full year
+
+        self.calls.clear()
+        config.full_history = True
+        self.sync.run_sync(config, store, llm=self.llm, log=lambda *a, **k: None)
+        self.assertIsNone(dict(self.calls)["a@gmail.com"])  # whole mailbox
+        self.assertTrue(store.account_state("a@gmail.com")["backfilled_at"])
 
 
 if __name__ == "__main__":
