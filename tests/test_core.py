@@ -41,7 +41,7 @@ def test_email_classify():
 def test_web(tmp_path):
     app = create_app(str(tmp_path / "w.db"))
     assert app.test_client().get("/").status_code == 200
-    for p in ("/checkouts", "/orders", "/profiles"):
+    for p in ("/checkouts", "/orders", "/profiles", "/tracker", "/import", "/static/app.css", "/static/app.js"):
         assert app.test_client().get(p).status_code == 200
 
 
@@ -171,3 +171,9 @@ def test_ai_routes_without_ollama(tmp_path, monkeypatch):
     cl = create_app(str(tmp_path / "w2.db")).test_client()
     assert cl.get("/ai/status").get_json()["ok"] is False
     assert cl.get("/").status_code == 200
+
+
+def test_state_names():
+    from jigstream import address
+    assert address.suggest("1 A St", "", "Austin", "Texas", "78701")["state"] == "TX"
+    assert address.suggest("1 A St", "", "Austin", "ny", "10001")["state"] == "NY"

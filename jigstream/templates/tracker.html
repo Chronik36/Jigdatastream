@@ -1,12 +1,13 @@
 {% extends "base.html" %}{% block body %}
-<h3>By retailer</h3>
-<table><tr><th>Site</th><th>Checkouts</th><th>Confirmed</th><th>Shipped</th><th>Cancelled</th><th>No email</th><th>Cancel rate</th></tr>
-{% for site,s in stats.items() %}<tr><td>{{site}}</td><td>{{s.checkouts}}</td><td>{{s.confirmed}}</td><td>{{s.shipped}}</td><td class="{{'bad' if s.cancelled}}">{{s.cancelled}}</td><td>{{s['no email']}}</td><td>{{s.cancel_rate}}%</td></tr>{% endfor %}</table>
-{% if profile_cancels %}<h3>Cancellations by profile</h3>
-<table><tr><th>Profile</th><th>Checkouts</th><th>Cancelled</th><th>Rate</th></tr>
-{% for p,s in profile_cancels.items() %}<tr><td>{{p}}</td><td>{{s.checkouts}}</td><td class="bad">{{s.cancelled}}</td><td>{{s.rate}}%</td></tr>{% endfor %}</table>{% endif %}
-<h3>Orders</h3>
-<table><tr><th>Checkout</th><th>Site</th><th>Product</th><th>Profile</th><th>Order</th><th>Status</th><th>Matched by</th><th>Cancelled after</th></tr>
-{% for r in rows %}<tr><td>{{r.checkout.ts}}</td><td>{{r.checkout.site}}</td><td>{{r.checkout.product}}</td><td>{{r.checkout.profile}}</td><td>{{r.checkout.order_number}}</td>
-<td class="{{'bad' if r.status=='cancelled' else ('ok' if r.status in ('shipped','confirmed') else '')}}">{{r.status}}</td><td>{{r.matched_by}}</td><td>{% if r.cancel_min is not none %}{{r.cancel_min}} min ({{r.cancel_speed}}){% endif %}</td></tr>{% endfor %}</table>
-{% endblock %}
+<h1>Order tracker</h1><p class="sub">Successful checkouts matched to retailer emails, including cancellations.</p>
+<div class="cols">
+<div class="panel"><header><h2>By retailer</h2></header>{% if stats %}<table class="sortable"><thead><tr><th>Site</th><th class="num">Orders</th><th class="num">Shipped</th><th class="num">Cancelled</th><th class="num">No email</th><th class="num">Cancel rate</th></tr></thead><tbody>
+{% for site,s in stats.items() %}<tr><td>{{site}}</td><td class="num">{{s.checkouts}}</td><td class="num">{{s.shipped}}</td><td class="num">{% if s.cancelled %}<span class="pill bad">{{s.cancelled}}</span>{% else %}0{% endif %}</td><td class="num">{{s['no email']}}</td><td class="num">{{s.cancel_rate}}%</td></tr>{% endfor %}</tbody></table>{% else %}<div class="empty">No successful checkouts yet</div>{% endif %}</div>
+<div class="panel"><header><h2>Cancellations by profile</h2></header>{% if profile_cancels %}<table class="sortable"><thead><tr><th>Profile</th><th class="num">Orders</th><th class="num">Cancelled</th><th class="num">Rate</th></tr></thead><tbody>
+{% for p,s in profile_cancels.items() %}<tr><td>{{p}}</td><td class="num">{{s.checkouts}}</td><td class="num">{{s.cancelled}}</td><td class="num">{{s.rate}}%</td></tr>{% endfor %}</tbody></table>{% else %}<div class="empty">No cancellations found</div>{% endif %}</div></div>
+<div class="panel"><header><h2>Orders</h2><input type="search" placeholder="Search…" data-filter="#tt"></header>
+{% if rows %}<table id="tt" class="sortable"><thead><tr><th>Checkout</th><th>Site</th><th>Product</th><th>Profile</th><th>Order</th><th>Status</th><th>Cancelled after</th><th>Matched by</th></tr></thead><tbody>
+{% for r in rows %}<tr><td class="muted">{{r.checkout.ts[:16].replace("T"," ")}}</td><td>{{r.checkout.site}}</td><td>{{r.checkout.product}}</td><td>{{r.checkout.profile}}</td><td>{{r.checkout.order_number}}</td>
+<td><span class="pill {{r.status|replace(' ','')}}">{{r.status}}</span></td>
+<td>{% if r.cancel_min is not none %}{{r.cancel_min}} min <span class="muted">({{r.cancel_speed}})</span>{% endif %}</td><td class="muted">{{r.matched_by}}</td></tr>{% endfor %}</tbody></table>
+{% else %}<div class="empty">Nothing to track yet.</div>{% endif %}</div>{% endblock %}

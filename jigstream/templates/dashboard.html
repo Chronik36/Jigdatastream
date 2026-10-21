@@ -1,22 +1,25 @@
 {% extends "base.html" %}{% block body %}
-<div class="card">Checkouts <b>{{tot.n}}</b></div><div class="card ok">Success <b>{{tot.s or 0}}</b></div><div class="card bad">Not successful <b>{{tot.f or 0}}</b></div>
-<h3>Import</h3>
-<form method="post" action="/upload/webhooks" enctype="multipart/form-data">Webhook JSON <input type="file" name="files" multiple> <label><input type="checkbox" name="ai"> AI for unrecognized</label><button>Import</button></form>
-<form method="post" action="/upload/profiles" enctype="multipart/form-data">Profiles (.json/.csv) <select name="bot"><option>Valor</option><option>Stellar</option><option>Hayha</option><option>Polar</option></select><input type="file" name="files" multiple><button>Import</button></form>
-<form method="post" action="/sync/gmail"><label><input type="checkbox" name="ai"> AI for unrecognized</label> <button>Sync Gmail</button></form> <span id="ai" class="card"></span>
-<h3>Failing profiles &amp; suggested address fixes</h3>
-<table><tr><th>Profile</th><th>OK</th><th>Declined</th><th>Failed</th><th>Rate</th><th>Issues</th><th>Suggested</th></tr>
-{% for r in report %}<tr><td>{{r.profile}}</td><td>{{r.success}}</td><td>{{r.decline}}</td><td>{{r.failure}}</td><td>{{r.rate}}%</td>
-<td>{{r.issues|join("; ") or "none found"}} <button class="ex" data-p="{{r.profile}}">Explain</button><div class="exo"></div></td>
-<td>{% if r.suggested %}{{r.suggested.address1}} {{r.suggested.address2}}, {{r.suggested.city}} {{r.suggested.state}} {{r.suggested.zip}}{% endif %}</td></tr>{% endfor %}</table>
-{% if unmatched %}<p class="bad">Checkouts reference profiles not imported: {{unmatched|join(", ")}}</p>{% endif %}
-<h3>By site</h3><table><tr><th>Site</th><th>Success</th><th>Declined</th><th>Failed</th><th>Total</th></tr>
-{% for r in sites %}<tr><td>{{r.k}}</td><td>{{r.s}}</td><td>{{r.d}}</td><td>{{r.f}}</td><td>{{r.n}}</td></tr>{% endfor %}</table>
-<h3>By bot</h3><table><tr><th>Bot</th><th>Success</th><th>Declined</th><th>Failed</th><th>Total</th></tr>
-{% for r in bots %}<tr><td>{{r.k}}</td><td>{{r.s}}</td><td>{{r.d}}</td><td>{{r.f}}</td><td>{{r.n}}</td></tr>{% endfor %}</table>
-{% if cancelled %}<h3>Cancelled after "success"</h3><table>{% for r in cancelled %}<tr><td>{{r.site}}</td><td>{{r.product}}</td><td>{{r.profile}}</td><td>{{r.order_number}}</td></tr>{% endfor %}</table>{% endif %}
-<script>
-fetch("/ai/status").then(r=>r.json()).then(s=>{const e=document.getElementById("ai");e.textContent="Local AI: "+s.message;e.className="card "+(s.ok?"ok":"bad")});
-document.querySelectorAll(".ex").forEach(b=>b.onclick=()=>{const o=b.nextElementSibling;o.textContent="Thinking…";
- fetch("/explain/"+encodeURIComponent(b.dataset.p),{method:"POST"}).then(r=>r.json()).then(x=>o.textContent=(x.ok?"AI: ":"")+x.text)});
-</script>{% endblock %}
+<h1>Dashboard</h1><p class="sub">How your setup is performing.</p>
+<div class="grid kpis">
+<div class="kpi"><div class="l">Checkouts</div><div class="v">{{tot.n}}</div></div>
+<div class="kpi"><div class="l">Successful</div><div class="v ok">{{tot.s or 0}}</div></div>
+<div class="kpi"><div class="l">Not successful</div><div class="v bad">{{tot.f or 0}}</div></div>
+<div class="kpi"><div class="l">Success rate</div><div class="v">{{ ((tot.s or 0)*100//tot.n) if tot.n else 0 }}%</div></div>
+<div class="kpi"><div class="l">Cancelled after success</div><div class="v bad">{{cancelled|length}}</div></div></div>
+{% if not tot.n %}<div class="panel"><div class="empty">No data yet. <a href="/import">Import webhooks and profiles</a> to get started.</div></div>{% endif %}
+<div class="panel"><header><h2>Profiles to fix</h2><input type="search" placeholder="Filter…" data-filter="#fp"></header>
+{% if report %}<table id="fp" class="sortable"><thead><tr><th>Profile</th><th>Win rate</th><th class="num">Declined</th><th class="num">Failed</th><th>Issues found</th><th>Suggested address</th></tr></thead><tbody>
+{% for r in report %}<tr><td><b>{{r.profile}}</b></td>
+<td><div class="bar" title="{{r.success}} of {{r.total}}"><i style="width:{{r.rate}}%"></i></div><span class="muted">{{r.rate}}%</span></td>
+<td class="num">{{r.decline}}</td><td class="num">{{r.failure}}</td>
+<td>{% for i in r.issues %}<div>{{i}}</div>{% else %}<span class="muted">None found</span>{% endfor %}
+<button class="sm ex" data-p="{{r.profile}}">Explain</button><div class="exo"></div></td>
+<td>{% if r.suggested %}{{r.suggested.address1}} {{r.suggested.address2}}<br><span class="muted">{{r.suggested.city}}, {{r.suggested.state}} {{r.suggested.zip}}</span>{% else %}<span class="muted">—</span>{% endif %}</td></tr>{% endfor %}</tbody></table>
+{% else %}<div class="empty">No failing profiles{% if tot.n %} — nice{% endif %}.</div>{% endif %}</div>
+{% if unmatched %}<div class="flash upd">Checkouts reference profiles you haven't imported: {{unmatched|join(", ")}}</div>{% endif %}
+<div class="cols">
+<div class="panel"><header><h2>By site</h2></header>{% if sites %}<table class="sortable"><thead><tr><th>Site</th><th class="num">Success</th><th class="num">Declined</th><th class="num">Failed</th><th class="num">Total</th></tr></thead><tbody>
+{% for r in sites %}<tr><td>{{r.k or "—"}}</td><td class="num">{{r.s}}</td><td class="num">{{r.d}}</td><td class="num">{{r.f}}</td><td class="num">{{r.n}}</td></tr>{% endfor %}</tbody></table>{% else %}<div class="empty">Nothing yet</div>{% endif %}</div>
+<div class="panel"><header><h2>By bot</h2></header>{% if bots %}<table class="sortable"><thead><tr><th>Bot</th><th class="num">Success</th><th class="num">Declined</th><th class="num">Failed</th><th class="num">Total</th></tr></thead><tbody>
+{% for r in bots %}<tr><td>{{r.k}}</td><td class="num">{{r.s}}</td><td class="num">{{r.d}}</td><td class="num">{{r.f}}</td><td class="num">{{r.n}}</td></tr>{% endfor %}</tbody></table>{% else %}<div class="empty">Nothing yet</div>{% endif %}</div></div>
+{% endblock %}

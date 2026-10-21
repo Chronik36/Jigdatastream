@@ -1,5 +1,8 @@
 {% extends "base.html" %}{% block body %}
-<a href="?status=success">success</a> · <a href="?status=decline">decline</a> · <a href="?status=failure">failure</a> · <a href="/checkouts">all</a>
-<table><tr><th>Time</th><th>Bot</th><th>Status</th><th>Site</th><th>Product</th><th>Size</th><th>Profile</th><th>Order</th><th>Reason</th></tr>
-{% for r in rows %}<tr><td>{{r.ts}}</td><td>{{r.bot}}</td><td class="{{'ok' if r.status=='success' else 'bad'}}">{{r.status}}</td><td>{{r.site}}</td><td>{{r.product}}{% if r.ai %} <small title='Filled in by local AI; verify'>🤖</small>{% endif %}</td><td>{{r.size}}</td><td>{{r.profile}}</td><td>{{r.order_number}}</td><td>{{r.reason}}</td></tr>{% endfor %}</table>
-{% endblock %}
+<h1>Checkouts</h1><p class="sub">Everything parsed from your webhooks.</p>
+<div class="panel"><header><div class="tools"><a class="btn" href="/checkouts">All</a><a class="btn" href="?status=success">Success</a><a class="btn" href="?status=decline">Declined</a><a class="btn" href="?status=failure">Failed</a></div>
+<input type="search" placeholder="Search product, site, profile…" data-filter="#ct"></header>
+{% if rows %}<table id="ct" class="sortable"><thead><tr><th>Time</th><th>Bot</th><th>Status</th><th>Site</th><th>Product</th><th>Size</th><th>Profile</th><th>Order</th><th>Reason</th></tr></thead><tbody>
+{% for r in rows %}<tr><td class="muted">{{r.ts[:16].replace("T"," ")}}</td><td>{{r.bot}}</td><td><span class="pill {{r.status}}">{{r.status}}</span></td><td>{{r.site}}</td>
+<td>{{r.product}}{% if r.ai %} <small title="Filled in by AI; verify">🤖</small>{% endif %}</td><td>{{r.size}}</td><td>{{r.profile}}</td><td>{{r.order_number}}</td><td class="muted">{{r.reason}}</td></tr>{% endfor %}</tbody></table>
+{% else %}<div class="empty">No checkouts. <a href="/import">Import webhooks</a>.</div>{% endif %}</div>{% endblock %}

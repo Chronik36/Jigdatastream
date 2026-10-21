@@ -1,23 +1,10 @@
-<!doctype html><html><head><meta charset="utf-8"><title>Jigdatastream</title>
-<style>
-body{font:14px system-ui;margin:0;background:#111;color:#e8e8e8}
-nav{background:#1c1c1c;padding:10px 20px}nav a{color:#9cf;margin-right:16px;text-decoration:none}
-main{padding:20px;max-width:1200px;margin:auto}
-table{border-collapse:collapse;width:100%;margin-bottom:24px}td,th{border-bottom:1px solid #333;padding:6px 8px;text-align:left}
-.ok{color:#6d6}.bad{color:#f66}.card{background:#1c1c1c;padding:12px 16px;border-radius:8px;display:inline-block;margin-right:12px}
-form{display:inline-block;margin-right:20px}.flash{background:#243;padding:8px;margin-bottom:12px}
-</style></head><body>
-<nav><a href="/">Dashboard</a><a href="/checkouts">Checkouts</a><a href="/profiles">Profiles</a><a href="/tracker">Order Tracker</a><a href="/orders">Emails</a></nav>
-<div id="upd" class="flash" style="display:none;margin:0"></div>
-<main>{% for m in get_flashed_messages() %}<div class="flash">{{m}}</div>{% endfor %}{% block body %}{% endblock %}</main><script>
-fetch("/update/status").then(r=>r.json()).then(s=>{
-  if(!s.ok||!s.behind)return;const d=document.getElementById("upd");
-  d.style.display="block";
-  d.innerHTML="Update available ("+s.behind+" new): "+s.changes.slice(0,3).join(" · ")+
-   (s.dirty?" — local changes block auto-update":' <button id="ub">Update &amp; restart</button>');
-  const b=document.getElementById("ub");
-  if(b)b.onclick=()=>{b.disabled=true;b.textContent="Updating…";
-    fetch("/update/apply",{method:"POST"}).then(r=>r.json()).then(x=>{
-      if(x.ok){setTimeout(()=>location.reload(),4000)}else{d.textContent="Update failed: "+x.error}})};
-}).catch(()=>{});
-</script></body></html>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Jigdatastream{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}"></head><body>
+<div class="layout"><aside><div class="brand">Jigdatastream</div>
+{% set nav=[('dashboard','/','Dashboard'),('checkouts','/checkouts','Checkouts'),('tracker','/tracker','Order tracker'),('profiles','/profiles','Profiles'),('orders','/orders','Emails'),('import','/import','Import & sync')] %}
+{% for k,u,l in nav %}<a href="{{u}}" class="{{'on' if active==k}}">{{l}}</a>{% endfor %}
+<div style="padding:16px 10px 0"><span id="ai-state" class="pill" title="Local AI status">AI…</span></div></aside>
+<main><div id="upd" class="flash upd" hidden></div>
+{% for m in get_flashed_messages() %}<div class="flash">{{m}}</div>{% endfor %}
+{% block body %}{% endblock %}</main></div><script src="{{ url_for('static', filename='app.js') }}"></script></body></html>

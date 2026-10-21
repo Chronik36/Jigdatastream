@@ -1,4 +1,8 @@
 {% extends "base.html" %}{% block body %}
-<table><tr><th>Profile</th><th>Bot</th><th>Shipping</th><th>Issues</th></tr>
-{% for p,i in rows %}<tr><td>{{p.name}}</td><td>{{p.bot}}</td><td>{{p.ship_address1}} {{p.ship_address2}}, {{p.ship_city}} {{p.ship_state}} {{p.ship_zip}}</td><td class="{{'bad' if i}}">{{i|join("; ") or "ok"}}</td></tr>{% endfor %}</table>
-{% endblock %}
+<h1>Profiles</h1><p class="sub">Imported from your profile manager. Card details are never stored.</p>
+<div class="panel"><header><span class="muted">{{rows|length}} profiles</span><input type="search" placeholder="Search…" data-filter="#pt"></header>
+{% if rows %}<table id="pt" class="sortable"><thead><tr><th>Profile</th><th>Bot</th><th>Shipping address</th><th>Card</th><th>Check</th></tr></thead><tbody>
+{% for p,i in rows %}<tr><td><b>{{p.name}}</b></td><td>{{p.bot}}</td><td>{{p.ship_address1}} {{p.ship_address2}}<br><span class="muted">{{p.ship_city}}, {{p.ship_state}} {{p.ship_zip}}</span></td>
+<td class="muted">{% if p.card_last4 %}•••• {{p.card_last4}}{% endif %}</td>
+<td>{% if i %}{% for x in i %}<div><span class="pill bad">!</span> {{x}}</div>{% endfor %}{% else %}<span class="pill ok">OK</span>{% endif %}</td></tr>{% endfor %}</tbody></table>
+{% else %}<div class="empty">No profiles. <a href="/import">Import an AYCD export</a>.</div>{% endif %}</div>{% endblock %}

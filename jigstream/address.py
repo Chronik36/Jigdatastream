@@ -15,6 +15,17 @@ DIRECTION = {"NORTH": "N", "SOUTH": "S", "EAST": "E", "WEST": "W",
              "NORTHEAST": "NE", "NORTHWEST": "NW", "SOUTHEAST": "SE", "SOUTHWEST": "SW"}
 UNIT = {"APARTMENT": "APT", "SUITE": "STE", "UNIT": "UNIT", "BUILDING": "BLDG",
         "FLOOR": "FL", "ROOM": "RM", "NUMBER": "#"}
+STATE_NAMES = {n.upper(): c for n, c in {
+    "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR", "California": "CA", "Colorado": "CO",
+    "Connecticut": "CT", "Delaware": "DE", "District of Columbia": "DC", "Florida": "FL", "Georgia": "GA",
+    "Hawaii": "HI", "Idaho": "ID", "Illinois": "IL", "Indiana": "IN", "Iowa": "IA", "Kansas": "KS",
+    "Kentucky": "KY", "Louisiana": "LA", "Maine": "ME", "Maryland": "MD", "Massachusetts": "MA",
+    "Michigan": "MI", "Minnesota": "MN", "Mississippi": "MS", "Missouri": "MO", "Montana": "MT",
+    "Nebraska": "NE", "Nevada": "NV", "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM",
+    "New York": "NY", "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK",
+    "Oregon": "OR", "Pennsylvania": "PA", "Rhode Island": "RI", "South Carolina": "SC", "South Dakota": "SD",
+    "Tennessee": "TN", "Texas": "TX", "Utah": "UT", "Vermont": "VT", "Virginia": "VA", "Washington": "WA",
+    "West Virginia": "WV", "Wisconsin": "WI", "Wyoming": "WY"}.items()}
 UNIT_RE = re.compile(r"^(.*?)[\s,]+(APT|STE|UNIT|BLDG|FL|RM|#)\.?\s*#?\s*([A-Z0-9-]+)$")
 STATES = set("AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split())
 
@@ -68,12 +79,17 @@ def diagnose(a1, a2, city, state, zip_, country="US"):
     return issues
 
 
+def state_code(state):
+    st = (state or "").strip().upper().rstrip(".")
+    return STATE_NAMES.get(st, st if st in STATES else st[:2])
+
+
 def suggest(a1, a2, city, state, zip_):
     street, unit = split_unit(a1, a2)
     return {
         "address1": street,
         "address2": unit,
         "city": (city or "").strip().upper(),
-        "state": (state or "").strip().upper()[:2],
+        "state": state_code(state),
         "zip": zip5(zip_) or (zip_ or "").strip(),
     }

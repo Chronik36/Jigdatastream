@@ -17,7 +17,7 @@ def create_app(db_path=None):
         c = con()
         tot = c.execute("SELECT COUNT(*) n, SUM(status='success') s, SUM(status!='success') f FROM checkouts").fetchone()
         report, unmatched = analysis.failure_report(c)
-        return render_template("dashboard.html", tot=tot, sites=analysis.by_dimension(c, "site"),
+        return render_template("dashboard.html", active="dashboard", tot=tot, sites=analysis.by_dimension(c, "site"),
                                bots=analysis.by_dimension(c, "bot"), report=report, unmatched=unmatched,
                                cancelled=analysis.cancelled_after_success(c))
 
@@ -26,23 +26,27 @@ def create_app(db_path=None):
         status = request.args.get("status")
         q = "SELECT * FROM checkouts" + (" WHERE status=?" if status else "") + " ORDER BY ts DESC LIMIT 500"
         rows = con().execute(q, (status,) if status else ()).fetchall()
-        return render_template("checkouts.html", rows=rows)
+        return render_template("checkouts.html", active="checkouts", rows=rows)
+
+    @app.get("/import")
+    def import_page():
+        return render_template("import.html", active="import")
 
     @app.get("/tracker")
     def order_tracker():
         c = con()
-        return render_template("tracker.html", rows=tracker.link(c), stats=tracker.retailer_stats(c),
+        return render_template("tracker.html", active="tracker", rows=tracker.link(c), stats=tracker.retailer_stats(c),
                                profile_cancels=tracker.cancel_by_profile(c))
 
     @app.get("/orders")
     def orders():
-        return render_template("orders.html", rows=con().execute("SELECT * FROM orders ORDER BY ts DESC LIMIT 500").fetchall())
+        return render_template("orders.html", active="orders", rows=con().execute("SELECT * FROM orders ORDER BY ts DESC LIMIT 500").fetchall())
 
     @app.get("/profiles")
     def profile_list():
         c = con()
         rows = [(p, analysis.profile_issues(p)) for p in c.execute("SELECT * FROM profiles")]
-        return render_template("profiles.html", rows=rows)
+        return render_template("profiles.html", active="profiles", rows=rows)
 
     @app.post("/upload/<kind>")
     def upload(kind):
