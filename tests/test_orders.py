@@ -3,7 +3,7 @@ from email.message import EmailMessage
 
 from jigstream.config import Config
 from jigstream.config import parse_accounts
-from jigstream.extract import botting_signals, find_tracking, looks_like_purchase, normalize
+from jigstream.extract import botting_signals, find_tracking, find_tracking_url, looks_like_purchase, normalize
 from jigstream.llm import parse_json
 from jigstream.mail import Email, html_to_text, parse_message
 from jigstream.orderstore import Store
@@ -40,6 +40,15 @@ class ExtractTests(unittest.TestCase):
         self.assertFalse(looks_like_purchase(mail("Hello", body="see you at 5.00 tomorrow")))
         e = mail("Your receipt from Stripe", body="Residential proxies 10GB plan, $45.00, renewal monthly")
         self.assertIn("residential", botting_signals(e))
+
+    def test_tracking_link_from_email(self):
+        body = ("View order [https://click.shop.com/track?u=1] Track package "
+                "[https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784]")
+        self.assertEqual(find_tracking_url(body, "1Z999AA10123456784"),
+                         "https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784")
+        self.assertEqual(find_tracking_url("[https://click.shop.com/track?u=1]", "1Z999AA10123456784"), None)
+        self.assertEqual(find_tracking_url("[https://narvar.com/tracking/shop/x]", "TBA123456789012"),
+                         "https://narvar.com/tracking/shop/x")
 
     def test_parse_accounts(self):
         self.assertEqual(parse_accounts("a@gmail.com:abcd efgh, b@gmail.com:wxyz ,bad"),
@@ -174,6 +183,27 @@ class SyncTests(unittest.TestCase):
         counts = run_sync(Config(), store, emails=[mail("X")], llm=Broken(), log=lambda *a, **k: None)
         self.assertEqual(counts["error"], 1)
         self.assertEqual(store.seen_ids(), set())
+
+
+class StatusTests(unittest.TestCase):
+    def order(self, store, mid, date, status, tracking=None, url=None):
+        store.save(mail(mid, date=date), {
+            "kind": "order", "retailer": "Nike", "order_number": "C9", "order_date": None, "items": [],
+            "total": None, "currency": "USD", "shipping_address": None, "tracking_number": tracking,
+            "tracking_url": url, "carrier": "UPS" if tracking else None, "shipping_status": status,
+            "estimated_delivery": None})
+
+    def test_newer_email_cannot_undo_delivered_and_email_link_is_used(self):
+        import tempfile, os
+        path = os.path.join(tempfile.mkdtemp(), "s.db")
+        store = Store(db.connect(path))
+        link = "https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784&src=email"
+        self.order(store, "a", "2026-10-01T00:00:00", "shipped", "1Z999AA10123456784", link)
+        self.order(store, "b", "2026-10-04T00:00:00", "delivered")
+        self.order(store, "c", "2026-10-05T00:00:00", "shipped")  # e.g. a re-sent shipping notice
+        self.assertEqual(store.orders()[0]["shipping_status"], "delivered")
+        page = create_app(path).test_client().get("/orders").get_data(as_text=True)
+        self.assertIn("src=email", page)
 
 
 class InboxTests(unittest.TestCase):

@@ -85,6 +85,22 @@ def find_tracking(text):
     return None, None
 
 
+CARRIER_LINK = re.compile(r"(ups|usps|fedex|dhl|ontrac|lasership|narvar|aftership|parcelsapp)\.(com|net|io)", re.I)
+
+
+def find_tracking_url(text, tracking):
+    """A carrier tracking link from the email (mail.py keeps them as [url])."""
+    urls = re.findall(r"\[(https?://[^\]\s]+)\]", text or "")
+    if tracking:
+        for url in urls:
+            if tracking in url.replace("%20", "").upper():
+                return url
+    for url in urls:
+        if CARRIER_LINK.search(url.split("/")[2] if url.count("/") >= 2 else url):
+            return url
+    return None
+
+
 def carrier_for(tracking):
     if not tracking:
         return None
@@ -197,6 +213,7 @@ def normalize(data, email):
         "currency": currency,
         "shipping_address": _str(data.get("shipping_address")),
         "tracking_number": tracking,
+        "tracking_url": find_tracking_url(email.body, tracking) if tracking else None,
         "carrier": carrier,
         "shipping_status": status,
         "estimated_delivery": _date(data.get("estimated_delivery")),
