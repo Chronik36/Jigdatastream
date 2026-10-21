@@ -1,6 +1,8 @@
-from flask import Flask, redirect, render_template, request, url_for, flash
+import threading
 
-from . import analysis, db, emails, parsers, profiles, tracker
+from flask import Flask, jsonify, redirect, render_template, request, url_for, flash
+
+from . import analysis, db, emails, parsers, profiles, tracker, updater
 
 
 def create_app(db_path=None):
@@ -66,5 +68,16 @@ def create_app(db_path=None):
         except Exception as e:
             flash(f"Gmail sync failed: {e}")
         return redirect(url_for("orders"))
+
+    @app.get("/update/status")
+    def update_status():
+        return jsonify(updater.status())
+
+    @app.post("/update/apply")
+    def update_apply():
+        res = updater.apply()
+        if res.get("updated"):
+            threading.Timer(1.0, updater.restart).start()  # let the response finish, then relaunch
+        return jsonify(res)
 
     return app

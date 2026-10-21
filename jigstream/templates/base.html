@@ -8,4 +8,16 @@ table{border-collapse:collapse;width:100%;margin-bottom:24px}td,th{border-bottom
 form{display:inline-block;margin-right:20px}.flash{background:#243;padding:8px;margin-bottom:12px}
 </style></head><body>
 <nav><a href="/">Dashboard</a><a href="/checkouts">Checkouts</a><a href="/profiles">Profiles</a><a href="/tracker">Order Tracker</a><a href="/orders">Emails</a></nav>
-<main>{% for m in get_flashed_messages() %}<div class="flash">{{m}}</div>{% endfor %}{% block body %}{% endblock %}</main></body></html>
+<div id="upd" class="flash" style="display:none;margin:0"></div>
+<main>{% for m in get_flashed_messages() %}<div class="flash">{{m}}</div>{% endfor %}{% block body %}{% endblock %}</main><script>
+fetch("/update/status").then(r=>r.json()).then(s=>{
+  if(!s.ok||!s.behind)return;const d=document.getElementById("upd");
+  d.style.display="block";
+  d.innerHTML="Update available ("+s.behind+" new): "+s.changes.slice(0,3).join(" · ")+
+   (s.dirty?" — local changes block auto-update":' <button id="ub">Update &amp; restart</button>');
+  const b=document.getElementById("ub");
+  if(b)b.onclick=()=>{b.disabled=true;b.textContent="Updating…";
+    fetch("/update/apply",{method:"POST"}).then(r=>r.json()).then(x=>{
+      if(x.ok){setTimeout(()=>location.reload(),4000)}else{d.textContent="Update failed: "+x.error}})};
+}).catch(()=>{});
+</script></body></html>

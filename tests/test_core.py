@@ -115,3 +115,21 @@ def test_cancel_speed_and_classification(tmp_path):
     r = tracker.link(c)[0]
     assert r["cancel_min"] == 5 and r["cancel_speed"].startswith("instant")
     assert tracker.cancel_by_profile(c)["p9"]["rate"] == 100
+
+
+def test_updater(tmp_path):
+    import subprocess
+    from jigstream import updater
+    def g(cwd, *a):
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=cwd, check=True, capture_output=True)
+    remote, a, b = tmp_path / "r.git", tmp_path / "a", tmp_path / "b"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    subprocess.run(["git", "clone", "-q", str(remote), str(a)], check=True, capture_output=True)
+    (a / "f.txt").write_text("1"); (a / "requirements.txt").write_text("")
+    g(a, "add", "."); g(a, "commit", "-qm", "one"); g(a, "push", "-q", "origin", "HEAD:main")
+    subprocess.run(["git", "clone", "-q", str(remote), str(b)], check=True, capture_output=True)
+    assert updater.status(str(b))["behind"] == 0
+    (a / "f.txt").write_text("2"); g(a, "commit", "-qam", "two"); g(a, "push", "-q", "origin", "HEAD:main")
+    st = updater.status(str(b))
+    assert st["behind"] == 1 and st["changes"][0].endswith("two")
+    assert updater.apply(str(b))["updated"] and (b / "f.txt").read_text() == "2"

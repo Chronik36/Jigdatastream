@@ -25,3 +25,8 @@ Data stays in `data/jigstream.db` (git-ignored). Keep webhook/profile exports ou
 ## Auto-sync
 Set `JIGSTREAM_AUTO_SYNC_MIN=15` (with the Gmail variables) before `python run.py` to poll Gmail every 15 minutes in the
 background so cancellations appear without pressing Sync.
+
+## Updates from GitHub
+The dashboard checks your tracked branch on load and shows an "Update & restart" banner when new commits exist.
+It only fast-forwards and refuses if you have local uncommitted changes. For hands-off updating set
+`JIGSTREAM_AUTO_UPDATE_MIN=30` before `python run.py`. Your data (`data/`) is git-ignored, so updates never touch it.
