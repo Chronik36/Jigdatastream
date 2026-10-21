@@ -2,7 +2,7 @@ import threading
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for, flash
 
-from . import analysis, db, emails, parsers, profiles, tracker, updater
+from . import analysis, db, emails, parsers, llm, profiles, tracker, updater
 
 
 def create_app(db_path=None):
@@ -51,7 +51,7 @@ def create_app(db_path=None):
             if kind == "profiles" else None
         try:
             if kind == "webhooks":
-                n = sum(parsers.ingest(c, f.read().decode("utf-8", "replace")) for f in request.files.getlist("files"))
+                n = sum(parsers.ingest(c, f.read().decode("utf-8", "replace"), use_llm=bool(request.form.get("ai"))) for f in request.files.getlist("files"))
             elif kind == "profiles":
                 n = profiles.ingest(c, text, request.form.get("bot", ""))
             else:
@@ -64,10 +64,31 @@ def create_app(db_path=None):
     @app.post("/sync/gmail")
     def sync():
         try:
-            flash(f"Added {emails.sync_gmail(con())} order emails")
+            flash(f"Added {emails.sync_gmail(con(), use_llm=bool(request.form.get("ai")))} order emails")
         except Exception as e:
             flash(f"Gmail sync failed: {e}")
         return redirect(url_for("orders"))
+
+    @app.get("/ai/status")
+    def ai_status():
+        ok, msg = llm.available()
+        return jsonify(ok=ok, message=msg)
+
+    @app.post("/explain/<path:name>")
+    def explain(name):
+        c = con()
+        p = c.execute("SELECT * FROM profiles WHERE name=?", (name,)).fetchone()
+        if not p:
+            return jsonify(ok=False, text="Unknown profile"), 404
+        ok, msg = llm.available()
+        if not ok:
+            return jsonify(ok=False, text=msg)
+        reasons = [r["reason"] for r in c.execute(
+            "SELECT reason FROM checkouts WHERE profile=? AND status!='success' AND reason!='' ORDER BY ts DESC LIMIT 15", (name,))]
+        try:
+            return jsonify(ok=True, text=llm.explain_failures(dict(p), analysis.profile_issues(p), reasons))
+        except Exception as e:
+            return jsonify(ok=False, text=f"AI request failed: {e}")
 
     @app.get("/update/status")
     def update_status():

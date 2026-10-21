@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block body %}
 <a href="?status=success">success</a> · <a href="?status=decline">decline</a> · <a href="?status=failure">failure</a> · <a href="/checkouts">all</a>
 <table><tr><th>Time</th><th>Bot</th><th>Status</th><th>Site</th><th>Product</th><th>Size</th><th>Profile</th><th>Order</th><th>Reason</th></tr>
-{% for r in rows %}<tr><td>{{r.ts}}</td><td>{{r.bot}}</td><td class="{{'ok' if r.status=='success' else 'bad'}}">{{r.status}}</td><td>{{r.site}}</td><td>{{r.product}}</td><td>{{r.size}}</td><td>{{r.profile}}</td><td>{{r.order_number}}</td><td>{{r.reason}}</td></tr>{% endfor %}</table>
+{% for r in rows %}<tr><td>{{r.ts}}</td><td>{{r.bot}}</td><td class="{{'ok' if r.status=='success' else 'bad'}}">{{r.status}}</td><td>{{r.site}}</td><td>{{r.product}}{% if r.ai %} <small title='Filled in by local AI; verify'>🤖</small>{% endif %}</td><td>{{r.size}}</td><td>{{r.profile}}</td><td>{{r.order_number}}</td><td>{{r.reason}}</td></tr>{% endfor %}</table>
 {% endblock %}

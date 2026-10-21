@@ -30,3 +30,9 @@ background so cancellations appear without pressing Sync.
 The dashboard checks your tracked branch on load and shows an "Update & restart" banner when new commits exist.
 It only fast-forwards and refuses if you have local uncommitted changes. For hands-off updating set
 `JIGSTREAM_AUTO_UPDATE_MIN=30` before `python run.py`. Your data (`data/`) is git-ignored, so updates never touch it.
+
+## Local AI (optional, Ollama)
+Install Ollama (https://ollama.com), then `ollama pull llama3.1:8b` (change with `JIGSTREAM_MODEL`; host via `OLLAMA_HOST`).
+The dashboard shows whether it is reachable. Tick "AI for unrecognized" on import/sync to let the model fill gaps the
+regular parsers miss; those rows get a 🤖 badge so you can verify them. "Explain" next to a failing profile gives a
+plain-English diagnosis. Everything runs on your machine; card-like numbers are stripped before text reaches the model.

@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block body %}
 <form method="post" action="/sync/gmail"><button>Sync Gmail</button></form>
 <table><tr><th>Time</th><th>Retailer</th><th>Kind</th><th>Order</th><th>Total</th><th>Subject</th></tr>
-{% for r in rows %}<tr><td>{{r.ts}}</td><td>{{r.retailer}}</td><td>{{r.kind}}</td><td>{{r.order_number}}</td><td>{{r.total}}</td><td>{{r.subject}}</td></tr>{% endfor %}</table>
+{% for r in rows %}<tr><td>{{r.ts}}</td><td>{{r.retailer}}</td><td>{{r.kind}}{% if r.ai %} <small title='Classified by local AI; verify'>🤖</small>{% endif %}</td><td>{{r.order_number}}</td><td>{{r.total}}</td><td>{{r.subject}}</td></tr>{% endfor %}</table>
 {% endblock %}

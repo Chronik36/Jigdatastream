@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS checkouts (
     bot TEXT, status TEXT, reason TEXT,
     site TEXT, product TEXT, size TEXT, price TEXT,
     profile TEXT, order_number TEXT, email TEXT,
-    ts TEXT, raw TEXT
+    ts TEXT, raw TEXT, ai INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS profiles (
     name TEXT PRIMARY KEY,
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     message_id TEXT UNIQUE,
     retailer TEXT, kind TEXT, order_number TEXT, product TEXT,
-    total TEXT, ts TEXT, subject TEXT, sender TEXT, store TEXT, body TEXT
+    total TEXT, ts TEXT, subject TEXT, sender TEXT, store TEXT, body TEXT, ai INTEGER DEFAULT 0
 );
 """
 
@@ -42,4 +42,8 @@ def connect(path=None):
     for c in ("store", "body"):
         if c not in cols:
             con.execute(f"ALTER TABLE orders ADD COLUMN {c} TEXT")
+    if "ai" not in {r[1] for r in con.execute("PRAGMA table_info(checkouts)")}:
+        con.execute("ALTER TABLE checkouts ADD COLUMN ai INTEGER DEFAULT 0")
+    if "ai" not in cols:
+        con.execute("ALTER TABLE orders ADD COLUMN ai INTEGER DEFAULT 0")
     return con

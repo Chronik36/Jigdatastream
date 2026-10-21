@@ -115,23 +115,50 @@ def _payloads(text):
     return data
 
 
-def parse_text(text):
+def parse_text(text, llm=None):
     out = []
     for p in _payloads(text):
         if not isinstance(p, dict):
             continue
         for emb in p.get("embeds", []) or []:
-            out.append(parse_embed(p, emb))
+            r = parse_embed(p, emb)
+            r["ai"] = 0
+            if llm and _needs_ai(r):
+                r = _enrich(r, emb, llm)
+            out.append(r)
     return out
 
 
-def ingest(con, text):
+def _needs_ai(r):
+    return r["status"] == "unknown" or not (r["product"] and r["site"])
+
+
+def _enrich(r, embed, llm):
+    try:
+        ai = llm.extract_checkout(embed)
+    except Exception:
+        return r
+    for k in ("product", "site", "size", "price", "profile", "order_number", "reason"):
+        if not r[k] and ai[k]:
+            r[k] = ai[k]
+    if r["status"] == "unknown" and ai["status"] != "unknown":
+        r["status"] = ai["status"]
+    r["ai"] = 1
+    return r
+
+
+def ingest(con, text, use_llm=False):
     n = 0
-    for r in parse_text(text):
+    llm = None
+    if use_llm:
+        from . import llm as llm
+        if not llm.available()[0]:
+            llm = None
+    for r in parse_text(text, llm):
         cur = con.execute(
             """INSERT OR IGNORE INTO checkouts
-            (fingerprint,bot,status,reason,site,product,size,price,profile,order_number,email,ts,raw)
-            VALUES (:fingerprint,:bot,:status,:reason,:site,:product,:size,:price,:profile,:order_number,:email,:ts,:raw)""",
+            (fingerprint,bot,status,reason,site,product,size,price,profile,order_number,email,ts,raw,ai)
+            VALUES (:fingerprint,:bot,:status,:reason,:site,:product,:size,:price,:profile,:order_number,:email,:ts,:raw,:ai)""",
             r,
         )
         n += cur.rowcount

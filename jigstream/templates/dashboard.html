@@ -1,13 +1,13 @@
 {% extends "base.html" %}{% block body %}
 <div class="card">Checkouts <b>{{tot.n}}</b></div><div class="card ok">Success <b>{{tot.s or 0}}</b></div><div class="card bad">Not successful <b>{{tot.f or 0}}</b></div>
 <h3>Import</h3>
-<form method="post" action="/upload/webhooks" enctype="multipart/form-data">Webhook JSON <input type="file" name="files" multiple><button>Import</button></form>
+<form method="post" action="/upload/webhooks" enctype="multipart/form-data">Webhook JSON <input type="file" name="files" multiple> <label><input type="checkbox" name="ai"> AI for unrecognized</label><button>Import</button></form>
 <form method="post" action="/upload/profiles" enctype="multipart/form-data">Profiles (.json/.csv) <select name="bot"><option>Valor</option><option>Stellar</option><option>Hayha</option><option>Polar</option></select><input type="file" name="files" multiple><button>Import</button></form>
-<form method="post" action="/sync/gmail"><button>Sync Gmail</button></form>
+<form method="post" action="/sync/gmail"><label><input type="checkbox" name="ai"> AI for unrecognized</label> <button>Sync Gmail</button></form> <span id="ai" class="card"></span>
 <h3>Failing profiles &amp; suggested address fixes</h3>
 <table><tr><th>Profile</th><th>OK</th><th>Declined</th><th>Failed</th><th>Rate</th><th>Issues</th><th>Suggested</th></tr>
 {% for r in report %}<tr><td>{{r.profile}}</td><td>{{r.success}}</td><td>{{r.decline}}</td><td>{{r.failure}}</td><td>{{r.rate}}%</td>
-<td>{{r.issues|join("; ") or "none found"}}</td>
+<td>{{r.issues|join("; ") or "none found"}} <button class="ex" data-p="{{r.profile}}">Explain</button><div class="exo"></div></td>
 <td>{% if r.suggested %}{{r.suggested.address1}} {{r.suggested.address2}}, {{r.suggested.city}} {{r.suggested.state}} {{r.suggested.zip}}{% endif %}</td></tr>{% endfor %}</table>
 {% if unmatched %}<p class="bad">Checkouts reference profiles not imported: {{unmatched|join(", ")}}</p>{% endif %}
 <h3>By site</h3><table><tr><th>Site</th><th>Success</th><th>Declined</th><th>Failed</th><th>Total</th></tr>
@@ -15,4 +15,8 @@
 <h3>By bot</h3><table><tr><th>Bot</th><th>Success</th><th>Declined</th><th>Failed</th><th>Total</th></tr>
 {% for r in bots %}<tr><td>{{r.k}}</td><td>{{r.s}}</td><td>{{r.d}}</td><td>{{r.f}}</td><td>{{r.n}}</td></tr>{% endfor %}</table>
 {% if cancelled %}<h3>Cancelled after "success"</h3><table>{% for r in cancelled %}<tr><td>{{r.site}}</td><td>{{r.product}}</td><td>{{r.profile}}</td><td>{{r.order_number}}</td></tr>{% endfor %}</table>{% endif %}
-{% endblock %}
+<script>
+fetch("/ai/status").then(r=>r.json()).then(s=>{const e=document.getElementById("ai");e.textContent="Local AI: "+s.message;e.className="card "+(s.ok?"ok":"bad")});
+document.querySelectorAll(".ex").forEach(b=>b.onclick=()=>{const o=b.nextElementSibling;o.textContent="Thinking…";
+ fetch("/explain/"+encodeURIComponent(b.dataset.p),{method:"POST"}).then(r=>r.json()).then(x=>o.textContent=(x.ok?"AI: ":"")+x.text)});
+</script>{% endblock %}

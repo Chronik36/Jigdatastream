@@ -133,3 +133,41 @@ def test_updater(tmp_path):
     st = updater.status(str(b))
     assert st["behind"] == 1 and st["changes"][0].endswith("two")
     assert updater.apply(str(b))["updated"] and (b / "f.txt").read_text() == "2"
+
+
+def test_llm_layer(tmp_path, monkeypatch):
+    from jigstream import llm
+    monkeypatch.setattr(llm, "available", lambda: (True, "ok"))
+    def fake(system, user, as_json=True):
+        if "webhook embed" in system:
+            assert "4111111111111111" not in user  # card-like numbers are redacted before reaching the model
+            return json.dumps({"status": "success", "product": "Booster Bundle", "site": "target.com",
+                               "order_number": "777", "bogus": "x", "profile": 5})
+        if "order email" in system:
+            return json.dumps({"kind": "cancelled", "order_number": "abc123", "product": "x"})
+        return "Billing ZIP differs."
+    monkeypatch.setattr(llm, "_chat", fake)
+    c = db.connect(str(tmp_path / "l.db"))
+    odd = {"username": "Hayha", "embeds": [{"title": "🎉", "description": "card 4111111111111111",
+           "fields": [{"name": "stuff", "value": "Booster Bundle target"}], "timestamp": "2026-04-01T00:00:00Z"}]}
+    assert parsers.ingest(c, json.dumps([odd]), use_llm=True) == 1
+    r = c.execute("SELECT * FROM checkouts").fetchone()
+    assert (r["status"], r["site"], r["order_number"], r["ai"], r["profile"]) == ("success", "target.com", "777", 1, "")
+    assert llm.classify_email("Update", "text")["order_number"] == "ABC123"
+    assert llm.explain_failures({"name": "p"}, ["x"], []) == "Billing ZIP differs."
+
+
+def test_llm_garbage_output(monkeypatch):
+    from jigstream import llm
+    monkeypatch.setattr(llm, "_chat", lambda *a, **k: "not json at all")
+    assert llm.extract_checkout({})["status"] == "unknown"
+    monkeypatch.setattr(llm, "_chat", lambda *a, **k: json.dumps({"kind": "delete everything"}))
+    assert llm.classify_email("s", "b")["kind"] == "none"
+
+
+def test_ai_routes_without_ollama(tmp_path, monkeypatch):
+    from jigstream import llm
+    monkeypatch.setattr(llm, "HOST", "http://127.0.0.1:9")
+    cl = create_app(str(tmp_path / "w2.db")).test_client()
+    assert cl.get("/ai/status").get_json()["ok"] is False
+    assert cl.get("/").status_code == 200

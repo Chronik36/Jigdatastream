@@ -66,7 +66,7 @@ def classify_kind(subject, body=""):
     return None
 
 
-def parse_message(msg):
+def parse_message(msg, llm=None):
     sender = str(make_header(decode_header(msg.get("From", ""))))
     subject = str(make_header(decode_header(msg.get("Subject", ""))))
     retailer = retailer_for(sender)
@@ -80,6 +80,14 @@ def parse_message(msg):
                 txt = payload.decode(part.get_content_charset() or "utf-8", "replace")
                 body += re.sub(r"<[^>]+>", " ", txt)
     kind = classify_kind(subject, body)
+    ai = 0
+    if not kind and llm:
+        try:
+            res = llm.classify_email(subject, body)
+        except Exception:
+            res = {"kind": "none"}
+        if res["kind"] != "none":
+            kind, ai = res["kind"], 1
     if not kind:
         return None
     m = ORDER_RE.search(subject) or ORDER_RE.search(body)
@@ -93,20 +101,26 @@ def parse_message(msg):
     return {"message_id": msg.get("Message-ID", ""), "retailer": retailer, "kind": kind,
             "order_number": order, "product": "",
             "total": t.group(1) if t else "", "ts": ts, "subject": subject, "sender": sender,
-            "store": store_name(sender), "body": body}
+            "store": store_name(sender), "body": body, "ai": ai}
 
 
 def store(con, rec):
+    rec = {"ai": 0, **rec}
     cur = con.execute(
-        """INSERT OR IGNORE INTO orders (message_id,retailer,kind,order_number,product,total,ts,subject,sender,store,body)
-        VALUES (:message_id,:retailer,:kind,:order_number,:product,:total,:ts,:subject,:sender,:store,:body)""", rec)
+        """INSERT OR IGNORE INTO orders (message_id,retailer,kind,order_number,product,total,ts,subject,sender,store,body,ai)
+        VALUES (:message_id,:retailer,:kind,:order_number,:product,:total,:ts,:subject,:sender,:store,:body,:ai)""", rec)
     return cur.rowcount
 
 
-def sync_gmail(con, since="2024/01/01", limit=2000):
+def sync_gmail(con, since="2024/01/01", limit=2000, use_llm=False):
     user, pw = os.environ.get("GMAIL_ADDRESS"), os.environ.get("GMAIL_APP_PASSWORD")
     if not (user and pw):
         raise RuntimeError("Set GMAIL_ADDRESS and GMAIL_APP_PASSWORD (a Google App Password).")
+    llm = None
+    if use_llm:
+        from . import llm
+        if not llm.available()[0]:
+            llm = None
     domains = sorted({d for doms in RETAILERS.values() for d in doms})
     query = f"from:({' OR '.join(domains)}) after:{since}"
     imap = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -117,7 +131,7 @@ def sync_gmail(con, since="2024/01/01", limit=2000):
     added = 0
     for i in ids:
         _, msgdata = imap.fetch(i, "(BODY.PEEK[])")
-        rec = parse_message(email.message_from_bytes(msgdata[0][1]))
+        rec = parse_message(email.message_from_bytes(msgdata[0][1]), llm)
         if rec:
             added += store(con, rec)
     con.commit()
