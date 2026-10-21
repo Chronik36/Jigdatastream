@@ -36,3 +36,10 @@ Install Ollama (https://ollama.com), then `ollama pull llama3.1:8b` (change with
 The dashboard shows whether it is reachable. Tick "AI for unrecognized" on import/sync to let the model fill gaps the
 regular parsers miss; those rows get a 🤖 badge so you can verify them. "Explain" next to a failing profile gives a
 plain-English diagnosis. Everything runs on your machine; card-like numbers are stripped before text reaches the model.
+
+### Other AI providers
+Set `JIGSTREAM_AI_PROVIDER` to `ollama` (default, fully local), `openai` (also any OpenAI-compatible server via
+`OPENAI_BASE_URL`, e.g. LM Studio) or `anthropic`, plus `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` and optionally
+`JIGSTREAM_MODEL`. Cloud providers receive the webhook/email text being analyzed (card-like numbers are stripped first).
+Keys are read from the environment only and are never stored. AI is used for extraction, classification and
+explanations only.

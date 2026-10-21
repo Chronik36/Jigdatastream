@@ -177,3 +177,21 @@ def test_state_names():
     from jigstream import address
     assert address.suggest("1 A St", "", "Austin", "Texas", "78701")["state"] == "TX"
     assert address.suggest("1 A St", "", "Austin", "ny", "10001")["state"] == "NY"
+
+
+def test_llm_providers(monkeypatch):
+    from jigstream import llm
+    seen = {}
+    def fake_http(path, payload=None, timeout=120, base=None, headers=None):
+        seen.update(path=path, base=base, headers=headers, payload=payload)
+        if "chat/completions" in path:
+            return {"choices": [{"message": {"content": '{"kind":"shipped"}'}}]}
+        return {"content": [{"text": 'Sure:\n```json\n{"kind":"cancelled"}\n```'}]}
+    monkeypatch.setattr(llm, "_http", fake_http)
+    monkeypatch.setenv("OPENAI_API_KEY", "k1"); monkeypatch.setenv("ANTHROPIC_API_KEY", "k2")
+    monkeypatch.setattr(llm, "PROVIDER", "openai")
+    assert llm.classify_email("s", "b")["kind"] == "shipped" and seen["headers"]["Authorization"] == "Bearer k1"
+    monkeypatch.setattr(llm, "PROVIDER", "anthropic")
+    assert llm.classify_email("s", "b")["kind"] == "cancelled" and seen["headers"]["x-api-key"] == "k2"
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    assert llm.available()[0] is False

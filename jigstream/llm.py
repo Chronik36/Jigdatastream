@@ -10,22 +10,33 @@ import os
 import re
 import urllib.request
 
+PROVIDER = os.environ.get("JIGSTREAM_AI_PROVIDER", "ollama").lower()  # ollama | openai | anthropic
 HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
-MODEL = os.environ.get("JIGSTREAM_MODEL", "llama3.1:8b")
+OPENAI_BASE = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")  # any OpenAI-compatible API
+MODEL = os.environ.get("JIGSTREAM_MODEL") or {"ollama": "llama3.1:8b", "openai": "gpt-4o-mini",
+                                              "anthropic": "claude-haiku-5-5"}.get(PROVIDER, "llama3.1:8b")
 STATUSES = {"success", "decline", "failure", "unknown"}
 KINDS = {"confirmed", "shipped", "cancelled", "none"}
 CARD_RE = re.compile(r"\b(?:\d[ -]?){13,19}\b")
 
 
-def _http(path, payload=None, timeout=120):
-    req = urllib.request.Request(HOST + path, data=json.dumps(payload).encode() if payload else None,
-                                 headers={"Content-Type": "application/json"})
+def _http(path, payload=None, timeout=120, base=None, headers=None):
+    req = urllib.request.Request((base or HOST) + path, data=json.dumps(payload).encode() if payload else None,
+                                 headers={"Content-Type": "application/json", **(headers or {})})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
 
 
+def _key():
+    return os.environ.get("ANTHROPIC_API_KEY" if PROVIDER == "anthropic" else "OPENAI_API_KEY", "")
+
+
 def available():
-    """Return (ok, message) describing whether Ollama is reachable and the model is pulled."""
+    """Return (ok, message) describing whether the configured AI provider is usable."""
+    if PROVIDER in ("openai", "anthropic"):
+        if not _key():
+            return False, f"Set {'ANTHROPIC_API_KEY' if PROVIDER == 'anthropic' else 'OPENAI_API_KEY'} to use {PROVIDER}"
+        return True, f"{PROVIDER} ready ({MODEL}) - text is sent to a cloud service"
     try:
         names = [m["name"] for m in _http("/api/tags", timeout=3).get("models", [])]
     except Exception as e:
@@ -36,6 +47,18 @@ def available():
 
 
 def _chat(system, user, as_json=True):
+    if PROVIDER == "openai":
+        body = {"model": MODEL, "temperature": 0,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+        if as_json:
+            body["response_format"] = {"type": "json_object"}
+        res = _http("/chat/completions", body, base=OPENAI_BASE, headers={"Authorization": f"Bearer {_key()}"})
+        return res["choices"][0]["message"]["content"]
+    if PROVIDER == "anthropic":
+        res = _http("/v1/messages", {"model": MODEL, "max_tokens": 600, "temperature": 0, "system": system,
+                                     "messages": [{"role": "user", "content": user}]},
+                    base="https://api.anthropic.com", headers={"x-api-key": _key(), "anthropic-version": "2023-06-01"})
+        return "".join(b.get("text", "") for b in res["content"])
     body = {"model": MODEL, "stream": False, "options": {"temperature": 0},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
     if as_json:
@@ -49,7 +72,8 @@ def _redact(text):
 
 def _json(text):
     try:
-        d = json.loads(text)
+        m = re.search(r"\{.*\}", text or "", re.S)  # tolerate prose or code fences around the JSON
+        d = json.loads(m.group(0)) if m else {}
         return d if isinstance(d, dict) else {}
     except (json.JSONDecodeError, TypeError):
         return {}
