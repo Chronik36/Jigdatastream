@@ -6,6 +6,7 @@ then set DISCORD_BOT_TOKEN. Never paste the token anywhere but your own environm
 """
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -39,6 +40,40 @@ def _state(con, key, value=None):
     con.execute("INSERT OR REPLACE INTO sync_state VALUES (?,?)", (key, value))
 
 
+FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S | re.I)
+MAX_ATTACH = 5_000_000
+
+
+def _download(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "Jigdatastream (local, 1.0)"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return r.read(MAX_ATTACH).decode("utf-8", "replace")
+
+
+def message_texts(m, download=None):
+    """Everything in one Discord message that may hold checkout JSON: embeds, JSON code blocks, .json files."""
+    download = download or _download
+    base = {"username": (m.get("author") or {}).get("username", ""), "timestamp": m.get("timestamp", "")}
+    out = []
+    if m.get("embeds"):
+        out.append(json.dumps({**base, "embeds": m["embeds"]}))
+    for block in FENCE.findall(m.get("content") or ""):
+        try:
+            data = json.loads(block)
+        except json.JSONDecodeError:
+            continue
+        for d in data if isinstance(data, list) else [data]:
+            if isinstance(d, dict):
+                out.append(json.dumps({**base, **d} if "embeds" in d else {**base, "embeds": [d]}))
+    for a in m.get("attachments") or []:
+        if str(a.get("filename", "")).lower().endswith((".json", ".jsonl", ".txt")) and a.get("url"):
+            try:
+                out.append(download(a["url"]))
+            except Exception:
+                pass
+    return out
+
+
 def fetch_channel(channel_id, token, after=None, max_messages=5000):
     """Return messages oldest-first, paging back from the newest until `after` (a message id) is reached."""
     msgs, before = [], None
@@ -67,11 +102,18 @@ def sync(con, channel_ids=None, token=None, use_llm=False):
     added = scanned = 0
     for ch in ids:
         msgs = fetch_channel(ch.strip(), token, after=_state(con, f"discord_last_{ch}") or None)
-        payloads = [{"username": (m.get("author") or {}).get("username", ""), "timestamp": m.get("timestamp", ""),
-                     "embeds": m["embeds"]} for m in msgs if m.get("embeds")]
         scanned += len(msgs)
-        if payloads:
-            added += parsers.ingest(con, json.dumps(payloads), use_llm=use_llm)
+        for m in msgs:
+            texts = message_texts(m)
+            if texts:
+                con.execute("INSERT OR REPLACE INTO raw_messages VALUES (?,?,?,?)",
+                            (m["id"], ch, m.get("timestamp", ""), json.dumps(m)))
+            for t in texts:
+                try:
+                    added += parsers.ingest(con, t, use_llm=use_llm)
+                except (ValueError, TypeError):  # not JSON we understand; the Live feed still shows it raw
+                    pass
+        con.execute("DELETE FROM raw_messages WHERE id NOT IN (SELECT id FROM raw_messages ORDER BY ts DESC LIMIT 500)")
         if msgs:
             _state(con, f"discord_last_{ch}", msgs[-1]["id"])
     con.commit()

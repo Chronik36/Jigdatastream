@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% block body %}
+<h1>Live feed</h1><p class="sub">Newest messages from your Discord channels, as raw JSON, with what the app understood. Updates every 5 seconds.</p>
+<div id="feed"><div class="panel"><div class="empty">Waiting for messages… set <code>JIGSTREAM_DISCORD_POLL_SEC=30</code> in <code>.env</code> for live mode, or press Sync Discord.</div></div></div>
+<script>
+const esc=s=>s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+function draw(rows){
+  if(!rows.length)return;
+  document.getElementById("feed").innerHTML=rows.map((r,i)=>`<div class="panel"><header><div class="tools">
+   <span class="muted">${esc(r.ts.slice(0,19).replace("T"," "))}</span>
+   ${r.parsed.length?r.parsed.map(p=>`<span class="pill ${p.status}">${esc(p.bot)} · ${p.status}</span> ${esc(p.site)} ${esc(p.product)}`).join(" "):'<span class="pill unknown">not understood</span>'}
+   </div><button class="sm" data-i="${i}">Copy redacted JSON</button></header>
+   <pre style="margin:0;padding:12px 16px;overflow:auto;max-height:260px;font-size:12px">${esc(r.raw)}</pre></div>`).join("");
+  document.querySelectorAll("button[data-i]").forEach(b=>b.onclick=()=>{
+    navigator.clipboard.writeText(rows[b.dataset.i].raw);b.textContent="Copied ✓"});
+}
+const load=()=>fetch("/live/data").then(r=>r.json()).then(draw);
+load();setInterval(()=>{if(!document.hidden&&!getSelection().toString())load()},5000);
+</script>{% endblock %}

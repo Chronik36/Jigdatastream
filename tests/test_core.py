@@ -233,3 +233,24 @@ def test_env_loader(tmp_path, monkeypatch):
     assert (os.environ["FOO_T"], os.environ["BAR_T"], os.environ["KEEP_T"]) == ("abc", "x y", "real")
     for k in ("FOO_T", "BAR_T"):
         monkeypatch.delenv(k)
+
+
+def test_discord_json_sources_and_live(tmp_path, monkeypatch):
+    from jigstream import discord, redact
+    c = db.connect(str(tmp_path / "L.db"))
+    emb = {"title": "Successful Checkout", "fields": [{"name": "Product", "value": "A"}, {"name": "Site", "value": "walmart.com"},
+                                                       {"name": "Profile", "value": "p1"}]}
+    msgs = [{"id": "3", "author": {"username": "Stellar"}, "timestamp": "2026-01-03T00:00:00Z", "embeds": [], "attachments": [],
+             "content": "```json\n" + json.dumps(emb) + "\n```"},
+            {"id": "2", "author": {"username": "Hayha"}, "timestamp": "2026-01-02T00:00:00Z", "embeds": [],
+             "content": "", "attachments": [{"filename": "co.json", "url": "http://x/co.json"}]}]
+    monkeypatch.setattr(discord, "_download", lambda u: json.dumps({"username": "Hayha", "embeds": [dict(emb, title="Card Declined")]}))
+    monkeypatch.setattr(discord, "_get", lambda path, token: msgs if "before" not in path else [])
+    assert discord.sync(c, ["9"], token="t")[0] == 2
+    assert {r["status"] for r in c.execute("SELECT status FROM checkouts")} == {"success", "decline"}
+    cl = create_app(str(tmp_path / "L.db")).test_client()
+    data = cl.get("/live/data").get_json()
+    assert len(data) == 2 and data[0]["parsed"][0]["status"] == "success"
+    assert cl.get("/live").status_code == 200
+    r = redact.redact('{"u": "https://discord.com/api/webhooks/123/abcDEF", "e": "a@b.com", "c": "4111 1111 1111 1111", "password": "hunter2"}')
+    assert not any(x in r for x in ("webhooks/123", "a@b.com", "4111", "hunter2"))

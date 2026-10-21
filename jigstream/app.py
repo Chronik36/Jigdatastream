@@ -1,8 +1,10 @@
 import threading
 
+import json
+
 from flask import Flask, jsonify, redirect, render_template, request, url_for, flash
 
-from . import analysis, db, discord, emails, parsers, llm, profiles, tracker, updater
+from . import analysis, db, discord, emails, parsers, llm, profiles, redact, tracker, updater
 
 
 def create_app(db_path=None):
@@ -27,6 +29,27 @@ def create_app(db_path=None):
         q = "SELECT * FROM checkouts" + (" WHERE status=?" if status else "") + " ORDER BY ts DESC LIMIT 500"
         rows = con().execute(q, (status,) if status else ()).fetchall()
         return render_template("checkouts.html", active="checkouts", rows=rows)
+
+    @app.get("/live")
+    def live():
+        return render_template("live.html", active="live")
+
+    @app.get("/live/data")
+    def live_data():
+        rows = []
+        for r in con().execute("SELECT * FROM raw_messages ORDER BY ts DESC LIMIT 40"):
+            m = json.loads(r["json"])
+            parsed = []
+            for t in discord.message_texts(m, download=lambda u: ""):
+                try:
+                    parsed += parsers.parse_text(t)
+                except (ValueError, TypeError):
+                    pass
+            rows.append({"id": r["id"], "ts": r["ts"], "channel": r["channel"],
+                         "raw": redact.redact(json.dumps(m, indent=2)),
+                         "parsed": [{"bot": p["bot"], "status": p["status"], "site": p["site"], "product": p["product"],
+                                     "profile": p["profile"]} for p in parsed]})
+        return jsonify(rows)
 
     @app.get("/import")
     def import_page():

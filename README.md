@@ -52,3 +52,8 @@ after the first run. Use a bot token only; user tokens violate Discord's terms.
 
 ## Settings file
 Copy `.env.example` to `.env` and fill in your tokens once; `run.py` loads it on every start. `.env` is git-ignored.
+
+## Live mode
+Set `JIGSTREAM_DISCORD_POLL_SEC=30` in `.env` to poll your Discord channels continuously. The **Live feed** page shows the
+newest messages as raw JSON (embeds, ```json code blocks and attached .json files are all read) alongside what the app understood,
+with a "Copy redacted JSON" button that strips webhook URLs, emails, card-like numbers and tokens before you share a sample.

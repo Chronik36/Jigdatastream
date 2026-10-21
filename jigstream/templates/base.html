@@ -2,7 +2,7 @@
 <title>{% block title %}Jigdatastream{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}"></head><body>
 <div class="layout"><aside><div class="brand">Jigdatastream</div>
-{% set nav=[('dashboard','/','Dashboard'),('checkouts','/checkouts','Checkouts'),('tracker','/tracker','Order tracker'),('profiles','/profiles','Profiles'),('orders','/orders','Emails'),('import','/import','Import & sync')] %}
+{% set nav=[('dashboard','/','Dashboard'),('checkouts','/checkouts','Checkouts'),('tracker','/tracker','Order tracker'),('profiles','/profiles','Profiles'),('orders','/orders','Emails'),('live','/live','Live feed'),('import','/import','Import & sync')] %}
 {% for k,u,l in nav %}<a href="{{u}}" class="{{'on' if active==k}}">{{l}}</a>{% endfor %}
 <div style="padding:16px 10px 0"><span id="ai-state" class="pill" title="Local AI status">AI…</span></div></aside>
 <main><div id="upd" class="flash upd" hidden></div>
