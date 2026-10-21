@@ -49,3 +49,6 @@ Create a bot at https://discord.com/developers/applications, enable **Message Co
 with View Channel + Read Message History, then `export DISCORD_BOT_TOKEN=...`. On the Import page enter the channel IDs
 (Discord Developer Mode -> right-click channel -> Copy Channel ID) and press Sync Discord. Only new messages are fetched
 after the first run. Use a bot token only; user tokens violate Discord's terms.
+
+## Settings file
+Copy `.env.example` to `.env` and fill in your tokens once; `run.py` loads it on every start. `.env` is git-ignored.

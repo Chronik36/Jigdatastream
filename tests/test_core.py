@@ -220,3 +220,16 @@ def test_discord_sync(tmp_path, monkeypatch):
     monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
     with pytest.raises(RuntimeError):
         discord.sync(c)
+
+
+def test_env_loader(tmp_path, monkeypatch):
+    from jigstream.env import load_env
+    f = tmp_path / ".env"
+    f.write_text("# c\nFOO_T=abc\nexport BAR_T='x y'\nKEEP_T=file\n")
+    monkeypatch.setenv("KEEP_T", "real")
+    monkeypatch.delenv("FOO_T", raising=False); monkeypatch.delenv("BAR_T", raising=False)
+    load_env(str(f))
+    import os
+    assert (os.environ["FOO_T"], os.environ["BAR_T"], os.environ["KEEP_T"]) == ("abc", "x y", "real")
+    for k in ("FOO_T", "BAR_T"):
+        monkeypatch.delenv(k)

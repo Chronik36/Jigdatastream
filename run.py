@@ -3,6 +3,9 @@ import threading
 import time
 
 from jigstream import db, emails, updater
+from jigstream.env import load_env
+
+load_env()  # read settings/tokens from .env before anything else imports them
 from jigstream.app import create_app
 
 
