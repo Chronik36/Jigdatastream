@@ -7,6 +7,10 @@
 <form class="panel" method="post" action="/upload/profiles" enctype="multipart/form-data"><header><h2>Profiles</h2></header><div class="body">
 <div class="drop">Drop an AYCD / bot export (.json or .csv)<br><input type="file" name="files" multiple accept=".json,.csv"><div class="fn"></div></div>
 <p>Bot <select name="bot"><option>Valor</option><option>Stellar</option><option>Hayha</option><option>Polar</option></select></p><button class="primary">Import profiles</button></div></form>
+<form class="panel" method="post" action="/sync/discord"><header><h2>Discord</h2></header><div class="body">
+<p class="muted">Reads your bots' webhook messages from your own channels using a read-only bot token (<code>DISCORD_BOT_TOKEN</code>). Only new messages are fetched after the first run.</p>
+<p><input type="text" name="channels" value="{{channels}}" placeholder="Channel IDs, comma separated" style="width:100%;font:inherit;padding:7px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text)"></p>
+<p><label><input type="checkbox" name="ai"> Use AI for unrecognized embeds</label></p><button class="primary">Sync Discord</button></div></form>
 <form class="panel" method="post" action="/sync/gmail"><header><h2>Gmail</h2></header><div class="body">
 <p class="muted">Read-only scan for orders from Target, Amazon, Walmart, Best Buy, P-Bandai, Crunchyroll, Topps, Pokémon Center and Shopify stores.</p>
 <p><label><input type="checkbox" name="ai"> Use AI for unrecognized emails</label></p><button class="primary">Sync Gmail</button></div></form></div>

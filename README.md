@@ -43,3 +43,9 @@ Set `JIGSTREAM_AI_PROVIDER` to `ollama` (default, fully local), `openai` (also a
 `JIGSTREAM_MODEL`. Cloud providers receive the webhook/email text being analyzed (card-like numbers are stripped first).
 Keys are read from the environment only and are never stored. AI is used for extraction, classification and
 explanations only.
+
+## Discord sync
+Create a bot at https://discord.com/developers/applications, enable **Message Content Intent**, invite it to your own server
+with View Channel + Read Message History, then `export DISCORD_BOT_TOKEN=...`. On the Import page enter the channel IDs
+(Discord Developer Mode -> right-click channel -> Copy Channel ID) and press Sync Discord. Only new messages are fetched
+after the first run. Use a bot token only; user tokens violate Discord's terms.

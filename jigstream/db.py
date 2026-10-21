@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     bill_zip TEXT, bill_country TEXT,
     card_last4 TEXT, raw TEXT
 );
+CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     message_id TEXT UNIQUE,

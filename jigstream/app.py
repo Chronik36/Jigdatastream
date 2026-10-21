@@ -2,7 +2,7 @@ import threading
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for, flash
 
-from . import analysis, db, emails, parsers, llm, profiles, tracker, updater
+from . import analysis, db, discord, emails, parsers, llm, profiles, tracker, updater
 
 
 def create_app(db_path=None):
@@ -30,7 +30,7 @@ def create_app(db_path=None):
 
     @app.get("/import")
     def import_page():
-        return render_template("import.html", active="import")
+        return render_template("import.html", active="import", channels=discord._state(con(), "discord_channels"))
 
     @app.get("/tracker")
     def order_tracker():
@@ -64,6 +64,18 @@ def create_app(db_path=None):
         except Exception as e:  # surface parse problems in the UI
             flash(f"Import failed: {e}")
         return redirect(url_for("dashboard"))
+
+    @app.post("/sync/discord")
+    def sync_discord():
+        c = con()
+        raw = request.form.get("channels")
+        ids = [x.strip() for x in raw.replace("\n", ",").split(",") if x.strip()] if raw is not None else None
+        try:
+            added, scanned = discord.sync(c, ids, use_llm=bool(request.form.get("ai")))
+            flash(f"Discord: read {scanned} messages, imported {added} new checkouts")
+        except Exception as e:
+            flash(f"Discord sync failed: {e}")
+        return redirect(url_for("checkouts"))
 
     @app.post("/sync/gmail")
     def sync():

@@ -195,3 +195,28 @@ def test_llm_providers(monkeypatch):
     assert llm.classify_email("s", "b")["kind"] == "cancelled" and seen["headers"]["x-api-key"] == "k2"
     monkeypatch.delenv("ANTHROPIC_API_KEY")
     assert llm.available()[0] is False
+
+
+def test_discord_sync(tmp_path, monkeypatch):
+    from jigstream import discord
+    c = db.connect(str(tmp_path / "d.db"))
+    emb = {"title": "Successful Checkout", "fields": [{"name": "Product", "value": "Pack"}, {"name": "Site", "value": "target.com"},
+                                                       {"name": "Profile", "value": "p1"}]}
+    pages = {None: [{"id": "30", "author": {"username": "Valor"}, "timestamp": "2026-01-03T00:00:00Z", "embeds": [emb]},
+                    {"id": "20", "author": {"username": "chat"}, "embeds": []}],
+             "20": [{"id": "10", "author": {"username": "Valor"}, "timestamp": "2026-01-01T00:00:00Z", "embeds": [emb]}]}
+    calls = []
+    def fake_get(path, token):
+        calls.append(path)
+        before = path.split("before=")[1] if "before=" in path else None
+        return pages.get(before, [])
+    monkeypatch.setattr(discord, "_get", fake_get)
+    assert discord.sync(c, ["111"], token="t") == (2, 3)
+    assert c.execute("SELECT COUNT(*) FROM checkouts").fetchone()[0] == 2
+    calls.clear()
+    assert discord.sync(c, token="t") == (0, 0)          # incremental: stops at last seen id, uses saved channels
+    assert len(calls) == 1
+    import pytest
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+    with pytest.raises(RuntimeError):
+        discord.sync(c)
