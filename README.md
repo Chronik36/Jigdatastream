@@ -48,14 +48,9 @@ up automatically. It names the actual seller even when the receipt comes from St
 similar platform, and records whether the charge is one-time, monthly and so on. The page totals spend by
 category, month and vendor.
 
-**Live carrier tracking (optional).** Without a key, status comes from the emails. With a
-[Ship24](https://www.ship24.com) API key in `.env` as `SHIP24_API_KEY`, each tracking number is registered
-once and its carrier scans are pulled in every few hours (`TRACKING_REFRESH_HOURS`, default 4) while
-`python run.py` is running, after each Gmail sync, or on demand with `python -m jigstream track`. Delivered,
-returned and cancelled parcels stop being checked. The Orders page shows the latest scan under the tracking
-number, and status only ever moves forward. Pick Ship24's per-shipment "Tracking API and Webhook" plan
-(the free tier covers 10 shipments a month): you pay once per tracking number however often it refreshes.
-Per-call plans charge for every refresh.
+**Tracking links.** Shipping status comes from the retailer's emails; nothing paid or polled. Each
+tracking number links to the carrier's free public tracking page: the link from the email itself when
+there is one, otherwise one built for UPS, USPS, FedEx, DHL or OnTrac.
 
 JSON is at `/api/orders` and `/api/expenses`.
 

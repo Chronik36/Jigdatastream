@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-from . import db, tracking
+from . import db
 from .config import Config
 from .llm import LLMClient, LLMError
 from .orderstore import Store
@@ -20,18 +20,9 @@ def main(argv=None):
     s.add_argument("--inbox", help="only sync this address")
     s.add_argument("--limit", type=int, help="max new emails per inbox this run")
     sub.add_parser("check", help="test the connection to the local model")
-    t = sub.add_parser("track", help="refresh live carrier tracking now (needs SHIP24_API_KEY)")
-    t.add_argument("--force", action="store_true", help="refresh even shipments checked in the last few hours")
     args = parser.parse_args(argv)
 
     config = Config.from_env()
-    if args.command == "track":
-        provider = tracking.provider_from_env()
-        if not provider:
-            sys.exit("Set SHIP24_API_KEY in .env first (see README).")
-        n = tracking.refresh(db.connect(), provider, min_hours=0 if args.force else 4)
-        print(f"Live tracking updated for {n} shipments.")
-        return
     try:
         if args.command == "check":
             llm = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout)

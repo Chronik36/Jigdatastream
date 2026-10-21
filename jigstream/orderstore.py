@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS tracked_orders (
     currency TEXT,
     shipping_address TEXT,
     tracking_number TEXT,
+    tracking_url TEXT,
     carrier TEXT,
     shipping_status TEXT,
     estimated_delivery TEXT,
@@ -58,7 +59,7 @@ CREATE TABLE IF NOT EXISTS expenses (
 
 ORDER_FIELDS = [
     "retailer", "order_number", "order_date", "total", "currency", "shipping_address",
-    "tracking_number", "carrier", "estimated_delivery",
+    "tracking_number", "tracking_url", "carrier", "estimated_delivery",
 ]
 
 
@@ -143,12 +144,13 @@ class Store:
                 merge_key = f"msg:{email.message_id}"
             self.db.execute(
                 "INSERT INTO tracked_orders (merge_key, retailer, order_number, order_date, items, total,"
-                " currency, shipping_address, tracking_number, carrier, shipping_status,"
+                " currency, shipping_address, tracking_number, tracking_url, carrier, shipping_status,"
                 " estimated_delivery, last_email_date, message_ids, account)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (merge_key, result["retailer"], result["order_number"], result["order_date"],
                  json.dumps(result["items"]), result["total"], result["currency"],
-                 result["shipping_address"], result["tracking_number"], result["carrier"],
+                 result["shipping_address"], result["tracking_number"], result.get("tracking_url"),
+                 result["carrier"],
                  result["shipping_status"], result["estimated_delivery"], email.date,
                  json.dumps([email.message_id]), email.account),
             )
@@ -158,12 +160,14 @@ class Store:
         updates = {}
         newer = (email.date or "") >= (row["last_email_date"] or "")
         for field in ORDER_FIELDS:
-            value = result[field]
+            value = result.get(field)
             if value is None:
                 continue
             # Newer emails win (an updated delivery date); older ones only fill gaps.
-            if row[field] is None or (newer and field in ("tracking_number", "carrier", "estimated_delivery")):
+            if row[field] is None or (newer and field in ("tracking_number", "tracking_url", "carrier", "estimated_delivery")):
                 updates[field] = value
+        if updates.get("tracking_number", row["tracking_number"]) != row["tracking_number"]:
+            updates["tracking_url"] = result.get("tracking_url")  # a link for the old number no longer fits
         if result["items"] and not json.loads(row["items"] or "[]"):
             updates["items"] = json.dumps(result["items"])
         status = result["shipping_status"]
