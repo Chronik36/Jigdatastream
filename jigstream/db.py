@@ -43,7 +43,7 @@ def connect(path=None):
     d = os.path.dirname(path)
     if d:
         os.makedirs(d, exist_ok=True)
-    con = sqlite3.connect(path)
+    con = sqlite3.connect(path, check_same_thread=False)  # handed to background threads (one user at a time)
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
     for table, column, kind in MIGRATIONS:
