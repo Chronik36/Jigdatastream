@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import threading
@@ -5,7 +6,7 @@ from urllib.parse import quote
 
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
-from . import analysis, db, discord, export, logs, mobile, parsers, profiles, training, updater
+from . import analysis, db, discord, export, inbox, logs, mobile, parsers, profiles, training, updater
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import LLMClient, installed_models
@@ -284,6 +285,43 @@ def create_app(db_path=None):
         return True
 
     app.start_sync = start_sync
+
+    @app.get("/inbox")
+    def inbox_page():
+        config = Config.from_env()
+        filt = request.args.get("f", "Purchases" if "q" not in request.args else "")
+        query = request.args.get("q", "").strip() or inbox.QUICK_FILTERS.get(filt, "")
+        rows, errors = inbox.search(config, query) if config.accounts else ([], [])
+        store = Store(con())
+        decided = {r["message_id"]: r["kind"] for r in store.db.execute("SELECT message_id, kind FROM emails")}
+        return render_template("inbox.html", rows=rows, errors=errors, q=request.args.get("q", ""), filt=filt,
+                               filters=inbox.QUICK_FILTERS, labels=inbox.LABELS, marked=store.inbox_labels(),
+                               decided=decided, configured=bool(config.accounts))
+
+    @app.get("/inbox/view")
+    def inbox_view():
+        email = inbox.open_email(Config.from_env(), request.args.get("account", ""), request.args.get("id", ""))
+        if not email:
+            return jsonify({"error": "That email couldn't be found in Gmail."}), 404
+        return jsonify({"subject": email.subject, "sender": email.sender, "date": email.date,
+                        "body": email.body[:60000]})
+
+    @app.post("/inbox/label")
+    def inbox_label():
+        label = request.form.get("label", "")
+        picks = [json.loads(p) for p in request.form.getlist("pick")]
+        if label not in inbox.LABELS or not picks:
+            flash("Tick one or more emails and choose a label.")
+            return redirect(request.referrer or url_for("inbox_page"))
+        config = Config.from_env()
+        store = Store(con())
+        for row in picks:
+            store.set_inbox_label(row, label, "queued")
+        llm = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout)
+        threading.Thread(target=inbox.label_emails, args=(config, Store(con()), llm, picks, label), daemon=True).start()
+        flash(f"Labelling {len(picks)} email(s) as {inbox.LABELS[label][0]}. The AI re-reads each one and learns "
+              "from your answer; refresh in a minute to see the result.")
+        return redirect(request.referrer or url_for("inbox_page"))
 
     @app.get("/api/ai")
     def ai_status():
