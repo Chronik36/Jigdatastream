@@ -229,3 +229,68 @@ def fetch_emails(config, address, password, days=None, skip_ids=(), on_total=Non
             imap.logout()
         except Exception:
             pass
+
+
+def _header_rows(imap, uids, address, spam):
+    rows = []
+    for batch in _batches(uids, 100):
+        status, data = imap.uid("FETCH", b",".join(batch),
+                                "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID FROM SUBJECT DATE)])")
+        if status != "OK":
+            continue
+        for part in data:
+            if not isinstance(part, tuple):
+                continue
+            msg = parse_message(part[1])
+            rows.append({"message_id": msg.message_id, "sender": msg.sender, "subject": msg.subject,
+                         "date": msg.date, "account": address, "spam": spam})
+    return rows
+
+
+def search_headers(config, address, password, query="", limit=50):
+    """Newest emails matching a Gmail search (headers only, nothing downloaded), All Mail then Spam."""
+    imap = imaplib.IMAP4_SSL(config.imap_host, timeout=30)
+    try:
+        imap.login(address, password)
+        rows = []
+        for folder, spam in ((config.mailbox, False), (spam_folder(imap), True)):
+            if len(rows) >= limit or imap.select(folder, readonly=True)[0] != "OK":
+                continue
+            q = (query or "in:anywhere").strip()
+            status, data = imap.uid("SEARCH", "X-GM-RAW", _quote(q))
+            if status != "OK":
+                continue
+            uids = data[0].split()[::-1][: limit - len(rows)]
+            rows += _header_rows(imap, uids, address, spam)
+        return rows
+    finally:
+        try:
+            imap.logout()
+        except Exception:
+            pass
+
+
+def fetch_by_message_id(config, address, password, message_id):
+    """One email by its Message-ID, read-only, from All Mail or Spam. None if it isn't there."""
+    imap = imaplib.IMAP4_SSL(config.imap_host, timeout=30)
+    try:
+        imap.login(address, password)
+        for folder in (config.mailbox, spam_folder(imap)):
+            if imap.select(folder, readonly=True)[0] != "OK":
+                continue
+            status, data = imap.uid("SEARCH", "X-GM-RAW", _quote(f"rfc822msgid:{message_id.strip('<>')}"))
+            uids = data[0].split() if status == "OK" and data and data[0] else []
+            if not uids:
+                continue
+            status, data = imap.uid("FETCH", uids[0], "(BODY.PEEK[])")
+            if status == "OK" and data and isinstance(data[0], tuple):
+                msg = parse_message(data[0][1])
+                msg.account = address
+                msg.message_id = msg.message_id or message_id
+                return msg
+        return None
+    finally:
+        try:
+            imap.logout()
+        except Exception:
+            pass

@@ -89,6 +89,66 @@ def copy_model_from_ollama(model, models_dir, source=HOME / ".ollama/models"):
     return True
 
 
+LOG_KEEP_BYTES = 5 * 1024 * 1024
+LOG_MAX_AGE_DAYS = 30
+
+
+def cleanup(data=DATA, home=HOME, running_bundled_code=True):
+    """Remove what BotTrack no longer needs. Never touches .env, data/ (orders, profiles, inbox
+    labels, training examples) or the AI model in use. Returns what was removed, for the log."""
+    removed = []
+    from . import updater
+    for old in sorted((data / "backups").glob("app-*"), reverse=True)[updater.KEEP_BACKUPS:] \
+            if (data / "backups").exists() else []:
+        shutil.rmtree(old, ignore_errors=True)
+        removed.append(old.name)
+    for leftover in (data / "app.new",):
+        if leftover.exists():
+            shutil.rmtree(leftover, ignore_errors=True)
+            removed.append(leftover.name)
+    if running_bundled_code and (data / "pydeps").exists():  # packages for an update that's been undone
+        shutil.rmtree(data / "pydeps", ignore_errors=True)
+        removed.append("pydeps")
+    for stale in (home / "Applications/Order Tracker.app", home / f"Library/LaunchAgents/{OLD_AGENT}.plist"):
+        if stale.exists():
+            shutil.rmtree(stale, ignore_errors=True) if stale.is_dir() else stale.unlink()
+            removed.append(stale.name)
+    logs = data / "logs"
+    if logs.exists():
+        cutoff = time.time() - LOG_MAX_AGE_DAYS * 86400
+        for f in logs.iterdir():
+            if not f.is_file():
+                continue
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+                removed.append(f"logs/{f.name}")
+            elif f.suffix == ".log" and f.name != "app.log" and f.stat().st_size > LOG_KEEP_BYTES:
+                with open(f, "rb") as fh:  # keep the recent end of logs that don't rotate themselves
+                    fh.seek(-LOG_KEEP_BYTES // 2, os.SEEK_END)
+                    tail = fh.read()
+                f.write_bytes(tail)
+                removed.append(f"older part of logs/{f.name}")
+    if removed:
+        logger.info("cleaned up: %s", ", ".join(removed))
+    return removed
+
+
+def remove_unused_models(keep):
+    """Delete models in BotTrack's own folder other than the ones in use (e.g. after switching models)."""
+    try:
+        with _api("/api/tags") as r:
+            names = [m["name"] for m in json.load(r).get("models", [])]
+        for name in names:
+            if name not in keep and name.removesuffix(":latest") not in keep:
+                req = urllib.request.Request(f"http://127.0.0.1:{AI_PORT}/api/delete", method="DELETE",
+                                             data=json.dumps({"model": name}).encode(),
+                                             headers={"Content-Type": "application/json"})
+                urllib.request.urlopen(req, timeout=30).close()
+                logger.info("removed unused AI model %s", name)
+    except Exception:
+        logger.warning("couldn't tidy up unused AI models", exc_info=True)
+
+
 def _api(path, payload=None, timeout=10):
     req = urllib.request.Request(f"http://127.0.0.1:{AI_PORT}{path}",
                                  data=json.dumps(payload).encode() if payload is not None else None,
@@ -134,6 +194,7 @@ def start_ai(bundle, models_dir, model):
                     time.sleep(0.5)
             if not has_model(model) and not copy_model_from_ollama(model, models_dir):
                 pull(model)
+            remove_unused_models({model} | set(filter(None, os.environ.get("KEEP_MODELS", "").split(","))))
             ai_state.update(ready=True, message="", percent=None)
             logger.info("AI engine ready with %s", model)
         except Exception as e:
@@ -157,6 +218,10 @@ def main():
         migrate_old_install()
     except Exception:
         logger.exception("couldn't move data from the old install")
+    try:
+        cleanup(running_bundled_code=not (DATA / "app" / "jigstream").exists())
+    except Exception:
+        logger.exception("cleanup failed")
     load_dotenv(DATA / ".env")
     os.environ["LLM_BASE_URL"] = f"http://127.0.0.1:{AI_PORT}/v1"  # always the bundled engine
     from .config import Config

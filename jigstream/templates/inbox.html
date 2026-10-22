@@ -1,0 +1,80 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.ibox{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;align-items:start}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.chip{padding:6px 14px;border-radius:999px;border:1px solid var(--line-2);color:var(--muted);font-weight:500}
+.chip.on,.chip:hover{color:var(--accent);border-color:rgba(61,216,239,.5);background:var(--accent-soft)}
+.mlist{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.mrow{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+.mrow:last-child{border-bottom:0}.mrow:hover{background:rgba(61,216,239,.04)}.mrow.sel{background:var(--accent-soft)}
+.mrow .from{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrow .subj{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrow .meta{text-align:right;font-size:12px;color:var(--muted);white-space:nowrap}
+.mrow .meta .pill{margin-top:4px}
+.reader{position:sticky;top:76px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;max-height:calc(100vh - 100px);overflow:auto}
+.reader pre{white-space:pre-wrap;word-break:break-word;font:13px/1.55 Inter,sans-serif;background:none;border:0;padding:0;margin:12px 0 0;color:var(--text)}
+.labelbar{position:sticky;top:64px;z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--line-2);border-radius:12px;padding:10px 14px;margin-bottom:12px}
+.labelbar select,.labelbar button{margin:0}
+.lbl-mine{color:var(--green);background:var(--green-soft);border-color:rgba(61,220,132,.3)}
+.qlabels{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.qlabels button{padding:5px 10px;font-size:12px}
+@media (max-width:900px){.ibox{grid-template-columns:1fr}.reader{position:static;max-height:none}}
+</style>
+<h2>Inbox</h2>
+<p class="muted">Your mail, read straight from Gmail (nothing is changed there). Tick emails and label them, or open one and label it.
+The AI re-reads each labelled email and learns what it should have found; the label is applied to your Orders and Expenses too.</p>
+{% if not configured %}<div class="flash">No Gmail inbox connected yet. <a href="/setup">Add one on the Setup page</a>.</div>{% endif %}
+{% for e in errors %}<p class="bad">{{e}}</p>{% endfor %}
+<div class="chips">{% for name in filters %}<a class="chip{{' on' if filt == name and not q}}" href="/inbox?f={{name|urlencode}}">{{name}}</a>{% endfor %}
+<form method="get" action="/inbox" style="margin:0 0 0 auto"><input name="q" value="{{q}}" placeholder="Search Gmail (e.g. from:nike cancelled)" size="34" style="margin:0"></form></div>
+<form id="labelform" method="post" action="/inbox/label">
+<div class="labelbar"><b id="count">0 selected</b>
+<select name="label" required><option value="">Label as…</option>{% for key, (name, _) in labels.items() %}<option value="{{key}}">{{name}}</option>{% endfor %}</select>
+<button>Label and train</button><span class="muted" style="font-size:12px">Each label becomes a training example for the AI.</span></div>
+</form>
+<div class="ibox">
+<div class="mlist">
+{% for r in rows %}{% set mine = marked.get(r.message_id) %}{% set ai = decided.get(r.message_id) %}
+<div class="mrow" data-account="{{r.account}}" data-id="{{r.message_id}}">
+  <input type="checkbox" name="pick" form="labelform" value="{{ {'account': r.account, 'message_id': r.message_id, 'sender': r.sender, 'subject': r.subject, 'date': r.date}|tojson|forceescape }}" onclick="event.stopPropagation(); counted()">
+  <div><div class="from">{{r.sender|replace('"','')}}</div><div class="subj">{{r.subject or "(no subject)"}}</div></div>
+  <div class="meta">{{(r.date or "")[:10]}}{% if r.spam %} · spam{% endif %}<br>
+  {% if mine %}<span class="pill lbl-mine" title="{{mine.state}}">✓ {{labels[mine.label][0]}}</span>
+  {% elif ai %}<span class="pill" title="What the AI decided when it synced">AI: {{"expense" if ai == "botting_expense" else ai}}</span>{% endif %}</div>
+</div>
+{% else %}<div class="mrow" style="cursor:default"><span></span><span class="muted">{{"No emails match." if configured else ""}}</span><span></span></div>{% endfor %}
+</div>
+<div class="reader" id="reader"><p class="muted">Select an email to read it here.</p></div>
+</div>
+<script>
+const LABELS = {{ labels|tojson }};
+function counted() {
+  document.getElementById('count').textContent = document.querySelectorAll('input[name=pick]:checked').length + ' selected';
+}
+function labelOne(row, key) {
+  const f = document.getElementById('labelform');
+  f.querySelectorAll('input[name=pick]').forEach(c => c.checked = false);
+  row.querySelector('input[name=pick]').checked = true;
+  f.querySelector('select[name=label]').value = key;
+  f.submit();
+}
+document.querySelectorAll('.mrow[data-id]').forEach(row => row.addEventListener('click', () => {
+  document.querySelectorAll('.mrow.sel').forEach(r => r.classList.remove('sel'));
+  row.classList.add('sel');
+  const reader = document.getElementById('reader');
+  reader.innerHTML = '<p class="muted">Opening…</p>';
+  fetch('/inbox/view?account=' + encodeURIComponent(row.dataset.account) + '&id=' + encodeURIComponent(row.dataset.id))
+    .then(r => r.json()).then(m => {
+      reader.innerHTML = '';
+      if (m.error) { reader.innerHTML = '<p class="bad"></p>'; reader.firstChild.textContent = m.error; return; }
+      const h = document.createElement('h3'); h.style.cssText = 'margin:0 0 6px;color:var(--text);text-transform:none;letter-spacing:0;font-size:17px'; h.textContent = m.subject || '(no subject)';
+      const meta = document.createElement('div'); meta.className = 'muted'; meta.textContent = m.sender + ' · ' + (m.date || '').slice(0, 16).replace('T', ' ');
+      const q = document.createElement('div'); q.className = 'qlabels';
+      Object.entries(LABELS).forEach(([key, [name]]) => {
+        const b = document.createElement('button'); b.className = 'ghost'; b.textContent = name; b.onclick = () => labelOne(row, key); q.appendChild(b);
+      });
+      const body = document.createElement('pre'); body.textContent = m.body;
+      reader.append(h, meta, q, body);
+    }).catch(() => reader.innerHTML = '<p class="bad">Couldn\'t open that email.</p>');
+}));
+</script>
+{% endblock %}
