@@ -61,3 +61,17 @@ def test_aycd_style(tmp_path):
     r = c.execute("SELECT * FROM profiles").fetchone()
     assert (r["ship_address1"], r["ship_zip"], r["card_last4"]) == ("10 Pine Street", "78701", "9999")
     assert "4111" not in r["raw"] and "321" not in r["raw"]
+
+
+def test_expense_total_read_from_email_when_model_misses_it():
+    from jigstream.extract import find_total, normalize
+    from jigstream.mail import Email
+    body = "Alpine Proxies\nISP Subnet /24 | $40.00\nSubtotal | $40.00\nTax | $3.20\nTotal | $43.20\nPaid with Visa 4242"
+    assert find_total(body) == 43.2
+    assert find_total("Amount paid\n$15.00 USD") == 15.0
+    assert find_total("Your plan: Everest\nPrice: US$99.00") == 99.0
+    assert find_total("Thanks for joining!") is None
+    mail = Email("<a@x>", "Alpine <a@x.com>", "Your receipt", "2026-10-18T00:00:00+00:00", body, "me@gmail.com")
+    assert normalize({"kind": "botting_expense", "vendor": "Alpine Proxies"}, mail)["amount"] == 43.2
+    reminder = Email("<r@x>", "Stella <s@x.com>", "Invoice Payment Reminder", "2026-09-26", "Total $70.00", "me@gmail.com")
+    assert normalize({"kind": "botting_expense", "vendor": "Stella"}, reminder) == {"kind": "other"}

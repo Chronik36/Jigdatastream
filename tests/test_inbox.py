@@ -47,7 +47,20 @@ def test_inbox_page_and_label_route(tmp_path, monkeypatch):
                         lambda target, args, daemon: type("T", (), {"start": lambda self: started.append(args)})())
     c = appmod.create_app(str(tmp_path / "w.db")).test_client()
     page = c.get("/inbox").get_data(as_text=True)
-    assert "Your order was cancelled" in page and "Label and train" in page
+    assert "Label and train" in page and "Loading your inboxes" in page  # the list loads after the page
+    assert "Your order was cancelled" in c.get("/inbox/rows").get_data(as_text=True)
     assert c.get("/inbox/view?account=me@gmail.com&id=<c1@nike>").get_json()["body"].startswith("Order C123")
     r = c.post("/inbox/label", data={"label": "cancelled", "pick": json.dumps(ROW)})
     assert r.status_code == 302 and started and started[0][4] == "cancelled"
+
+
+def test_fill_missing_amounts_reads_totals_and_drops_reminders(tmp_path, monkeypatch):
+    store = Store(db.connect(str(tmp_path / "f.db")))
+    for mid, subject in (("<p@x>", "Your receipt"), ("<r@x>", "Invoice Payment Reminder")):
+        store.db.execute("INSERT INTO emails (message_id, account, subject) VALUES (?, 'me@gmail.com', ?)", (mid, subject))
+        store.db.execute("INSERT INTO expenses (message_id, vendor, account) VALUES (?, 'Alpine', 'me@gmail.com')", (mid,))
+    store.db.commit()
+    paid = Email("<p@x>", "Alpine <a@x.com>", "Your receipt", "2026-10-18", "Plan | $40.00\nTotal | $43.20", "me@gmail.com")
+    monkeypatch.setattr(inbox, "open_email", lambda *a: paid)
+    assert inbox.fill_missing_amounts(object(), store) == (1, 1)
+    assert [(e["message_id"], e["amount"]) for e in store.expenses()] == [("<p@x>", 43.2)]
