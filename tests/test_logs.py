@@ -35,3 +35,69 @@ def test_passwords_never_reach_logs(tmp_path, monkeypatch):
     assert "pw=********" in page
     assert client.get("/logs?file=../../etc/passwd").status_code == 200  # unknown names fall back
     assert client.get("/logs/download").mimetype == "application/zip"
+
+
+class FakeSMTP:
+    def __init__(self):
+        self.sent = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+    def login(self, user, password):
+        self.login_as = (user, password)
+
+    def send_message(self, msg):
+        self.sent.append(msg)
+
+
+def test_scrub_masks_cards_and_tokens_but_not_tracking():
+    text = logs.scrub("card 4111-1111-1111-1111 tracking 1234567890123 access-production-1a2b3c4d-5e6f bearer abcdefghijklmnopqr")
+    assert "4111" not in text and "[card]" in text
+    assert "1234567890123" in text  # not a valid card number, kept for debugging
+    assert "access-production" not in text and "abcdefghijklmnopqr" not in text
+
+
+def test_send_logs_emails_scrubbed_zip(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "environ", dict(os.environ, GMAIL_ACCOUNTS="me@gmail.com:abcdefghijklmnop"))
+    (tmp_path / "app.log").write_text("paid with 4111 1111 1111 1111 using abcdefghijklmnop\n")
+    smtp = FakeSMTP()
+    to = logs.send_logs("me@gmail.com", "abcdefghijklmnop", "it crashed", {"BotTrack": "build-9-abc"},
+                        log_dir=tmp_path, to="dev@example.com", smtp=smtp)
+    assert to == "dev@example.com" and smtp.login_as == ("me@gmail.com", "abcdefghijklmnop")
+    msg = smtp.sent[0]
+    assert msg["To"] == "dev@example.com" and "build-9-abc" in msg["Subject"]
+    assert "it crashed" in msg.get_body(("plain",)).get_content()
+    att = next(msg.iter_attachments())
+    z = zipfile.ZipFile(io.BytesIO(att.get_payload(decode=True)))
+    assert sorted(z.namelist()) == ["about.txt", "app.log"]
+    log = z.read("app.log").decode()
+    assert "4111" not in log and "abcdefghijklmnop" not in log
+
+
+def test_send_logs_page_needs_consent(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "environ", dict(os.environ, GMAIL_ACCOUNTS="me@gmail.com:abcdefghijklmnop",
+                                            BOTTRACK_LOGS_TO="dev@example.com"))
+    monkeypatch.setattr(logs, "LOG_DIR", tmp_path)
+    (tmp_path / "app.log").write_text("hello\n")
+    sent = []
+    monkeypatch.setattr(logs, "send_logs", lambda *a, **k: sent.append(a) or "dev@example.com")
+    client = create_app(str(tmp_path / "w.db")).test_client()
+    page = client.get("/logs/send").get_data(as_text=True)
+    assert "dev@example.com" in page and "app.log" in page and "me@gmail.com" in page
+    client.post("/logs/send", data={"note": "hi"})
+    assert not sent
+    client.post("/logs/send", data={"note": "hi", "consent": "yes", "sender": "me@gmail.com"})
+    assert sent and sent[0][:3] == ("me@gmail.com", "abcdefghijklmnop", "hi")
+
+
+def test_send_logs_page_without_address(tmp_path, monkeypatch):
+    env = dict(os.environ)
+    env.pop("BOTTRACK_LOGS_TO", None)
+    monkeypatch.setattr(os, "environ", env)
+    monkeypatch.setattr(logs, "DEVELOPER_EMAIL", "")
+    page = create_app(str(tmp_path / "w.db")).test_client().get("/logs/send").get_data(as_text=True)
+    assert "No developer address" in page
