@@ -25,6 +25,18 @@ CREATE TABLE IF NOT EXISTS profiles (
     card_brand TEXT, card_exp TEXT, fmt TEXT,
     group_name TEXT, card_holder TEXT
 );
+-- Training page tasks (tasks.py): examples, and adapters trained on them (finetune.py).
+CREATE TABLE IF NOT EXISTS ai_tasks (
+    id INTEGER PRIMARY KEY, name TEXT, instructions TEXT, answer TEXT DEFAULT 'text',
+    adapter_id INTEGER, created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS ai_task_examples (
+    id INTEGER PRIMARY KEY, task_id INTEGER, input TEXT, output TEXT, created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS ai_adapters (
+    id INTEGER PRIMARY KEY, task_key TEXT, base_model TEXT, path TEXT, examples INTEGER, iters INTEGER,
+    loss REAL, created_at TEXT
+);
 CREATE TABLE IF NOT EXISTS profile_groups (name TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS saved_addresses (
     nickname TEXT PRIMARY KEY,

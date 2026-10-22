@@ -9,10 +9,10 @@ from flask import Flask, Response, flash, jsonify, redirect, render_template, re
 
 from . import address as A
 from . import (analysis, bankpages, carriers, db, discord, emailbook, engines, export, inbox, keywords, logs, manual,
-               mobile, parsers, profilebook, profilematch, profiles, stock, training, updater, wallet)
+               mobile, parsers, profilebook, profilematch, profiles, stock, tasks, training, updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
-from .llm import LLMClient, installed_models
+from .llm import from_config as llm_for, installed_models
 from .mail import check_login
 from .orderstore import Store
 from .sync import run_sync, summary
@@ -46,7 +46,7 @@ def create_app(db_path=None):
 
     @app.context_processor
     def nav_flags():
-        return {"config_training": Config.from_env().training_mode, "update": updater.state,
+        return {"update": updater.state,
                 "ai": app.config.get("AI_STATE")}
 
     def con():
@@ -186,7 +186,7 @@ def create_app(db_path=None):
         config = Config.from_env()
         store = Store(con())
         try:
-            llm = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout)
+            llm = llm_for(config)
             training.rescan(config, store, llm, label_id, order)
         except Exception as e:
             logger.exception("rescan failed")
@@ -203,7 +203,7 @@ def create_app(db_path=None):
                         order["order_number"], len(mails))
             config = Config.from_env()
             if mails and config.accounts:  # the AI re-reads them and learns they're neither order nor expense
-                llm = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout)
+                llm = llm_for(config)
                 threading.Thread(target=inbox.label_emails, args=(config, Store(con()), llm, mails, "other"),
                                  daemon=True).start()
             flash(f"Removed {order['retailer'] or 'that order'} {order['order_number'] or ''}. Its emails are saved as "
@@ -219,12 +219,6 @@ def create_app(db_path=None):
               "emails to learn from; refresh in a minute.")
         return redirect(url_for("orders") + f"#order-{order_id}")
 
-    @app.get("/training")
-    def training_page():
-        store = Store(con())
-        return render_template("training.html", examples=store.examples(only_corrected=False),
-                               config=Config.from_env(), in_prompt=len(training.few_shot(store)))
-
     @app.get("/training/export")
     def training_export():
         return Response(training.export_jsonl(Store(con())), mimetype="application/x-ndjson",
@@ -235,7 +229,7 @@ def create_app(db_path=None):
         c = con()
         c.execute("DELETE FROM training_examples WHERE id = ?", (example_id,))
         c.commit()
-        return redirect(url_for("training_page"))
+        return redirect(url_for("email_training"))
 
     @app.post("/setup/training")
     def set_training():
@@ -579,7 +573,7 @@ def create_app(db_path=None):
         store = Store(con())
         for row in picks:
             store.set_inbox_label(row, label, "queued")
-        llm = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout)
+        llm = llm_for(config)
         threading.Thread(target=inbox.label_emails, args=(config, Store(con()), llm, picks, label), daemon=True).start()
         flash(f"Labelling {len(picks)} email(s) as {inbox.LABELS[label][0]}. The AI re-reads each one and learns "
               "from your answer; refresh in a minute to see the result.")
@@ -760,7 +754,7 @@ def create_app(db_path=None):
         engine, model = request.form.get("engine", "ollama"), request.form.get("model", "").strip()
         if engine not in ("ollama", "mlx") or not model:
             return redirect(url_for("setup"))
-        save_env({"LLM_ENGINE": engine, "LLM_MODEL": model})
+        save_env({"LLM_ENGINE": engine, "LLM_MODEL": model, "LLM_ADAPTER": ""})
         logger.info("default AI set to %s on %s", model, engine)
         if app.config.get("AI_STATE"):  # the Mac app restarts its engine with the new model
             updater.restart_soon()
@@ -857,5 +851,6 @@ def create_app(db_path=None):
         flash("GitHub token saved." if not updater.state["error"] else f"Saved, but the check failed: {updater.state['error']}")
         return redirect(url_for("setup") + "#updates")
 
+    tasks.register(app, db_path)  # Training page: custom tasks, examples and local fine-tuning
     bankpages.register(app, db_path)  # Bank page: statement imports, Plaid, matching charges
     return app
