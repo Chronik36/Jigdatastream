@@ -331,6 +331,30 @@ imported on the Dashboard.</p>
   "Status: In use means a profile already has this address; Available means none does."]) }}
 </section>
 
+{% if "keywords.keywords_page" in pages %}<section id="keywords" data-title="Keyword finder">
+<h2>Keyword finder</h2>
+<div class="where">Sidebar → <b>Keywords</b></div>
+<p>Helps you write monitor keywords for a drop. Paste the link to a product or store page and BotTrack reads it once, then lists the
+words the page is built around and the <b>negative keywords</b> that stop a monitor from catching look-alikes, like the kids' or low-top
+version of the same shoe.</p>
+<ol class="steps">
+<li>Copy the product page's address from your browser.</li>
+<li>Paste it into the box and press <span class="ui">Find keywords</span>.</li>
+<li>Check the <b>Monitor keywords</b> line, take out anything that's wrong, and press <span class="ui">Copy</span> to paste it into your monitor.</li>
+</ol>
+{{ fig("keywords", "The Keyword finder with a sample page.", [
+  "Paste the product or store page's address here.",
+  "Also ask the local AI: the AI on your Mac adds its own pick of main keywords and negatives. It takes a little longer.",
+  "Monitor keywords: a ready-made line of +keywords and -negatives. Copy puts it on your clipboard.",
+  "Negative keywords, each with the reason it was suggested, for example the look-alike item it came from.",
+  "Top keywords: the words the page uses most. A ★ means the word is also in the title, description or headings.",
+  "Top phrases: two and three word phrases the page repeats.",
+  "Page details: the page title, description, product name, colour, and SKU or style codes."]) }}
+<div class="warn">Remove any negative that is actually part of what you want. If you're after the GS size, for example, take <b>-gs</b> out of the line.</div>
+<p>Some stores block automated visits. When that happens BotTrack says so and doesn't try to get around it; try a different page from
+the same site. If very little text comes back, the page builds itself with JavaScript and the list may be incomplete.</p>
+</section>{% endif %}
+
 <section id="setup" data-title="Setup">
 <h2>Setup</h2>
 <div class="where">Sidebar → <b>Setup</b> (bottom left)</div>
