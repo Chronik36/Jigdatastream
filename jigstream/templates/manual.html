@@ -73,6 +73,7 @@ Every picture has orange numbers on it; the list under the picture says what eac
 <h2>Getting started</h2>
 <h4 id="install">Installing BotTrack</h4>
 <ol class="steps">
+<li>Download <b>BotTrack.dmg</b> from the <a href="https://github.com/Chronik36/BotTrack-releases/releases/latest" target="_blank" rel="noopener">BotTrack releases page</a>.</li>
 <li>Open <b>BotTrack.dmg</b> and drag <b>BotTrack</b> into your <b>Applications</b> folder.</li>
 <li>The first time, <b>right-click</b> (or Control-click) BotTrack in Applications and choose <b>Open</b>, then <b>Open</b> again.
 macOS asks this once because BotTrack doesn't come from the App Store. After that it opens normally.</li>
@@ -342,8 +343,8 @@ and an <b>Update ready</b> chip and a green bar appear at the top of every page.
 {{ fig("setup-updates", "Setup → Updates.", [
   "Check for update: look right now instead of waiting.",
   "Update now: install the new version.",
-  "Undo last update: go back to the version you had before.",
-  "GitHub access: while the code is kept private, updates need a free GitHub token. Open this and follow the steps: pick only the BotTrack repository and give it Contents: Read-only."]) }}
+  "Undo last update: go back to the version you had before."]) }}
+<p>Updates come straight from BotTrack's public download page, so there's nothing to sign in to or set up.</p>
 <div class="tip">Updating only replaces the app. Your inboxes, settings, orders, cards and logs are never touched.</div>
 
 <h4 id="setup-inboxes">Gmail inboxes</h4>
@@ -470,7 +471,8 @@ and Compare shows how accurate they are on your own mail.</p>
 <p>Check that <b>Message Content Intent</b> is on for your bot, that the bot is in the server, and that the channels are ticked on
 <a href="#setup-discord">Setup → Discord</a>. A channel with a problem shows the error in its <i>Last read</i> column.</p>
 <h4>Updates fail</h4>
-<p>Open <a href="#setup-updates">Setup → Updates → GitHub access</a> and paste a fresh token.</p>
+<p>Updates need an internet connection. Press <span class="ui">Check for update</span> on <a href="#setup-updates">Setup → Updates</a>;
+if it shows an error, download the logs and send them over.</p>
 <h4>Where is my data?</h4>
 <p>In <b>~/Library/Application Support/BotTrack</b> on this Mac: your settings, database, logs and AI models. Updates never touch it.
 Card numbers are encrypted with a key kept in your Keychain.</p>

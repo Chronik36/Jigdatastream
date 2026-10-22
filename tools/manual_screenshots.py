@@ -172,7 +172,7 @@ def patch():
         {"model": "mlx-community/Qwen3-8B-abliterated-4bit", "engine": "mlx", "accuracy": 87, "right": 26,
          "total": 30, "unreadable": 1, "seconds": 2.2}]})
     discord.DiscordClient = FakeDiscord
-    updater.installed_version = lambda app_dir=None: "0a0db26"
+    updater.installed_version = lambda app_dir=None: "build-42-ed618bf"
     updater.can_self_update = lambda app_dir=None: True
     updater.backups = lambda app_dir=None: ["previous"]
     updater.state.update({"checked_at": "2026-10-22T09:00:00", "available": False})
@@ -345,7 +345,7 @@ shot("cards-add", "/cards", [("#adddlg select", 1), ("#adddlg textarea", 2), ("#
 shot("emails", "/emails?group=Gmail%20dots", [(".gside", 1), ("button[onclick*=adddlg]", 2), ("a[href^='/emails/export']", 3),
                            ("tr:nth-child(5) td:nth-last-child(2)", 4)])
 shot("setup-updates", "/setup", [("form[action='/update/check'] button", 1), ("form[action='/update/install'] button", 2),
-                                 ("form[action='/update/rollback'] button", 3), ("summary@GitHub access", 4)],
+                                 ("form[action='/update/rollback'] button", 3)],
      scroll="h3@Updates")
 shot("setup-inboxes", "/setup", [("table:has(form[action='/setup/inbox/remove'])", 1), ("form[action='/setup/inbox'] input[name=address], form[action='/setup/inbox']", 2),
                                  ("form[action='/setup/inbox/remove'] button", 3)], scroll="h3@Gmail inboxes")
