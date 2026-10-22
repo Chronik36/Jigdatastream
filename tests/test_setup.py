@@ -18,7 +18,7 @@ def test_setup_adds_and_removes_inbox(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(os, "environ", {k: v for k, v in os.environ.items()
                                         if not k.startswith(("GMAIL", "LLM"))})
-    monkeypatch.setattr(appmod, "installed_models", lambda url: ["llama3.1:8b"])
+    monkeypatch.setattr(appmod, "installed_models", lambda url: ["huihui_ai/qwen3-abliterated:14b"])
     logins = []
 
     def fake_login(config, address, password):
@@ -32,7 +32,7 @@ def test_setup_adds_and_removes_inbox(tmp_path, monkeypatch):
     c = app.test_client()
 
     page = c.get("/setup").get_data(as_text=True)
-    assert "No inboxes yet" in page and "Using llama3.1:8b" in page
+    assert "No inboxes yet" in page and "Using huihui_ai/qwen3-abliterated:14b" in page
     assert "No Gmail inbox connected yet" in c.get("/orders").get_data(as_text=True)
 
     r = c.post("/setup/inbox", data={"address": "me@gmail.com", "password": "wrong"}, follow_redirects=True)
@@ -47,3 +47,17 @@ def test_setup_adds_and_removes_inbox(tmp_path, monkeypatch):
 
     c.post("/setup/inbox/remove", data={"address": "me@gmail.com"})
     assert Config.from_env().accounts == []
+
+
+def test_qwen3_gets_no_think(monkeypatch):
+    import io, json as _json
+    from jigstream.llm import LLMClient
+    sent = {}
+
+    def fake(req, timeout):
+        sent.update(_json.loads(req.data))
+        return io.BytesIO(_json.dumps({"choices": [{"message": {"content": '<think></think>{"kind": "other"}'}}]}).encode())
+    monkeypatch.setattr("urllib.request.urlopen", fake)
+    c = LLMClient("http://x/v1", "huihui_ai/qwen3-abliterated:14b", "k", 5)
+    assert c.chat_json("sys", "email")["kind"] == "other"
+    assert sent["messages"][-1]["content"].endswith("/no_think")

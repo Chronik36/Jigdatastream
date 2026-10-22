@@ -33,7 +33,7 @@ STATUS_WORDS = {
     "returned": r"return (received|processed)|returned",
     "refunded": r"refund",
 }
-EXAMPLE_CHARS = 2500  # keep prompt examples short; an 8B model has limited room
+EXAMPLE_CHARS = 2500  # keep prompt examples short; local models have limited room
 
 
 def about_status(email, status):

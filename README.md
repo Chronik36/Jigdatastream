@@ -15,8 +15,8 @@ Import webhook JSON and profile exports (.json/.csv) from the dashboard.
 ## Gmail order tracking (local AI)
 Email content never leaves your Mac: Gmail is read over IMAP (read-only) and a local model does the extraction.
 
-1. With [Ollama](https://ollama.com) installed, pull a model: `ollama pull llama3.1:8b`.
-   On a 16 GB Mac stay with 7B to 8B models (`qwen3:8b` is a good alternative; set `LLM_MODEL` to switch);
+1. With [Ollama](https://ollama.com) installed, pull a model: `ollama pull huihui_ai/qwen3-abliterated:14b` (the default).
+   On a 16 GB Mac, 14B (about 9 GB) is the largest that fits comfortably; 8B models are faster (set `LLM_MODEL` to switch);
    12B and larger will swap memory and crawl. Emails are sent to the model one at a time.
    LM Studio or llama.cpp work too; any OpenAI-compatible endpoint does.
 2. Create a Google App Password for each inbox at https://myaccount.google.com/apppasswords (requires 2FA).

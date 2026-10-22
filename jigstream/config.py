@@ -75,9 +75,9 @@ class Config:
     max_emails: int = 0  # per inbox per run; 0 means no limit
 
     llm_base_url: str = "http://localhost:11434/v1"
-    llm_model: str = "llama3.1:8b"
+    llm_model: str = "huihui_ai/qwen3-abliterated:14b"
     llm_api_key: str = "ollama"
-    llm_timeout: int = 180
+    llm_timeout: int = 300  # a 14B model on a 16 GB Mac can take a while on long emails
     max_body_chars: int = 12000
 
     training_mode: bool = True  # status dropdowns on Orders; corrections become model examples
