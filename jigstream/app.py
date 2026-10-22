@@ -781,6 +781,37 @@ def create_app(db_path=None):
         return Response(logs.zip_logs(), mimetype="application/zip",
                         headers={"Content-Disposition": "attachment; filename=order-tracker-logs.zip"})
 
+    def logs_about():
+        c = Config.from_env()
+        return logs.about(updater.installed_version(), c.llm_engine, c.llm_model)
+
+    @app.get("/logs/send")
+    def send_logs_page():
+        files = logs.log_files()
+        sizes = {f: (logs.LOG_DIR / f).stat().st_size for f in files if (logs.LOG_DIR / f).exists()}
+        return render_template("logs_send.html", files=files, sizes=sizes, about=logs_about(),
+                               to=logs.developer_email(), accounts=[a for a, _ in Config.from_env().accounts])
+
+    @app.post("/logs/send")
+    def send_logs():
+        if request.form.get("consent") != "yes":
+            flash("Tick the box to confirm what's being sent first.")
+            return redirect(url_for("send_logs_page"))
+        accounts = dict(Config.from_env().accounts)
+        sender = request.form.get("sender") or next(iter(accounts), "")
+        if sender not in accounts:
+            flash("Connect a Gmail inbox on Setup first: the logs are sent from it.")
+            return redirect(url_for("send_logs_page"))
+        try:
+            to = logs.send_logs(sender, accounts[sender], request.form.get("note", "")[:4000], logs_about())
+        except Exception as e:  # SMTP errors and the like; never include the password
+            logger.warning("sending logs failed: %s", logs.redact(str(e)))
+            flash(f"Couldn't send the logs: {logs.redact(str(e))}. You can download them and send them yourself.")
+            return redirect(url_for("send_logs_page"))
+        logger.info("logs sent to the developer from %s", sender)
+        flash(f"Logs sent to {to}. Thanks, that helps fix things faster.")
+        return redirect(url_for("show_logs"))
+
     @app.post("/update/check")
     def update_check():
         s = updater.check()
