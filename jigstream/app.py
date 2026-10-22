@@ -8,8 +8,8 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import (analysis, carriers, db, discord, emailbook, engines, export, inbox, logs, manual, parsers, profilebook,
-               profiles, stock, training, updater, wallet)
+from . import (analysis, carriers, db, discord, emailbook, engines, export, inbox, keywords, logs, manual, parsers,
+               profilebook, profiles, stock, training, updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import LLMClient, installed_models
@@ -39,6 +39,7 @@ def create_app(db_path=None):
     app.secret_key = "local-only"
     app.register_blueprint(stock.bp)
     app.register_blueprint(manual.bp)
+    app.register_blueprint(keywords.bp)
 
     @app.context_processor
     def nav_flags():
