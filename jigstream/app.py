@@ -8,8 +8,8 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import (analysis, carriers, db, discord, emailbook, engines, export, inbox, keywords, logs, manual, parsers,
-               profilebook, profiles, stock, training, updater, wallet)
+from . import (analysis, bankpages, carriers, db, discord, emailbook, engines, export, inbox, keywords, logs, manual,
+               parsers, profilebook, profiles, stock, training, updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import LLMClient, installed_models
@@ -758,4 +758,5 @@ def create_app(db_path=None):
         flash("GitHub token saved." if not updater.state["error"] else f"Saved, but the check failed: {updater.state['error']}")
         return redirect(url_for("setup") + "#updates")
 
+    bankpages.register(app, db_path)  # Bank page: statement imports, Plaid, matching charges
     return app

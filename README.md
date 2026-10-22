@@ -67,6 +67,26 @@ Embeds go through the same parsers as imported webhook JSON, as does JSON pasted
 `python -m jigstream reparse-discord` without fetching anything again. `python -m jigstream discord` runs a
 Discord-only sync.
 
+## Bank and card charges
+The **Bank & card charges** page (linked from Expenses, at `/bank`) shows which order or botting receipt each card
+charge paid for. Two ways to bring charges in, both free:
+
+- **Statement files.** On your bank or card site, download the account activity as CSV, or as Quicken/QFX or OFX,
+  and import it. Chase, Amex, Capital One, Citi, Discover and most banks' exports work: the columns are found by name
+  (Date / Description / Amount, or separate Debit / Credit columns), lines above the header are skipped, and whether
+  charges show as negative or positive is detected (or set by hand). Importing the same file twice adds nothing.
+- **Plaid, with your own keys (optional).** Make a free account at dashboard.plaid.com, paste its client_id and
+  secret at `/bank/plaid`, and sign in to your bank in Plaid's window. Start with Sandbox (test bank `user_good` /
+  `pass_good`), then switch to Production once Plaid approves it. Charges from the last two years are pulled, then
+  new ones every `PLAID_SYNC_HOURS` (default 6) alongside the scheduled email sync. Keys and bank tokens are stored
+  encrypted with the same Keychain-held key as cards and never logged.
+
+Each charge is matched when it has the same amount to the cent as an order or receipt dated up to 2 days after or 7
+days before it, and either the store name appears in the bank's description or it's the only candidate. Ambiguous
+charges are left for you. Match, Unmatch, Ignore (groceries, rent) and Auto-match are on every row, and a choice you
+make is never undone by a later import or sync. A charge with no email receipt can be added as a botting expense.
+Pending Plaid charges wait until they post, and a match you made on a pending charge moves to the posted one.
+
 ## Profiles
 
 Profiles show as cards with edit and delete. **Export** writes profiles in any bot's file layout:
