@@ -235,7 +235,7 @@ body .fl{color:#7884b3}
 </header>
 <main>
 {% if update and update.available and not path.startswith('/setup') %}<div class="banner"><span>A new version of BotTrack is ready{% if update.message %}: <span class="muted">{{update.message}}</span>{% endif %}</span><span class="grow" style="flex:1"></span>
-<form method="post" action="/update/install"><button>Update now</button></form></div>{% endif %}
+<form method="post" action="/update/install" data-loader="Installing the update"><button>Update now</button></form></div>{% endif %}
 {% if ai and ai.error %}<div class="banner" style="border-color:rgba(255,107,122,.45);background:rgba(255,107,122,.08)">{{ai.error}}</div>
 {% elif ai and not ai.ready %}<div class="banner" id="aibar"><span><span id="aimsg">{{ai.message}}</span> · <b id="aipct">{{ai.percent ~ "%" if ai.percent is not none else ""}}</b>
 <span class="muted">Syncing starts when it's ready. The first time, this downloads about 9 GB.</span></span>
@@ -252,7 +252,17 @@ body .fl{color:#7884b3}
 })();
 </script>{% endif %}
 {% for m in get_flashed_messages() %}<div class="flash">{{m}}</div>{% endfor %}{% block body %}{% endblock %}</main></div>
+{% with logo=url_for('static', filename='loader/logo.png'), lines=url_for('static', filename='loader/lines.png'),
+        title="", msg="Downloading the new version. BotTrack restarts by itself when it's done.", shown=False %}{% include "loader.html" %}{% endwith %}
 <script>
+// Forms that restart the app (Update now, Undo last update) cover the window while the server works.
+document.addEventListener('submit', e => {
+  const title = e.target.dataset.loader;
+  if (!title || e.defaultPrevented) return;
+  document.getElementById('loader-title').textContent = title;
+  if (e.target.dataset.loaderMsg) document.getElementById('loader-msg').textContent = e.target.dataset.loaderMsg;
+  document.getElementById('loader').classList.add('on');
+});
 function mini() {
   const on = document.documentElement.classList.toggle('mini');
   try { localStorage.setItem('bt-mini', on ? '1' : '0'); } catch (e) {}
