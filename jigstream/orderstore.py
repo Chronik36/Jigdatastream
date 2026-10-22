@@ -62,7 +62,10 @@ CREATE TABLE IF NOT EXISTS expenses (
 # Columns added after the first release; created on older databases at startup.
 MIGRATIONS = [("tracked_orders", "status_manual", "INTEGER DEFAULT 0"),
               ("tracked_orders", "carrier_status", "TEXT"), ("tracked_orders", "carrier_checked_at", "TEXT"),
-              ("expenses", "amount_checked", "INTEGER DEFAULT 0")]
+              ("expenses", "amount_checked", "INTEGER DEFAULT 0"),
+              ("tracked_orders", "shipping_name", "TEXT"), ("tracked_orders", "recipient_email", "TEXT"),
+              ("tracked_orders", "profile_name", "TEXT"), ("tracked_orders", "profile_match", "TEXT"),
+              ("tracked_orders", "profile_candidates", "TEXT"), ("tracked_orders", "profile_manual", "INTEGER DEFAULT 0")]
 
 LABEL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS labels (
@@ -103,8 +106,8 @@ CREATE TABLE IF NOT EXISTS inbox_labels (
 """
 
 ORDER_FIELDS = [
-    "retailer", "order_number", "order_date", "total", "currency", "shipping_address",
-    "tracking_number", "tracking_url", "carrier", "estimated_delivery",
+    "retailer", "order_number", "order_date", "total", "currency", "shipping_address", "shipping_name",
+    "recipient_email", "tracking_number", "tracking_url", "carrier", "estimated_delivery",
 ]
 
 
@@ -196,14 +199,15 @@ class Store:
             self.db.execute(
                 "INSERT INTO tracked_orders (merge_key, retailer, order_number, order_date, items, total,"
                 " currency, shipping_address, tracking_number, tracking_url, carrier, shipping_status,"
-                " estimated_delivery, last_email_date, message_ids, account)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " estimated_delivery, last_email_date, message_ids, account, shipping_name, recipient_email)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (merge_key, result["retailer"], result["order_number"], result["order_date"],
                  json.dumps(result["items"]), result["total"], result["currency"],
                  result["shipping_address"], result["tracking_number"], result.get("tracking_url"),
                  result["carrier"],
                  result["shipping_status"], result["estimated_delivery"], email.date,
-                 json.dumps([email.message_id]), email.account),
+                 json.dumps([email.message_id]), email.account, result.get("shipping_name"),
+                 result.get("recipient_email")),
             )
             self.db.commit()
             return
@@ -392,6 +396,7 @@ class Store:
             d = dict(r)
             d["items"] = json.loads(d["items"] or "[]")
             d["message_ids"] = json.loads(d["message_ids"] or "[]")
+            d["profile_candidates"] = json.loads(d["profile_candidates"] or "[]")
             out.append(d)
         return out
 

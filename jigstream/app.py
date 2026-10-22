@@ -9,7 +9,7 @@ from flask import Flask, Response, flash, jsonify, redirect, render_template, re
 
 from . import address as A
 from . import (analysis, bankpages, carriers, db, discord, emailbook, engines, export, inbox, keywords, logs, manual,
-               mobile, parsers, profilebook, profiles, stock, training, updater, wallet)
+               mobile, parsers, profilebook, profilematch, profiles, stock, training, updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import LLMClient, installed_models
@@ -77,6 +77,7 @@ def create_app(db_path=None):
                 try:
                     counts = run_sync(config, Store(con()), log=lambda *a, **k: None, progress=progress)
                     parts.append(f"Gmail{' (whole mailbox)' if full else ''}: {summary(counts)}")
+                    profilematch.match_orders(con())
                     progress("Finding missing expense amounts...")
                     try:
                         inbox.fill_missing_amounts(config, Store(con()))
@@ -141,11 +142,45 @@ def create_app(db_path=None):
     @app.get("/orders")
     def orders():
         store = Store(con())
+        profilematch.match_orders(store.db)
         config = Config.from_env()
-        return render_template("orders.html", rows=store.orders(), stats=store.stats(), sync=sync_state,
+        rows = store.orders()
+        return render_template("orders.html", rows=rows, stats=store.stats(), sync=sync_state,
+                               profile_names=[r[0] for r in store.db.execute("SELECT name FROM profiles ORDER BY name")],
+                               profile_counts=_profile_counts(rows),
                                accounts=store.accounts(), configured=bool(config.accounts),
                                training=config.training_mode, labels=store.labels(),
                                label_choices=STATUS_CHOICES, status_counts=status_counts(store.stats()["by_status"]))
+
+    def _profile_counts(rows):
+        counts = {}
+        for o in rows:
+            key = o["profile_name"] or ("?" if o["profile_candidates"] else "")
+            counts[key] = counts.get(key, 0) + 1
+        return counts
+
+    @app.post("/orders/<int:order_id>/profile")
+    def order_profile(order_id):
+        choice = request.form.get("profile", "")
+        c = con()
+        # "__auto__" hands the order back to matching; "" means it belongs to none of your profiles.
+        profilematch.set_profile(c, order_id, None if choice == "__auto__" else choice)
+        if choice == "__auto__":
+            profilematch.match_orders(c)
+        logger.info("order %s profile set to %r by hand", order_id, choice)
+        return redirect(request.form.get("back") or url_for("orders") + f"#order-{order_id}")
+
+    @app.get("/profile-orders")
+    def profile_orders():
+        store = Store(con())
+        profilematch.match_orders(store.db)
+        rows = store.orders()
+        hist = profilematch.history(store.db, rows)
+        pick = request.args.get("profile")
+        used = [h for h in hist.values() if h["orders"] or h["checkouts"]]
+        used.sort(key=lambda h: (-len(h["orders"]), h["profile"]["name"].lower()))
+        return render_template("profile_orders.html", hist=hist, used=used, pick=hist.get(pick), pick_name=pick,
+                               unmatched=[o for o in rows if not o["profile_name"]], total_profiles=len(hist))
 
     def background_rescan(label_id, order):
         config = Config.from_env()
@@ -232,7 +267,10 @@ def create_app(db_path=None):
         rows = [(p, analysis.profile_issues(p), export.same_address(p))
                 for p in c.execute(q, (group,) if group is not None else ())]
         groups, ungrouped = profilebook.groups(c)
-        return render_template("profiles.html", email_groups=emailbook.groups(c)[0], rows=rows, bots=sorted(export.templates(c)), groups=groups,
+        profilematch.match_orders(Store(c).db)
+        order_counts = dict(c.execute("SELECT profile_name, COUNT(*) FROM tracked_orders WHERE profile_name IS NOT NULL"
+                                      " GROUP BY profile_name").fetchall())
+        return render_template("profiles.html", order_counts=order_counts, email_groups=emailbook.groups(c)[0], rows=rows, bots=sorted(export.templates(c)), groups=groups,
                                ungrouped=ungrouped, group=group, total=c.execute("SELECT COUNT(*) FROM profiles").fetchone()[0],
                                fields=profilebook.DISTRIBUTE_FIELDS, addresses=profilebook.saved_addresses(c),
                                states=sorted(A.STATE_NAMES.items()), profiles_json=[dict(p) for p, _, _ in rows],
