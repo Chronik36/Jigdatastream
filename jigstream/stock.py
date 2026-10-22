@@ -16,10 +16,12 @@ import urllib.error
 import urllib.request
 from collections import deque
 from datetime import datetime
+from html import unescape
 from urllib.parse import urlencode, urlparse, parse_qs
 
 from flask import Blueprint, redirect, render_template, request, url_for
 
+from . import db
 from .config import save_env
 
 logger = logging.getLogger("jigstream.stock")
@@ -37,6 +39,8 @@ RECHECK_CHOICES = (0, 15, 30, 60)  # minutes; 0 means off
 TARGET_KEYS = ["9f36aeafbe60771e321a7cc95a78140772ab3e96", "ff457966e64d5e877fdbad070f276d18ecec4a01"]
 TARGET_FIND = "https://redsky.target.com/redsky_aggregations/v1/web/fiats_v1"
 TARGET_PDP = "https://redsky.target.com/redsky_aggregations/v1/web/pdp_fulfillment_v1"
+TARGET_PRODUCT = "https://redsky.target.com/redsky_aggregations/v1/web/pdp_client_v1"
+TARGET_PRICING_STORE = "3991"  # any store works; prices are the same online
 BESTBUY_API = "https://api.bestbuy.com/v1"
 
 RETAILERS = {
@@ -317,15 +321,24 @@ def _bb(path, **params):
         raise
 
 
+BB_SHOW = "sku,name,url,salePrice,regularPrice,image,thumbnailImage"
+
+
+def _bb_info(p):
+    price = _num(p.get("salePrice") or p.get("regularPrice"))
+    return {"name": p.get("name") or "", "image": p.get("image") or p.get("thumbnailImage") or "",
+            "price": f"${price:,.2f}" if price is not None else "", "link": p.get("url") or ""}
+
+
 def check_bestbuy(product, zip_code, radius):
     kind, ident = parse_bestbuy_id(product)
     if kind == "upc":
-        found = _bb(f"products(upc={ident})", show="sku,name,url", format="json").get("products") or []
+        found = _bb(f"products(upc={ident})", show=BB_SHOW, format="json").get("products") or []
         if not found:
             raise StockError("Best Buy has no product with that UPC.")
         info = found[0]
     else:
-        found = _bb(f"products(sku={ident})", show="sku,name,url", format="json").get("products") or []
+        found = _bb(f"products(sku={ident})", show=BB_SHOW, format="json").get("products") or []
         info = found[0] if found else {"sku": ident}
     sku = str(info.get("sku") or ident)
     data = _bb(f"products/{sku}/stores.json", postalCode=zip_code)
@@ -345,10 +358,140 @@ def check_bestbuy(product, zip_code, radius):
     return {"retailer": "bestbuy", "product_id": sku, "title": info.get("name") or f"SKU {sku}",
             "link": info.get("url") or f"https://www.bestbuy.com/site/{sku}.p?skuId={sku}", "stores": stores,
             "quantities": False, "only_in_stock": True,
-            "pickup_ok": data.get("ispuEligible")}
+            "pickup_ok": data.get("ispuEligible"), "info": _bb_info(info) if info.get("name") else None}
 
 
 CHECKERS = {"target": check_target, "bestbuy": check_bestbuy}
+
+
+# --- Product details (picture, name, price) for saved products --------------------------------
+
+def _find(node, keys):
+    """First non-empty value under any of `keys`, searching nested dicts and lists."""
+    if isinstance(node, dict):
+        for k in keys:
+            if node.get(k) not in (None, "", [], {}):
+                return node[k]
+        node = list(node.values())
+    if isinstance(node, list):
+        for v in node:
+            if isinstance(v, (dict, list)):
+                found = _find(v, keys)
+                if found not in (None, ""):
+                    return found
+    return None
+
+
+def target_info(tcin):
+    params = {"tcin": tcin, "pricing_store_id": TARGET_PRICING_STORE, "store_id": TARGET_PRICING_STORE,
+              "has_pricing_store_id": "true", "is_bot": "false"}
+    data = _target_request(TARGET_PRODUCT, params)
+    product = (data.get("data") or {}).get("product") or data
+    title = _find(product, ["title"]) or ""
+    price = _find(product, ["formatted_current_price"])
+    if not price:
+        amount = _num(_find(product, ["current_retail", "reg_retail"]))
+        price = f"${amount:,.2f}" if amount is not None else ""
+    return {"name": unescape(str(title)), "image": _find(product, ["primary_image_url"]) or "",
+            "price": str(price or ""), "link": f"https://www.target.com/p/-/A-{tcin}"}
+
+
+def bestbuy_info(sku):
+    found = _bb(f"products(sku={sku})", show=BB_SHOW, format="json").get("products") or []
+    if not found:
+        raise StockError("Best Buy doesn't know that SKU.")
+    return _bb_info(found[0])
+
+
+def product_id(retailer, product):
+    if retailer == "target":
+        return parse_target_id(product)
+    if retailer == "bestbuy":
+        kind, ident = parse_bestbuy_id(product)
+        if kind == "upc":
+            found = _bb(f"products(upc={ident})", show="sku", format="json").get("products") or []
+            if not found:
+                raise StockError("Best Buy has no product with that UPC.")
+            return str(found[0]["sku"])
+        return ident
+    raise StockError("Only Target and Best Buy products can be saved.")
+
+
+INFO = {"target": target_info, "bestbuy": bestbuy_info}
+
+
+# --- Saved products ---------------------------------------------------------------------------
+
+def saved_path():
+    return os.environ.get("STOCK_SAVED_FILE") or os.path.join(os.path.dirname(db.DB_PATH) or ".", "stock_saved.json")
+
+
+def load_saved():
+    try:
+        with open(saved_path()) as f:
+            items = json.load(f)
+        return items if isinstance(items, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _write_saved(items):
+    path = saved_path()
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(items, f, indent=1)
+    os.replace(tmp, path)
+
+
+def find_saved(retailer, pid):
+    return next((p for p in load_saved() if p["retailer"] == retailer and p["id"] == str(pid)), None)
+
+
+def save_product(retailer, product):
+    """Saves (or refreshes) a product with its picture, name and price. Returns the saved entry."""
+    pid = product_id(retailer, product)
+    try:
+        info = INFO[retailer](pid)
+    except Blocked:
+        raise
+    except StockError as e:
+        logger.info("Couldn't load details for %s %s: %s", RETAILERS[retailer], pid, e)
+        info = {}
+    items = load_saved()
+    old = next((p for p in items if p["retailer"] == retailer and p["id"] == pid), None)
+    entry = old or {"retailer": retailer, "id": pid, "saved": datetime.now().strftime("%b %-d, %Y")}
+    for k in ("name", "image", "price", "link"):
+        if info.get(k):
+            entry[k] = info[k]
+    entry.setdefault("link", "")
+    if info.get("price"):
+        entry["price_when"] = datetime.now().strftime("%b %-d")
+    if not old:
+        items.insert(0, entry)
+    _write_saved(items)
+    logger.info("%s %s %s (%s)", "Refreshed" if old else "Saved", RETAILERS[retailer], pid, entry.get("name") or "no details")
+    return entry
+
+
+def remove_saved(retailer, pid):
+    _write_saved([p for p in load_saved() if not (p["retailer"] == retailer and p["id"] == str(pid))])
+    logger.info("Removed saved %s %s", RETAILERS.get(retailer, retailer), pid)
+
+
+def _update_saved_from_check(result):
+    """A check that came back with fresh details (Best Buy does) keeps the saved name and price current."""
+    info = result.get("info")
+    if not info:
+        return
+    items = load_saved()
+    for p in items:
+        if p["retailer"] == result["retailer"] and p["id"] == result["product_id"]:
+            changed = any(info.get(k) and p.get(k) != info[k] for k in ("name", "image", "price"))
+            if changed:
+                p.update({k: v for k, v in info.items() if v}, price_when=datetime.now().strftime("%b %-d"))
+                _write_saved(items)
+            return
 
 
 def check(retailer, product, zip_code, radius, auto=False):
@@ -376,10 +519,14 @@ def check(retailer, product, zip_code, radius, auto=False):
         for s in result["stores"]:
             s["new"] = s["in_stock"] and s["store_id"] not in before
     _results[cache_key] = (time.time(), result)
+    saved = find_saved(retailer, result["product_id"])
+    if saved and saved.get("name") and not result.get("info"):
+        result["title"] = saved["name"]
     logger.info("Stock check %s %s near %s (%d mi%s): %d of %d stores in stock, %.1fs", RETAILERS[retailer],
                 result["product_id"], zip_code, radius, ", auto" if auto else "", result["in_stock"],
                 len(result["stores"]), time.time() - started)
     _remember(retailer, product, zip_code, radius, result=result)
+    _update_saved_from_check(result)
     return result
 
 
@@ -433,9 +580,47 @@ def stock_page():
     elif run:
         error = "Paste a product link or ID first."
     unsupported = UNSUPPORTED.get(form["retailer"])
-    return render_template("stock.html", form=form, result=result, error=error, blocked=blocked,
-                           retailers=RETAILERS, unsupported=unsupported, recent=list(recent),
-                           has_bb_key=bool(bestbuy_key()), recheck_choices=RECHECK_CHOICES)
+    saved = load_saved()
+    current = result and next((p for p in saved if p["retailer"] == result["retailer"]
+                               and p["id"] == result["product_id"]), None)
+    return render_template("stock.html", form=form, result=result, error=error or request.args.get("error"),
+                           blocked=blocked, retailers=RETAILERS, unsupported=unsupported, recent=list(recent),
+                           has_bb_key=bool(bestbuy_key()), recheck_choices=RECHECK_CHOICES, saved=saved,
+                           current=current)
+
+
+def _back(**extra):
+    keep = {k: request.form.get(k) for k in ("product", "retailer", "zip", "radius") if request.form.get(k)}
+    return redirect(url_for("stock.stock_page", **keep, **extra) + "#saved")
+
+
+@bp.route("/stock/save", methods=["POST"])
+def save_route():
+    retailer = request.form.get("retailer") or detect_retailer(request.form.get("product", ""))
+    if retailer not in RETAILERS:
+        return _back(error="Only Target and Best Buy products can be saved.")
+    try:
+        save_product(retailer, request.form.get("product", ""))
+    except StockError as e:
+        return _back(error=f"Couldn't save that product: {e}")
+    return _back()
+
+
+@bp.route("/stock/saved/<retailer>/<pid>/refresh", methods=["POST"])
+def refresh_saved(retailer, pid):
+    if retailer not in RETAILERS:
+        return _back()
+    try:
+        save_product(retailer, pid)
+    except StockError as e:
+        return _back(error=f"Couldn't refresh that product: {e}")
+    return _back()
+
+
+@bp.route("/stock/saved/<retailer>/<pid>/remove", methods=["POST"])
+def remove_route(retailer, pid):
+    remove_saved(retailer, pid)
+    return _back()
 
 
 @bp.route("/stock/bestbuy-key", methods=["POST"])
