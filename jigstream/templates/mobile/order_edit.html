@@ -1,0 +1,24 @@
+{% extends "mobile/base.html" %}{% block title %}{{"Edit order" if o and o.id else "New order"}}{% endblock %}{% block back %}<a class="back" href="{{url_for('mobile.orders')}}" aria-label="Back">‹</a>{% endblock %}{% block body %}
+{% if o and o.id and o.tracking_number %}{% set url = o|track_url %}<a class="row" href="{{url}}" target="_blank" rel="noopener noreferrer"><b>Track package ↗</b><div class="muted small">{{o.carrier or "Carrier"}} {{o.tracking_number}}</div></a>{% endif %}
+<form method="post"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+<fieldset><legend>Order</legend>
+<label>Store<input name="retailer" value="{{o.retailer or '' if o}}" required></label>
+<div class="two"><label>Order #<input name="order_number" value="{{o.order_number or '' if o}}"></label>
+<label>Date<input type="date" name="order_date" value="{{(o.order_date or '')[:10] if o}}"></label></div>
+<label>Items <span class="muted">(one per line, add x2 for quantity)</span><textarea name="items" rows="3">{% if o %}{% for i in o["items"] %}{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}
+{% endfor %}{% endif %}</textarea></label>
+<div class="two"><label>Total<input name="total" inputmode="decimal" value="{{'%.2f'|format(o.total) if o and o.total is not none else ''}}"></label>
+<label>Currency<input name="currency" value="{{o.currency or 'USD' if o else 'USD'}}" maxlength="3" autocapitalize="characters"></label></div>
+</fieldset>
+<fieldset><legend>Shipping</legend>
+<label>Status<select name="shipping_status">{% set cur = (o.shipping_status if o else "ordered") or "" %}{% if cur not in statuses %}<option value="">{{cur|status_label}}</option>{% endif %}
+{% for s in statuses %}<option value="{{s}}" {{'selected' if s == cur}}>{{s|status_label}}</option>{% endfor %}</select></label>
+<div class="two"><label>Carrier<input name="carrier" value="{{o.carrier or '' if o}}" placeholder="UPS, USPS…"></label>
+<label>Delivery by<input type="date" name="estimated_delivery" value="{{(o.estimated_delivery or '')[:10] if o}}"></label></div>
+<label>Tracking number<input name="tracking_number" value="{{o.tracking_number or '' if o}}" autocapitalize="characters" autocorrect="off"></label>
+<label>Ship to<textarea name="shipping_address" rows="2">{{o.shipping_address or '' if o}}</textarea></label>
+</fieldset>
+<button>Save order</button></form>
+{% if o and o.id %}<p class="muted small" style="margin-top:12px">{% if o.account == "added by hand" %}Added by hand. {% elif o.account %}Found in {{o.account}}. {% endif %}A status you set here stays until you change it.</p>
+<form method="post" action="{{url_for('mobile.order_delete', order_id=o.id)}}" onsubmit="return confirm('Delete this order?')"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button class="danger">Delete order</button></form>{% endif %}
+{% endblock %}
