@@ -5,7 +5,7 @@ HOME_DIR="$HOME/Library/Application Support/OrderTracker"
 
 launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
 rm -f "$HOME/Library/LaunchAgents/$LABEL.plist"
-rm -rf "$HOME/Applications/Order Tracker.app"
+rm -rf "$HOME/Applications/Order Tracker.app" "$HOME/Applications/BotTrack.app"
 
 printf 'Also delete your saved inboxes and order history? (y/N) '
 read -r answer

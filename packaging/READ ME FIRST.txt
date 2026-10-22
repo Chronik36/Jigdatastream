@@ -8,7 +8,7 @@ Install
    then double-click the installer again.
    (Or open Terminal, type "bash " and drag the installer into the window, then press Return.)
 2. The installer sets everything up, downloads the AI model through Ollama (about 5 GB
-   the first time), and opens Order Tracker in its own window. It's in your Applications
+   the first time), and opens BotTrack (the new name for Order Tracker) in its own window. It's in your Applications
    folder and Spotlight; drag it to the Dock to keep it there.
 3. On the Setup page, add each Gmail inbox with an app password (the page explains how).
 
@@ -17,7 +17,7 @@ Install
    free Discord bot and picking the channels.
 
 After that it runs by itself: it starts when you log in and checks your inboxes (including Spam)
-and Discord channels every 4 hours. Open it from Spotlight by typing "Order Tracker".
+and Discord channels every 4 hours. Open it from Spotlight by typing "BotTrack".
 
 Troubleshooting: the dashboard's Logs page shows what the app, each sync, the AI model and the
 installer did, and "Download all logs" makes a zip you can send for help (app passwords are hidden).
