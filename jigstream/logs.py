@@ -19,7 +19,7 @@ from .config import parse_accounts
 
 LOG_DIR = Path(os.environ.get("JIGSTREAM_LOGS", "logs"))
 # Where "Send logs to developer" emails the zip. BOTTRACK_LOGS_TO in .env overrides it.
-DEVELOPER_EMAIL = ""
+DEVELOPER_EMAIL = "jacobbourg13@gmail.com"
 SMTP_HOST = "smtp.gmail.com"
 FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
