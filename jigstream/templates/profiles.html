@@ -149,6 +149,10 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
   </div>
   <div class="vals"><b id="distcount">Selected 0 profiles</b>
     <div class="hint" id="disthelp"></div>
+    <div id="emailfill" style="display:none;margin:8px 0" class="muted">{% if email_groups %}Fill from an email group:
+      <select id="emailgroup" style="margin:0 6px;padding:4px 8px;font-size:12px"><option value="">Choose…</option>{% for g, n in email_groups %}<option value="{{g}}">{{g}} ({{n}})</option>{% endfor %}</select>
+      <label style="font-size:12px"><input type="checkbox" id="emailunused" checked> only addresses not on a profile yet</label>
+      <button type="button" class="ghost" style="padding:4px 10px" onclick="fillEmails()">Fill</button>{% else %}Save lists of addresses on the <a href="/emails">Emails</a> page to fill this from a group.{% endif %}</div>
     <textarea name="values" placeholder="Paste values here, one per line" required></textarea>
     <p class="muted" style="font-size:12px;margin:6px 0 10px">Values go to the ticked profiles in order. If there are fewer values than profiles, the list repeats.</p>
     <label style="display:block"><input type="checkbox" name="billing" checked> Update billing address</label>
@@ -233,6 +237,17 @@ function openProfile(i) {
 function fieldHelp() {
   const r = document.querySelector('#distform input[name=field]:checked');
   document.getElementById('disthelp').textContent = 'Enter ' + r.dataset.label.toLowerCase() + ' to spread over the selected profiles: ' + r.dataset.help + '.';
+  document.getElementById('emailfill').style.display = r.value === 'email' ? '' : 'none';
+}
+function fillEmails() {
+  const g = document.getElementById('emailgroup').value;
+  if (!g) return;
+  const q = new URLSearchParams({group: g, unused: document.getElementById('emailunused').checked ? '1' : '0', download: '0'});
+  fetch('/emails/export?' + q).then(r => r.text()).then(t => {
+    const n = picks().length, lines = t.split('\n').filter(Boolean);
+    document.querySelector('#distform textarea[name=values]').value = lines.slice(0, n).join('\n');
+    if (lines.length < n) alert('That group has ' + lines.length + ' address(es) for ' + n + ' profiles, so some will repeat.');
+  });
 }
 function openDistribute() {
   const n = picks().length;

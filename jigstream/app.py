@@ -8,7 +8,7 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import analysis, carriers, db, discord, engines, export, inbox, logs, parsers, profilebook, profiles, training, updater, wallet
+from . import analysis, carriers, db, discord, emailbook, engines, export, inbox, logs, parsers, profilebook, profiles, training, updater, wallet
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import LLMClient, installed_models
@@ -208,7 +208,7 @@ def create_app(db_path=None):
         rows = [(p, analysis.profile_issues(p), export.same_address(p))
                 for p in c.execute(q, (group,) if group is not None else ())]
         groups, ungrouped = profilebook.groups(c)
-        return render_template("profiles.html", rows=rows, bots=sorted(export.templates(c)), groups=groups,
+        return render_template("profiles.html", email_groups=emailbook.groups(c)[0], rows=rows, bots=sorted(export.templates(c)), groups=groups,
                                ungrouped=ungrouped, group=group, total=c.execute("SELECT COUNT(*) FROM profiles").fetchone()[0],
                                fields=profilebook.DISTRIBUTE_FIELDS, addresses=profilebook.saved_addresses(c),
                                states=sorted(A.STATE_NAMES.items()), profiles_json=[dict(p) for p, _, _ in rows],
@@ -350,6 +350,76 @@ def create_app(db_path=None):
             name = None
         c.commit()
         return redirect(url_for("cards_page", group=name) if name else url_for("cards_page"))
+
+    @app.get("/emails")
+    def emails_page():
+        c = con()
+        group = request.args.get("group")
+        groups, ungrouped = emailbook.groups(c)
+        rows = emailbook.emails(c, group)
+        return render_template("emails.html", emails=rows, groups=groups, ungrouped=ungrouped, group=group,
+                               total=c.execute("SELECT COUNT(*) FROM saved_emails").fetchone()[0],
+                               in_use=sum(1 for r in rows if r["profile"]))
+
+    @app.post("/emails/add")
+    def emails_add():
+        text = request.form.get("lines", "")
+        upload = request.files.get("file")
+        if upload and upload.filename:
+            text += "\n" + upload.read().decode("utf-8", errors="replace")
+        found = emailbook.parse(text)
+        group = request.form.get("new_group", "").strip() or request.form.get("group_name", "").strip()
+        if not found:
+            flash("No email addresses found in what you pasted.")
+            return redirect(request.referrer or url_for("emails_page"))
+        added, dup = emailbook.add(con(), group, found)
+        flash(f"Added {added} address(es)" + (f" to {group}." if group else ".") + (f" {dup} were already there." if dup else ""))
+        return redirect(url_for("emails_page", group=group))
+
+    @app.post("/emails/<int:email_id>/edit")
+    def emails_edit(email_id):
+        error = emailbook.update(con(), email_id, request.form.get("address", "").strip())
+        flash(error or "Saved.")
+        return redirect(request.referrer or url_for("emails_page"))
+
+    @app.post("/emails/bulk")
+    def emails_bulk():
+        c = con()
+        ids = [int(i) for i in request.form.getlist("ids") if i.isdigit()]
+        action = request.form.get("action")
+        if not ids:
+            flash("Tick one or more addresses first.")
+        elif action == "delete":
+            emailbook.delete(c, ids)
+            flash(f"Deleted {len(ids)} address(es).")
+        elif action == "move":
+            emailbook.move(c, ids, request.form.get("new_group", "").strip() or request.form.get("group_name", ""))
+            flash(f"Moved {len(ids)} address(es).")
+        return redirect(request.referrer or url_for("emails_page"))
+
+    @app.post("/emails/groups")
+    def email_groups():
+        c = con()
+        action, name = request.form.get("action"), request.form.get("name", "").strip()
+        if action == "add" and name:
+            c.execute("INSERT OR IGNORE INTO email_groups VALUES (?)", (name,))
+            c.commit()
+        elif action == "rename" and request.form.get("new_name", "").strip():
+            name = request.form["new_name"].strip()
+            emailbook.rename_group(c, request.form.get("name", "").strip(), name)
+        elif action == "delete":
+            emailbook.delete_group(c, name, keep_emails=request.form.get("emails") != "delete")
+            name = None
+        return redirect(url_for("emails_page", group=name) if name else url_for("emails_page"))
+
+    @app.get("/emails/export")
+    def emails_export():
+        group = request.args.get("group", "")
+        text = "\n".join(emailbook.addresses(con(), group, request.args.get("unused") == "1"))
+        if request.args.get("download") == "0":
+            return Response(text, mimetype="text/plain")
+        return Response(text + "\n", mimetype="text/plain", headers={
+            "Content-Disposition": f'attachment; filename="{export.slug(group or "emails")}.txt"'})
 
     @app.post("/profiles/addresses")
     def profile_address_save():
