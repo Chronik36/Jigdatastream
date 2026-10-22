@@ -8,7 +8,7 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import analysis, carriers, db, discord, emailbook, engines, export, inbox, logs, parsers, profilebook, profiles, training, updater, wallet
+from . import analysis, carriers, db, discord, emailbook, engines, export, inbox, logs, parsers, profilebook, profiles, stock, training, updater, wallet
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import LLMClient, installed_models
@@ -36,6 +36,7 @@ TRACK_URLS = {
 def create_app(db_path=None):
     app = Flask(__name__)
     app.secret_key = "local-only"
+    app.register_blueprint(stock.bp)
 
     @app.context_processor
     def nav_flags():
