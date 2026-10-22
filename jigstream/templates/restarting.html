@@ -1,11 +1,11 @@
 {% extends "base.html" %}{% block body %}
 <div class="panel" style="max-width:520px;margin:60px auto;text-align:center">
-<h2>{{what}}</h2><p class="muted" id="msg">Restarting Order Tracker. This page reloads by itself in a few seconds.</p></div>
+<h2>{{what}}</h2><p class="muted" id="msg">Restarting BotTrack. This page reloads by itself in a few seconds.</p></div>
 <script>
 let tries = 0;
 setTimeout(function ping() {
   fetch('/setup', {cache: 'no-store'}).then(r => { if (r.ok) location.href = '/setup#updates'; else throw 0; })
-    .catch(() => { if (++tries < 60) setTimeout(ping, 1000); else document.getElementById('msg').textContent = 'It is taking a while. Open Order Tracker again from Spotlight.'; });
+    .catch(() => { if (++tries < 60) setTimeout(ping, 1000); else document.getElementById('msg').textContent = 'It is taking a while. Open BotTrack again from Spotlight.'; });
 }, 3000);
 </script>
 {% endblock %}

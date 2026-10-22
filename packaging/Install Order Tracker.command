@@ -3,7 +3,7 @@
 # Double-click to run. Safe to run again: it keeps your inboxes and data.
 set -euo pipefail
 
-APP_NAME="Order Tracker"
+APP_NAME="BotTrack"
 HOME_DIR="$HOME/Library/Application Support/OrderTracker"
 LABEL="com.jigdatastream.ordertracker"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
@@ -148,7 +148,8 @@ if [ -f "$ICON_PNG" ]; then
   done
   iconutil -c icns "$ICONSET" -o "$BUNDLE/Contents/Resources/AppIcon.icns" >/dev/null 2>&1 || true
 fi
-# The old browser shortcut from earlier versions, if any, is replaced by the bundle above.
+# Earlier versions were called Order Tracker.
+rm -rf "$HOME/Applications/Order Tracker.app"
 touch "$BUNDLE"
 
 open "$BUNDLE" || open "$URL/orders"

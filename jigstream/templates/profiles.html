@@ -2,17 +2,17 @@
 <style>
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin:16px 0}
 .pcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;position:relative;transition:border-color .15s}
-.pcard:hover{border-color:var(--line-2)}.pcard.warn{box-shadow:inset 3px 0 0 var(--amber)}
+.pcard:hover{border-color:var(--line-2)}.pcard.warn{box-shadow:inset 3px 0 0 var(--orange)}
 .pcard h3{margin:0 0 4px;font-size:16px;color:var(--text);text-transform:none;letter-spacing:-.01em;font-weight:600;display:flex;align-items:center;gap:8px;padding-right:64px}
-.pcard .tag{font-size:11px;font-weight:600;background:var(--gold-soft);color:var(--gold);border-radius:6px;padding:2px 8px}
+.pcard .tag{font-size:11px;font-weight:600;background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:2px 8px}
 .pcard .who{color:var(--muted);font-size:13px;margin-bottom:12px;word-break:break-all}
 .pcard .lbl{color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.06em;margin-top:10px}
 .pcard .same{color:var(--green)}.pcard .icons{position:absolute;top:14px;right:14px;display:flex;gap:10px}
-.pcard .icons form{margin:0}.pcard .icons a,.pcard .icons button{background:none;border:0;cursor:pointer;padding:6px;border-radius:8px;display:flex;color:var(--muted)}
+.pcard .icons form{margin:0}.pcard .icons a,.pcard .icons button{background:none;border:0;cursor:pointer;padding:6px;border-radius:8px;display:flex;color:var(--muted);box-shadow:none}
 .pcard .icons a:hover,.pcard .icons button:hover{background:var(--surface-2);filter:none}
 .pcard svg{width:16px;height:16px}
-.pcard .icons .edit{color:var(--gold)}.pcard .icons .del{color:var(--red)}.pcard .warnicon{color:var(--amber);cursor:help;display:flex;padding:6px}
-.pcard .issues{color:var(--amber);font-size:12px;margin-top:10px}
+.pcard .icons .edit{color:var(--accent)}.pcard .icons .del{color:var(--red)}.pcard .warnicon{color:var(--orange);cursor:help;display:flex;padding:6px}
+.pcard .issues{color:var(--orange);font-size:12px;margin-top:10px}
 .pcard .pick{position:absolute;bottom:14px;right:14px}
 .exportbox{display:block}
 </style>

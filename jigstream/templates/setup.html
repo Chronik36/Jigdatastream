@@ -5,7 +5,7 @@
 <div class="panel">
 <p>Installed version <b>{{(version or "unknown")[:7]}}</b>{% if update.checked_at %} · <span class="muted">last checked {{update.checked_at[:16]|replace("T", " ")}} UTC</span>{% endif %}.
 It checks for a new version by itself every few hours.</p>
-{% if update.error %}<p class="bad">{{update.error}}</p>{% elif update.available %}<p style="color:var(--gold)">A new version is ready: {{update.message}}</p>{% elif update.checked_at %}<p class="ok">You're on the latest version.</p>{% endif %}
+{% if update.error %}<p class="bad">{{update.error}}</p>{% elif update.available %}<p style="color:var(--accent)">A new version is ready: {{update.message}}</p>{% elif update.checked_at %}<p class="ok">You're on the latest version.</p>{% endif %}
 <form class="ghost" method="post" action="/update/check"><button>Check for update</button></form>
 {% if can_update %}<form method="post" action="/update/install" onsubmit="this.querySelector('button').textContent='Updating...'"><button {{"disabled" if not update.available}}>Update now</button></form>
 {% if backups %}<form class="ghost" method="post" action="/update/rollback" onsubmit="return confirm('Go back to the version before the last update?')"><button>Undo last update</button></form>{% endif %}

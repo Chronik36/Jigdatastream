@@ -33,7 +33,7 @@ def name_the_app(icon):
         from AppKit import NSApplication, NSImage
         from Foundation import NSBundle
         info = NSBundle.mainBundle().localizedInfoDictionary() or NSBundle.mainBundle().infoDictionary()
-        info["CFBundleName"] = "Order Tracker"
+        info["CFBundleName"] = "BotTrack"
         if icon.exists():
             NSApplication.sharedApplication().setApplicationIconImage_(NSImage.alloc().initWithContentsOfFile_(str(icon)))
     except Exception:  # cosmetic only
@@ -63,8 +63,8 @@ def main():
     webview.settings["ALLOW_DOWNLOADS"] = True  # logs zip, profile exports
     webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True  # Gmail / Discord setup links
     start = "/orders" if os.environ.get("GMAIL_ACCOUNTS") else "/setup"
-    webview.create_window("Order Tracker", url + start, width=1360, height=880, min_size=(900, 600),
-                          background_color="#09090B", text_select=True)
+    webview.create_window("BotTrack", url + start, width=1360, height=880, min_size=(900, 600),
+                          background_color="#132048", text_select=True)
     logger.info("window opened on %s", url)
     webview.start()
     return 0
