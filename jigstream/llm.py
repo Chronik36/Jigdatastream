@@ -35,15 +35,18 @@ class LLMClient:
         self.api_key = api_key
         self.timeout = timeout
 
-    def chat_json(self, system, user):
+    def chat_json(self, system, user, examples=()):
+        """examples: (email text, correct JSON string) pairs shown to the model before the real email."""
+        messages = [{"role": "system", "content": system}]
+        for example_user, example_answer in examples:
+            messages += [{"role": "user", "content": example_user},
+                         {"role": "assistant", "content": example_answer}]
+        messages.append({"role": "user", "content": user})
         payload = {
             "model": self.model,
             "temperature": 0,
             "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
+            "messages": messages,
         }
         req = urllib.request.Request(
             f"{self.base_url}/chat/completions",

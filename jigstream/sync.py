@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from .extract import extract, looks_like_purchase
 from .llm import LLMClient, LLMError
 from .mail import fetch_emails
+from .training import few_shot
 
 logger = logging.getLogger("jigstream.sync")
 
@@ -25,7 +26,7 @@ def search_days(config, state):
     return config.first_sync_days
 
 
-def process(email, store, llm, config, counts, log):
+def process(email, store, llm, config, counts, log, examples=()):
     if not looks_like_purchase(email):
         store.record_email(email, "skipped")
         counts["skipped"] += 1
@@ -33,7 +34,7 @@ def process(email, store, llm, config, counts, log):
         return
     started = time.monotonic()
     try:
-        result = extract(llm, email, config.max_body_chars)
+        result = extract(llm, email, config.max_body_chars, examples)
     except LLMError as e:
         if "Could not reach" in str(e):
             raise
@@ -66,11 +67,14 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
                 "whole mailbox" if config.full_history else f"days={config.days_back or 'auto'}")
     counts = {"order": 0, "botting_expense": 0, "other": 0, "skipped": 0, "error": 0, "failed_inboxes": []}
     seen = store.seen_ids()
+    examples = few_shot(store) if config.use_examples else []
+    if examples:
+        logger.info("using %d training example(s) in prompts", len(examples))
 
     if emails is not None:
         for email in emails:
             if email.message_id not in seen:
-                process(email, store, llm, config, counts, log)
+                process(email, store, llm, config, counts, log, examples)
         return counts
 
     if not config.accounts:
@@ -92,7 +96,7 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
                 progress(f"Inbox {n} of {len(config.accounts)} ({address}): email {i} of {total['n']}")
                 if email.message_id in seen:
                     continue
-                process(email, store, llm, config, counts, log)
+                process(email, store, llm, config, counts, log, examples)
                 seen.add(email.message_id)
         except LLMError:
             raise

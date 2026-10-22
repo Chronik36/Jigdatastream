@@ -5,9 +5,10 @@ from urllib.parse import quote
 
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
-from . import analysis, db, discord, logs, parsers, profiles
+from . import analysis, db, discord, logs, parsers, profiles, training
 from .config import Config, format_accounts, save_env
-from .llm import installed_models
+from .extract import STATUSES
+from .llm import LLMClient, installed_models
 from .mail import check_login
 from .orderstore import Store
 from .sync import run_sync, summary
@@ -26,6 +27,10 @@ TRACK_URLS = {
 def create_app(db_path=None):
     app = Flask(__name__)
     app.secret_key = "local-only"
+
+    @app.context_processor
+    def nav_flags():
+        return {"config_training": Config.from_env().training_mode}
 
     def con():
         return db.connect(db_path)
@@ -95,8 +100,61 @@ def create_app(db_path=None):
     @app.get("/orders")
     def orders():
         store = Store(con())
+        config = Config.from_env()
         return render_template("orders.html", rows=store.orders(), stats=store.stats(), sync=sync_state,
-                               accounts=store.accounts(), configured=bool(Config.from_env().accounts))
+                               accounts=store.accounts(), configured=bool(config.accounts),
+                               training=config.training_mode, labels=store.labels(),
+                               label_choices=["ordered", "shipped", "delivered", "cancelled", "returned"])
+
+    def background_rescan(label_id, order):
+        config = Config.from_env()
+        store = Store(con())
+        try:
+            llm = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout)
+            training.rescan(config, store, llm, label_id, order)
+        except Exception as e:
+            logger.exception("rescan failed")
+            store.set_rescan_state(label_id, f"Re-scan failed: {e}")
+
+    @app.post("/orders/<int:order_id>/label")
+    def label_order(order_id):
+        status = request.form.get("status", "")
+        store = Store(con())
+        order = store.order(order_id)
+        if not order or status not in STATUSES:
+            flash("Couldn't save that status.")
+            return redirect(url_for("orders"))
+        label_id = store.set_status_manually(order_id, status)
+        logger.info("order %s (%s %s) set to %s by hand", order_id, order["retailer"], order["order_number"], status)
+        threading.Thread(target=background_rescan, args=(label_id, order), daemon=True).start()
+        flash(f"{order['retailer']} {order['order_number'] or ''} set to {status}. Searching your inboxes for its "
+              "emails to learn from; refresh in a minute.")
+        return redirect(url_for("orders") + f"#order-{order_id}")
+
+    @app.get("/training")
+    def training_page():
+        store = Store(con())
+        return render_template("training.html", examples=store.examples(only_corrected=False),
+                               config=Config.from_env(), in_prompt=len(training.few_shot(store)))
+
+    @app.get("/training/export")
+    def training_export():
+        return Response(training.export_jsonl(Store(con())), mimetype="application/x-ndjson",
+                        headers={"Content-Disposition": "attachment; filename=order-tracker-training.jsonl"})
+
+    @app.post("/training/<int:example_id>/delete")
+    def training_delete(example_id):
+        c = con()
+        c.execute("DELETE FROM training_examples WHERE id = ?", (example_id,))
+        c.commit()
+        return redirect(url_for("training_page"))
+
+    @app.post("/setup/training")
+    def set_training():
+        save_env({"TRAINING_MODE": "1" if request.form.get("training") else "0",
+                  "USE_TRAINING_EXAMPLES": "1" if request.form.get("use_examples") else "0"})
+        flash("Training settings saved.")
+        return redirect(url_for("setup") + "#training")
 
     @app.get("/expenses")
     def expenses():

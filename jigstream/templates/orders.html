@@ -7,11 +7,13 @@
 <input id="q" placeholder="Search retailer, item, tracking, address" size="40">
 <select id="f"><option value="">All statuses</option>{% for s, n in stats.by_status.items() %}<option value="{{s}}">{{s|replace("_", " ")}} ({{n}})</option>{% endfor %}</select>
 <table><thead><tr><th>Date</th><th>Retailer / order #</th><th>Items</th><th>Total</th><th>Status</th><th>Tracking</th><th>Ship to</th><th>Inbox</th></tr></thead><tbody>
-{% for o in rows %}{% set status = o.shipping_status or "unknown" %}<tr data-f="{{status}}">
+{% for o in rows %}{% set status = o.shipping_status or "unknown" %}<tr data-f="{{status}}" id="order-{{o.id}}">
 <td>{{o.order_date or "-"}}</td><td><b>{{o.retailer or "-"}}</b><div class="muted">{{o.order_number or ""}}</div></td>
 <td><ul class="items">{% for i in o["items"] %}<li>{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}</li>{% endfor %}</ul></td>
 <td class="num">{{o.total|money(o.currency)}}</td>
-<td><span class="pill s-{{status}}">{{status|replace("_", " ")}}</span>{% if o.estimated_delivery %}<div class="muted">ETA {{o.estimated_delivery}}</div>{% endif %}</td>
+<td><span class="pill s-{{status}}">{{status|replace("_", " ")}}</span>{% if o.status_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}
+{% if training %}<form method="post" action="/orders/{{o.id}}/label" style="display:block;margin:4px 0 0"><select name="status" onchange="this.form.submit()" style="margin:0"><option value="">correct status...</option>{% for c in label_choices %}<option value="{{c}}">{{c}}</option>{% endfor %}</select></form>
+{% set lb = labels.get(o.id) %}{% if lb %}<div class="muted" style="font-size:12px;max-width:220px">{{"Searching..." if lb.rescan == "pending" else lb.rescan}}</div>{% endif %}{% endif %}{% if o.estimated_delivery %}<div class="muted">ETA {{o.estimated_delivery}}</div>{% endif %}</td>
 <td>{% if o.tracking_number %}{% set url = o|track_url %}{% if url %}<a href="{{url}}" target="_blank" rel="noopener">{{o.carrier}} {{o.tracking_number}}</a>{% else %}{{o.carrier or ""}} {{o.tracking_number}}{% endif %}{% else %}-{% endif %}</td>
 <td>{{o.shipping_address or "-"}}</td><td class="muted">{{o.account or ""}}</td></tr>
 {% else %}<tr><td colspan="8" class="muted">No orders yet. Press Sync Gmail.</td></tr>{% endfor %}</tbody></table>

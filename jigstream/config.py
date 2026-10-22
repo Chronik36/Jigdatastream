@@ -80,6 +80,9 @@ class Config:
     llm_timeout: int = 180
     max_body_chars: int = 12000
 
+    training_mode: bool = False  # status dropdowns on Orders; corrections become model examples
+    use_examples: bool = True  # show saved corrections to the model before each email
+
     discord_bot_token: str = ""
     discord_channel_ids: list = field(default_factory=list)  # channels holding bot checkout webhooks
 
@@ -103,6 +106,8 @@ class Config:
         c.llm_api_key = env("LLM_API_KEY", c.llm_api_key)
         c.llm_timeout = int(env("LLM_TIMEOUT", c.llm_timeout))
         c.max_body_chars = int(env("MAX_BODY_CHARS", c.max_body_chars))
+        c.training_mode = env("TRAINING_MODE", "0") == "1"
+        c.use_examples = env("USE_TRAINING_EXAMPLES", "1") == "1"
         c.discord_bot_token = env("DISCORD_BOT_TOKEN", "").strip()
         c.discord_channel_ids = [x.strip() for x in env("DISCORD_CHANNEL_IDS", "").split(",") if x.strip()]
         return c

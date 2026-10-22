@@ -52,6 +52,16 @@ The token is saved only on this Mac.</p>
 <form method="post" action="/setup/discord/remove" onsubmit="return confirm('Disconnect Discord?')"><button>Disconnect Discord</button></form>
 {% endif %}
 
+<h3 id="training">Training mode</h3>
+<p>For improving the AI. When it's on, each order on the Orders page gets a status dropdown. Setting the
+right status searches your inboxes for that order's emails, re-reads them, and saves the matching ones as
+examples (<a href="/training">see them here</a>). The examples are shown to the model before each new email,
+so it learns how your retailers word things. Example emails are stored on this Mac.</p>
+<form method="post" action="/setup/training" style="display:block">
+<label><input type="checkbox" name="training" {{"checked" if config.training_mode}}> Show status dropdowns on Orders</label><br>
+<label><input type="checkbox" name="use_examples" {{"checked" if config.use_examples}}> Show saved examples to the model</label><br>
+<button>Save</button></form>
+
 <h3>AI model</h3>
 {% if models is none %}<p class="bad">Ollama isn't running. Open the Ollama app, then reload this page.</p>
 {% else %}
