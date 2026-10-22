@@ -83,6 +83,8 @@ The token is saved only on this Mac.</p>
 <form method="post" action="/setup/discord/remove" onsubmit="return confirm('Disconnect Discord?')"><button class="danger">Disconnect Discord</button></form>
 {% endif %}
 
+{% include "phone_setup.html" %}
+
 <h3 id="training">Training mode</h3>
 <p>For improving the AI. Each order on the Orders page has a status dropdown (on unless you switch it off here). Setting the
 right status searches your inboxes for that order's emails, re-reads them, and saves the matching ones as

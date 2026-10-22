@@ -1,0 +1,13 @@
+{% extends "mobile/base.html" %}{% block title %}Orders{% endblock %}
+{% block action %}<a class="add" href="{{url_for('mobile.order_new')}}">+ Add</a>{% endblock %}{% block body %}
+<form class="search" method="get"><input type="search" name="q" value="{{q}}" placeholder="Search store, item, tracking"><input type="hidden" name="status" value="{{status}}"></form>
+<div class="chips">{% for s, l in [("", "All"), ("ordered", "Ordered"), ("in_transit", "On the way"), ("delivered", "Delivered"), ("cancelled", "Cancelled"), ("returned", "Returned")] %}
+<a class="{{'on' if status == s}}" href="{{url_for('mobile.orders', status=s or None, q=q or None)}}">{{l}}</a>{% endfor %}</div>
+<ul class="list">{% for o in rows %}{% set st = o.shipping_status or "unknown" %}
+<li><a class="row" href="{{url_for('mobile.order_edit', order_id=o.id)}}">
+<div class="top"><b>{{o.retailer or "Unknown store"}}</b><span class="amt">{{o.total|money(o.currency)}}</span></div>
+<div class="muted small">{{o.order_number or ""}}{% if o.order_number and o.order_date %} · {% endif %}{{o.order_date or ""}}</div>
+{% if o["items"] %}<div class="small" style="margin:4px 0">{% for i in o["items"][:3] %}{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% if o["items"]|length > 3 %} +{{o["items"]|length - 3}} more{% endif %}</div>{% endif %}
+<div class="top" style="margin-top:6px"><span class="pill s-{{st}}">{{st|status_label}}</span>{% if o.tracking_number %}<span class="muted small">{{o.carrier or ""}} {{o.tracking_number[-8:]}}</span>{% endif %}</div>
+</a></li>{% else %}<li class="muted">No orders{{" match" if q or status else " yet"}}.</li>{% endfor %}</ul>
+{% endblock %}
