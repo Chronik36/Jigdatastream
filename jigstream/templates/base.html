@@ -77,7 +77,7 @@ pre{background:var(--surface);border:1px solid var(--line);border-radius:var(--r
 </style></head><body>
 {% set path = request.path %}
 <nav><span class="brand"><img src="{{url_for('static', filename='mark.png')}}" alt="" width="30" height="30" style="border-radius:8px;margin:-4px 0">Bot<span style="color:var(--accent);margin-left:-10px">Track</span></span>
-{% for href, label in [("/", "Dashboard"), ("/orders", "Orders"), ("/inbox", "Inbox"), ("/expenses", "Expenses"), ("/checkouts", "Checkouts"), ("/profiles", "Profiles"), ("/cards", "Cards")] + ([("/training", "Training")] if config_training else []) %}
+{% for href, label in [("/", "Dashboard"), ("/orders", "Orders"), ("/inbox", "Inbox"), ("/expenses", "Expenses"), ("/checkouts", "Checkouts"), ("/profiles", "Profiles"), ("/cards", "Cards"), ("/emails", "Emails")] + ([("/training", "Training")] if config_training else []) %}
 <a class="nl{{' on' if (path == href if href == '/' else path.startswith(href))}}" href="{{href}}">{{label}}</a>{% endfor %}
 <span class="grow"></span>
 <a class="nl{{' on' if path.startswith('/logs')}}" href="/logs">Logs</a>

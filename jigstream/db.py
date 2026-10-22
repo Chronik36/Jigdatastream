@@ -1,7 +1,7 @@
 import os
 import sqlite3
 
-from . import discord, orderstore, wallet
+from . import discord, emailbook, orderstore, wallet
 
 DB_PATH = os.environ.get("JIGSTREAM_DB", os.path.join("data", "jigstream.db"))
 
@@ -52,4 +52,5 @@ def connect(path=None):
     con.executescript(orderstore.SCHEMA)
     con.executescript(discord.SCHEMA)
     con.executescript(wallet.SCHEMA)
+    con.executescript(emailbook.SCHEMA)
     return con
