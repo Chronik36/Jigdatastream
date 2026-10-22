@@ -104,3 +104,23 @@ def test_in_transit_label_and_tracking_links(tmp_path):
     assert page.count(">In transit</span>") == 2 and ">Shipped<" not in page
     assert "ups.com/track?tracknum=1Z999AA10123456784" in page
     assert "parcelsapp.com/en/tracking/XY123456789" in page  # unknown carrier still gets a link
+
+
+def test_not_an_order_removes_it_and_keeps_emails_read(tmp_path, monkeypatch):
+    from jigstream import app as appmod, db, inbox
+    from jigstream.extract import normalize
+    from jigstream.mail import Email
+    from jigstream.orderstore import Store
+    monkeypatch.setenv("GMAIL_ACCOUNTS", "")
+    path = str(tmp_path / "n.db")
+    store = Store(db.connect(path))
+    mail = Email("<spam@x>", "Promo <p@x.com>", "Your order of savings!", "2026-10-20T10:00:00+00:00", "x", "me@gmail.com")
+    store.save(mail, normalize({"kind": "order", "retailer": "Promo", "order_number": "SAVE20"}, mail))
+    order_id = store.orders()[0]["id"]
+    started = []
+    monkeypatch.setattr(inbox, "label_emails", lambda *a: started.append(a))
+    client = appmod.create_app(path).test_client()
+    client.post(f"/orders/{order_id}/label", data={"status": "not_an_order"})
+    store = Store(db.connect(path))
+    assert store.orders() == [] and "<spam@x>" in store.seen_ids()
+    assert store.db.execute("SELECT kind FROM emails").fetchone()[0] == "not_an_order"

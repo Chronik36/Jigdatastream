@@ -20,8 +20,9 @@ from .sync import run_sync, summary
 logger = logging.getLogger("jigstream.app")
 
 # Statuses offered in the Orders dropdown, with how each status is shown.
-STATUS_CHOICES = ["ordered", "in_transit", "out_for_delivery", "delivered", "cancelled", "returned"]
-STATUS_LABELS = {"shipped": "In transit", "in_transit": "In transit", "out_for_delivery": "Out for delivery"}
+STATUS_CHOICES = ["ordered", "in_transit", "out_for_delivery", "delivered", "cancelled", "returned", "not_an_order"]
+STATUS_LABELS = {"shipped": "In transit", "in_transit": "In transit", "out_for_delivery": "Out for delivery",
+                 "not_an_order": "Not an order (remove)"}
 # Any carrier, when the email didn't say which: a free page that detects the carrier from the number.
 ANY_CARRIER_URL = "https://parcelsapp.com/en/tracking/{}"
 
@@ -156,6 +157,18 @@ def create_app(db_path=None):
         status = request.form.get("status", "")
         store = Store(con())
         order = store.order(order_id)
+        if order and status == "not_an_order":
+            mails = store.dismiss_order(order_id)
+            logger.info("order %s (%s %s) marked not an order; %d email(s)", order_id, order["retailer"],
+                        order["order_number"], len(mails))
+            config = Config.from_env()
+            if mails and config.accounts:  # the AI re-reads them and learns they're neither order nor expense
+                llm = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout)
+                threading.Thread(target=inbox.label_emails, args=(config, Store(con()), llm, mails, "other"),
+                                 daemon=True).start()
+            flash(f"Removed {order['retailer'] or 'that order'} {order['order_number'] or ''}. Its emails are saved as "
+                  "\"not an order\" examples so the AI learns to skip emails like it.")
+            return redirect(url_for("orders"))
         if not order or status not in STATUSES:
             flash("Couldn't save that status.")
             return redirect(url_for("orders"))

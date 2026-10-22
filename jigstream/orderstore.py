@@ -288,6 +288,21 @@ class Store:
             self.set_rescan_state(label, "Set from your phone")
         return True
 
+    def dismiss_order(self, order_id):
+        """'Not an order': remove a scraped order and mark its emails as nothing to keep. The emails stay
+        recorded as read, so syncs don't pick them up again. Returns them for training."""
+        row = self.db.execute("SELECT message_ids FROM tracked_orders WHERE id = ?", (order_id,)).fetchone()
+        if row is None:
+            return []
+        ids = json.loads(row["message_ids"] or "[]")
+        mails = [dict(r) for r in self.db.execute(
+            "SELECT message_id, account, sender, subject, date FROM emails WHERE message_id IN (%s)"
+            % ",".join("?" * len(ids)), ids)] if ids else []
+        self.db.executemany("UPDATE emails SET kind = 'not_an_order' WHERE message_id = ?", [(i,) for i in ids])
+        self.db.execute("DELETE FROM tracked_orders WHERE id = ?", (order_id,))
+        self.db.commit()
+        return mails
+
     def delete_order(self, order_id):
         self.db.execute("DELETE FROM tracked_orders WHERE id = ?", (order_id,))
         self.db.commit()
