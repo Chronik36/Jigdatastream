@@ -1,11 +1,13 @@
-{% extends "base.html" %}{% block body %}
-<div class="panel" style="max-width:520px;margin:60px auto;text-align:center">
-<h2>{{what}}</h2><p class="muted" id="msg">Restarting BotTrack. This page reloads by itself in a few seconds.</p></div>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BotTrack</title><link rel="icon" href="{{url_for('static', filename='icon.png')}}">
+<style>html,body{margin:0;background:#0a1230}</style></head><body>
+{% with logo=url_for('static', filename='loader/logo.png'), lines=url_for('static', filename='loader/lines.png'),
+        title=what, msg="Restarting BotTrack. It opens again by itself in a few seconds.", shown=True %}{% include "loader.html" %}{% endwith %}
 <script>
 let tries = 0;
 setTimeout(function ping() {
   fetch('/setup', {cache: 'no-store'}).then(r => { if (r.ok) location.href = '/setup#updates'; else throw 0; })
-    .catch(() => { if (++tries < 60) setTimeout(ping, 1000); else document.getElementById('msg').textContent = 'It is taking a while. Open BotTrack again from Spotlight.'; });
+    .catch(() => { if (++tries < 60) setTimeout(ping, 1000); else document.getElementById('loader-msg').textContent = 'It is taking a while. Open BotTrack again from Spotlight.'; });
 }, 3000);
 </script>
-{% endblock %}
+</body></html>

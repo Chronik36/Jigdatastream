@@ -85,3 +85,28 @@ def test_release_updates_need_no_token(tmp_path, monkeypatch):
     assert (app_dir / "jigstream/app.py").read_text() == "# new"
     assert updater.installed_version(app_dir) == "build-9-bbbbbbb"
     assert updater.build_number("0123abc") == 0
+
+
+def test_update_shows_the_loading_screen(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(appmod.updater, "can_self_update", lambda: True)
+    monkeypatch.setattr(appmod.updater, "install", lambda: None)
+    monkeypatch.setattr(appmod.updater, "restart_soon", lambda: None)
+    monkeypatch.setattr(appmod.updater, "backups", lambda: ["app-1"])
+    app = appmod.create_app(str(tmp_path / "s.db"))
+    c = app.test_client()
+
+    setup = c.get("/setup").get_data(as_text=True)
+    assert 'id="loader"' in setup and 'data-loader="Installing the update"' in setup
+    page = c.post("/update/install").get_data(as_text=True)
+    assert 'class="loader on"' in page and "Updated" in page and "/static/loader/lines.png" in page
+    for name in ("logo.png", "lines.png"):
+        assert c.get(f"/static/loader/{name}").status_code == 200
+
+
+def test_window_splash_is_self_contained():
+    from jigstream.window import splash
+
+    page = splash("Starting BotTrack", "Getting things <ready>.")
+    assert page.count("data:image/png;base64,") == 2 and "/static/" not in page
+    assert "Getting things &lt;ready&gt;." in page and 'class="loader on"' in page

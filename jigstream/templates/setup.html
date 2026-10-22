@@ -7,8 +7,8 @@
 It checks for a new version by itself every few hours.</p>
 {% if update.error %}<p class="bad">{{update.error}}</p>{% elif update.available %}<p style="color:var(--accent)">A new version is ready: {{update.message}}</p>{% elif update.checked_at %}<p class="ok">You're on the latest version.</p>{% endif %}
 <form class="ghost" method="post" action="/update/check"><button>Check for update</button></form>
-{% if can_update %}<form method="post" action="/update/install" onsubmit="this.querySelector('button').textContent='Updating...'"><button {{"disabled" if not update.available}}>Update now</button></form>
-{% if backups %}<form class="ghost" method="post" action="/update/rollback" onsubmit="return confirm('Go back to the version before the last update?')"><button>Undo last update</button></form>{% endif %}
+{% if can_update %}<form method="post" action="/update/install" data-loader="Installing the update"><button {{"disabled" if not update.available}}>Update now</button></form>
+{% if backups %}<form class="ghost" method="post" action="/update/rollback" data-loader="Going back to the previous version" data-loader-msg="BotTrack restarts by itself in a few seconds." onsubmit="return confirm('Go back to the version before the last update?')"><button>Undo last update</button></form>{% endif %}
 {% else %}<p class="muted">This copy runs from a developer checkout, so it doesn't update itself.</p>{% endif %}
 <p class="muted">Updating replaces only the app's code. Your inboxes, settings, orders and logs stay as they are, and the previous version is kept so you can undo.</p>
 {% if update_settings.source == "branch" %}<details><summary class="muted" style="cursor:pointer">Developer updates from {{update_settings.repo}} ({{update_settings.branch}})</summary>

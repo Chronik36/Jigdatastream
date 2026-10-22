@@ -21,6 +21,7 @@ from pathlib import Path
 
 HOME = Path.home()
 DATA = Path(os.environ.get("BOTTRACK_HOME", HOME / "Library/Application Support/BotTrack"))
+RESTART_MARK = DATA / ".restarting"  # left by an update or model switch for the next launch
 OLD_HOME = HOME / "Library/Application Support/OrderTracker"
 OLD_AGENT = "com.jigdatastream.ordertracker"
 AI_PORT = 11435  # not Ollama's usual 11434, so a separately installed Ollama never clashes
@@ -271,6 +272,7 @@ def main():
     from .app import create_app
 
     def relaunch():
+        RESTART_MARK.touch()  # the next launch opens on the loading screen, then Setup
         ai.terminate()
         engines.stop_mlx()
         subprocess.Popen(["/bin/sh", "-c", f"sleep 2; open -n '{bundle}'"], start_new_session=True)
@@ -312,8 +314,10 @@ def main():
     threading.Thread(target=timers, daemon=True).start()
 
     from .window import open_window
+    restarted = RESTART_MARK.exists()
+    RESTART_MARK.unlink(missing_ok=True)
     try:
-        open_window(f"http://127.0.0.1:{port}", bundle / "Contents/Resources/AppIcon.icns")
+        open_window(f"http://127.0.0.1:{port}", bundle / "Contents/Resources/AppIcon.icns", restarted=restarted)
     finally:
         engines.stop_mlx()
         ai.terminate()
