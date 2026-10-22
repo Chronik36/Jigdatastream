@@ -85,4 +85,19 @@ pre{background:var(--surface);border:1px solid var(--line);border-radius:var(--r
 <main>
 {% if update and update.available and not path.startswith('/setup') %}<div class="banner"><span>A new version of BotTrack is ready{% if update.message %}: <span class="muted">{{update.message}}</span>{% endif %}</span><span class="grow" style="flex:1"></span>
 <form method="post" action="/update/install"><button>Update now</button></form></div>{% endif %}
+{% if ai and ai.error %}<div class="banner" style="border-color:rgba(255,107,122,.45);background:rgba(255,107,122,.08)">{{ai.error}}</div>
+{% elif ai and not ai.ready %}<div class="banner" id="aibar"><span><span id="aimsg">{{ai.message}}</span> · <b id="aipct">{{ai.percent ~ "%" if ai.percent is not none else ""}}</b>
+<span class="muted">Syncing starts when it's ready. The first time, this downloads about 9 GB.</span></span>
+<span style="flex:1;min-width:120px;height:6px;border-radius:99px;background:var(--line);overflow:hidden"><span id="aifill" style="display:block;height:100%;width:{{ai.percent or 0}}%;background:var(--grad);transition:width .4s"></span></span></div>
+<script>
+(function poll() {
+  fetch('/api/ai', {cache: 'no-store'}).then(r => r.json()).then(s => {
+    if (s.ready || s.error) return location.reload();
+    document.getElementById('aimsg').textContent = s.message;
+    document.getElementById('aipct').textContent = s.percent == null ? '' : s.percent + '%';
+    document.getElementById('aifill').style.width = (s.percent || 0) + '%';
+    setTimeout(poll, 2000);
+  }).catch(() => setTimeout(poll, 4000));
+})();
+</script>{% endif %}
 {% for m in get_flashed_messages() %}<div class="flash">{{m}}</div>{% endfor %}{% block body %}{% endblock %}</main></body></html>

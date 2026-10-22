@@ -122,3 +122,53 @@ def test_check_compares_commits(tmp_path):
     def private(path):
         raise RuntimeError("Can't see the update source.")
     assert "Can't see" in updater.check(tmp_path, api=private)["error"]
+
+
+def test_mac_app_moves_old_install(tmp_path, monkeypatch):
+    from jigstream import macapp
+    monkeypatch.setattr(macapp, "HOME", tmp_path)
+    old, new = tmp_path / "OrderTracker", tmp_path / "BotTrack"
+    (old / "data").mkdir(parents=True)
+    (old / "data" / "jigstream.db").write_text("orders")
+    (old / ".env").write_text("GMAIL_ACCOUNTS=a@b.com:pw\nLLM_MODEL=llama3.1:8b\nPORT=8765\n")
+    (tmp_path / "Applications" / "Order Tracker.app").mkdir(parents=True)
+    calls = []
+    assert macapp.migrate_old_install(new, old, run=lambda *a, **k: calls.append(a))
+    assert (new / "data" / "jigstream.db").read_text() == "orders"
+    assert "GMAIL_ACCOUNTS" in (new / ".env").read_text() and "llama3.1" not in (new / ".env").read_text()
+    assert not old.exists() and not (tmp_path / "Applications" / "Order Tracker.app").exists()
+    assert "bootout" in calls[0][0]
+    assert not macapp.migrate_old_install(new, old)  # only once
+
+
+def test_mac_app_reuses_model_from_ollama(tmp_path):
+    from jigstream import macapp
+    src, dst = tmp_path / "ollama", tmp_path / "models"
+    m = src / "manifests/registry.ollama.ai/huihui_ai/qwen3-abliterated/14b"
+    m.parent.mkdir(parents=True)
+    m.write_text(json.dumps({"config": {"digest": "sha256:aa"}, "layers": [{"digest": "sha256:bb"}]}))
+    (src / "blobs").mkdir()
+    (src / "blobs" / "sha256-aa").write_text("cfg")
+    (src / "blobs" / "sha256-bb").write_text("weights")
+    assert macapp.copy_model_from_ollama("huihui_ai/qwen3-abliterated:14b", dst, src)
+    assert (dst / "blobs" / "sha256-bb").read_text() == "weights"
+    assert (dst / "manifests/registry.ollama.ai/huihui_ai/qwen3-abliterated/14b").exists()
+    assert not macapp.copy_model_from_ollama("qwen3:8b", dst, src)
+
+
+def test_first_update_and_undo_in_mac_app(tmp_path, monkeypatch):
+    code = tmp_path / "BotTrack" / "app"  # nothing there yet: the app runs the code inside its bundle
+    monkeypatch.setenv("BOTTRACK_CODE_DIR", str(code))
+    updater.install(code, sha="new333", blob=_zipball("new"), pip=False)
+    assert (code / "jigstream" / "app.py").read_text() == "new"
+    updater.rollback(code)  # back to the bundled code
+    assert not code.exists()
+
+
+def test_ai_progress_banner(tmp_path):
+    app = create_app(str(tmp_path / "a.db"))
+    app.config["AI_STATE"] = {"ready": False, "message": "Downloading the AI model", "percent": 42, "error": None}
+    c = app.test_client()
+    assert 'id="aibar"' in c.get("/orders").get_data(as_text=True) and c.get("/api/ai").get_json()["percent"] == 42
+    app.config["AI_STATE"].update(ready=True)
+    assert 'id="aibar"' not in c.get("/orders").get_data(as_text=True)

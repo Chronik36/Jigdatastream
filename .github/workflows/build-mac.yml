@@ -1,0 +1,26 @@
+name: Build BotTrack for Mac
+on:
+  push:
+    branches: [main, claude/order-tracker-llm]
+    paths: ["jigstream/**", "packaging/**", "requirements.txt", ".github/workflows/build-mac.yml"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-14  # Apple Silicon
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - run: bash packaging/build_app.sh dist
+      - name: Smoke test the bundled Python and code
+        run: |
+          D=$(mktemp -d); hdiutil attach dist/BotTrack.dmg -mountpoint "$D" -nobrowse
+          R="$D/BotTrack.app/Contents/Resources"
+          PYTHONPATH="$R/app" "$R/python/bin/python3" -c "import flask, webview, jigstream.macapp, jigstream.app; jigstream.app.create_app('/tmp/t.db'); print('imports ok')"
+          "$R/ollama/ollama" --version || true
+          hdiutil detach "$D"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BotTrack-dmg
+          path: dist/BotTrack.dmg
+          retention-days: 30

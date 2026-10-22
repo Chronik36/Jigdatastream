@@ -74,14 +74,19 @@ the layout comes from a profile previously imported from that bot (card values a
 stored, so the keys survive as a template). Card numbers are never stored; uploading the original
 bot export alongside an export copies its card details into the download in memory only.
 
-## Mac app and updates
+## Mac app (BotTrack.app) and updates
 
-`python -m jigstream.window` opens the dashboard in a native window (pywebview/WebKit); the
-installer wraps it in `~/Applications/Order Tracker.app`. `jigstream/updater.py` compares the
-installed `VERSION` (written by `packaging/build_zip.sh`) with `UPDATE_BRANCH` (default `main`) of
-`UPDATE_REPO` on GitHub, every `UPDATE_CHECK_HOURS` (default 6) and from Setup. Installing swaps
-only the `app/` folder, keeps the old one in `backups/` for "Undo last update", then exits so
-launchd restarts it. A private repo needs `GITHUB_TOKEN` (fine-grained, Contents read-only).
+`packaging/build_app.sh` (run on Apple Silicon by `.github/workflows/build-mac.yml`) builds a
+self-contained `BotTrack.app` and `BotTrack.dmg`: a standalone Python with Flask and pywebview,
+this code, and the Ollama engine. `jigstream/macapp.py` runs it all while the window is open:
+the dashboard on localhost, the bundled engine on port 11435 with models in
+`~/Library/Application Support/BotTrack/models` (reusing a model already in `~/.ollama` via APFS
+clones), timed syncs and update checks. It also moves data over from the old installer version.
+
+`jigstream/updater.py` compares the running `VERSION` with `UPDATE_BRANCH` (default `main`) of
+`UPDATE_REPO`; in the app, updates are unpacked to the data folder (`app/`, with packages in
+`pydeps/`), so the bundle is never modified, and "Undo last update" falls back to older code.
+A private repo needs `GITHUB_TOKEN` (fine-grained, Contents read-only).
 
 ## Tuning parsers
 Bots change embed layouts. Field-name aliases live in `jigstream/parsers.py` (`ALIASES`) and profile
