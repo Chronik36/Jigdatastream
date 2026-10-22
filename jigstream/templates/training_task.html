@@ -1,0 +1,80 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.tk-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}.tk-two .panel{margin:0 0 20px}
+.tk textarea{min-height:110px;margin-bottom:10px}
+.tk pre{white-space:pre-wrap;word-break:break-word;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;margin:0 0 10px;font-size:13px}
+.tk td.io{max-width:420px;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+</style>
+<div class="tk">
+<p><a href="/training">← All tasks</a></p>
+<h2>{{t.name}}</h2>
+{% if active %}<p><span class="pill s-delivered">Trained</span> <span class="muted">Answered by your model trained on {{active.base_model.split('/')[-1]}}, with {{[2, examples|length]|min}} example(s) as a reminder.</span></p>
+{% else %}<p class="muted">Answered by the model from Setup, with {{in_prompt}} of your examples shown to it first.</p>{% endif %}
+
+<div class="tk-two">
+<div class="panel">
+<h3 style="margin-top:0">Try it</h3>
+<form method="post" action="/training/tasks/{{t.id}}/try" style="display:block">
+  <textarea name="input" placeholder="Paste something for this task to work on" required>{{tried_input}}</textarea>
+  <button>Run</button>
+</form>
+{% if tried_error %}<div class="banner" style="border-color:rgba(255,107,122,.45);background:rgba(255,107,122,.08)">{{tried_error}}</div>{% endif %}
+{% if tried is not none %}
+<p class="muted" style="margin:6px 0">The model said:</p><pre>{{tried}}</pre>
+<form method="post" action="/training/tasks/{{t.id}}/examples" style="display:block">
+  <input type="hidden" name="input" value="{{tried_input}}">
+  <p class="muted" style="margin:6px 0">Fix the answer if it's wrong, then save it as an example:</p>
+  <textarea name="output">{{tried}}</textarea>
+  <button class="ghost">Save as example</button>
+</form>{% endif %}
+</div>
+
+<div class="panel">
+<h3 style="margin-top:0">Task settings</h3>
+<form method="post" action="/training/tasks/{{t.id}}/edit" style="display:block">
+  <input name="name" value="{{t.name}}" style="width:100%">
+  <textarea name="instructions" placeholder="What should the model do?">{{t.instructions}}</textarea>
+  <label class="muted">Answers are <select name="answer"><option value="text">plain text</option>
+    <option value="json" {{'selected' if t.answer == 'json'}}>JSON (fields)</option></select></label>
+  <button class="ghost">Save</button>
+</form>
+<form method="post" action="/training/tasks/{{t.id}}/delete" onsubmit="return confirm('Delete this task, its examples and any trained models?')"><button class="danger">Delete task</button></form>
+</div>
+</div>
+
+<div class="panel" id="examples">
+<h3 style="margin-top:0">Examples ({{examples|length}})</h3>
+<form method="post" action="/training/tasks/{{t.id}}/examples" style="display:block">
+<div class="tk-two"><textarea name="input" placeholder="Input" required></textarea>
+{% if t.answer == 'json' %}<textarea name="output" placeholder='The right answer as JSON, e.g. {"site": "Nike"}' required></textarea>
+{% else %}<textarea name="output" placeholder="The right answer" required></textarea>{% endif %}</div>
+<button>Add example</button></form>
+<form method="post" action="/training/tasks/{{t.id}}/import" enctype="multipart/form-data">
+  <input type="file" name="file" accept=".csv,.jsonl,.json,.ndjson"><button class="ghost">Import CSV or JSONL</button></form>
+{% if examples %}<a class="btn ghost" href="/training/tasks/{{t.id}}/export">Export (.jsonl)</a>{% endif %}
+<p class="muted" style="margin-top:0">CSV: an <b>input</b> and an <b>output</b> column (or just two columns). JSONL: one
+<code>{"input": ..., "output": ...}</code> per line, or chat-style <code>{"messages": [...]}</code>.</p>
+<table><thead><tr><th>Input</th><th>Right answer</th><th></th></tr></thead><tbody>
+{% for e in examples %}<tr><td class="io">{{e.input[:600]}}{% if e.input|length > 600 %}…{% endif %}</td><td class="io">{{e.output[:600]}}</td>
+<td><form method="post" action="/training/tasks/{{t.id}}/examples/{{e.id}}/delete"><button class="danger">Delete</button></form></td></tr>
+{% else %}<tr><td colspan="3" class="muted">No examples yet. Add one above, import a file, or run the task and save its answer.</td></tr>{% endfor %}
+</tbody></table>
+</div>
+
+<div class="panel" id="run">
+<h3 style="margin-top:0">Run over a file</h3>
+<p class="muted">Answer up to 1,000 inputs at once: a CSV with an <b>input</b> column (or the first column), or a text file with one per line. You get a CSV back.</p>
+{% if run.running and run.task == t.id %}<div class="banner"><span id="runmsg">Answered {{run.done}} of {{run.total}}</span></div>
+<script>setInterval(()=>fetch('/api/training').then(r=>r.json()).then(s=>{if(!s.run.running)return location.reload();
+document.getElementById('runmsg').textContent='Answered '+s.run.done+' of '+s.run.total}),3000)</script>
+{% else %}
+<form method="post" action="/training/tasks/{{t.id}}/run" enctype="multipart/form-data">
+  <input type="file" name="file" accept=".csv,.txt" required><button class="ghost">Run</button></form>
+{% if run.csv and run.task == t.id %}<a class="btn" href="/training/run/download">Download results ({{run.done}} answered{{", " ~ run.errors ~ " failed" if run.errors}})</a>{% endif %}
+{% endif %}
+</div>
+
+{% with n=examples|length, active_path=(active.path if active else None), use_url="/training/tasks/" ~ t.id ~ "/adapter" %}{% include "_finetune.html" %}{% endwith %}
+{% if active %}<form method="post" action="/training/tasks/{{t.id}}/adapter"><button class="ghost">Stop using the trained model</button></form>{% endif %}
+</div>
+{% endblock %}

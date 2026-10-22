@@ -29,14 +29,27 @@ def parse_json(text):
 
 
 class LLMClient:
-    def __init__(self, base_url, model, api_key="ollama", timeout=180):
+    def __init__(self, base_url, model, api_key="ollama", timeout=180, adapter=None):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key
         self.timeout = timeout
+        self.adapter = adapter  # a LoRA adapter folder from the Training page (MLX engine only)
 
     def chat_json(self, system, user, examples=()):
         """examples: (email text, correct JSON string) pairs shown to the model before the real email."""
+        content = self._chat(system, user, examples, json_mode=True)
+        try:
+            return parse_json(content)
+        except json.JSONDecodeError as e:
+            logger.warning("model %s returned unusable output: %s", self.model, content[:2000])
+            raise LLMError(f"Model did not return JSON: {content[:300]}") from e
+
+    def chat_text(self, system, user, examples=()):
+        """A plain-text reply, with any <think> block removed."""
+        return re.sub(r"<think>.*?</think>", "", self._chat(system, user, examples), flags=re.S).strip()
+
+    def _chat(self, system, user, examples=(), json_mode=False):
         messages = [{"role": "system", "content": system}]
         for example_user, example_answer in examples:
             messages += [{"role": "user", "content": example_user},
@@ -46,12 +59,11 @@ class LLMClient:
             # (parse_json still strips any <think> block that slips through).
             user = f"{user}\n/no_think"
         messages.append({"role": "user", "content": user})
-        payload = {
-            "model": self.model,
-            "temperature": 0,
-            "response_format": {"type": "json_object"},
-            "messages": messages,
-        }
+        payload = {"model": self.model, "temperature": 0, "messages": messages}
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        if self.adapter:
+            payload["adapters"] = self.adapter
         req = urllib.request.Request(
             f"{self.base_url}/chat/completions",
             data=json.dumps(payload).encode(),
@@ -69,11 +81,16 @@ class LLMClient:
                 f"Could not reach the local model at {self.base_url} ({e}). Is Ollama running?"
             ) from e
         try:
-            content = body["choices"][0]["message"]["content"]
-            return parse_json(content)
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            return body["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError) as e:
             logger.warning("model %s returned unusable output: %s", self.model, str(body)[:2000])
             raise LLMError(f"Model did not return JSON: {str(body)[:300]}") from e
+
+
+def from_config(config):
+    """The client for the model chosen on Setup (with its trained adapter, if one is in use)."""
+    return LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout,
+                     adapter=config.llm_adapter or None)
 
 
 def installed_models(base_url, timeout=5):

@@ -1,0 +1,36 @@
+{# Fine-tune panel for one task. Needs: key, adapters, trainable, mlx_ok, ft, ft_here, min_examples, n (examples),
+   active_path (the adapter in use, if any), use_url (POST adapter_id to use one). #}
+<div class="panel" id="train">
+<h3 style="margin-top:0">Train a model for this (optional)</h3>
+<p class="muted">Examples only guide the model. Training changes it: BotTrack fine-tunes a small abliterated Qwen3 model on
+your examples, right on this Mac and for free. It makes a small add-on (a LoRA adapter) and never changes the original.
+On 16 GB this works for 4B models and usually 8B; 14B is too big to train. Syncing pauses while it trains.</p>
+{% if ft.running %}
+<div class="banner" id="ftbar"><span id="ftmsg">{{ft.progress}}</span><span style="flex:1"></span>
+{% if ft.iters %}<b id="ftpct">{{ (100 * ft.iter // ft.iters) }}%</b>{% endif %}
+<form method="post" action="/training/train/stop"><button class="danger">Stop</button></form></div>
+<script>setInterval(()=>fetch('/api/training').then(r=>r.json()).then(s=>{if(!s.running)return location.reload();
+document.getElementById('ftmsg').textContent=s.progress;const p=document.getElementById('ftpct');if(p&&s.iters)p.textContent=Math.floor(100*s.iter/s.iters)+'%'}),3000)</script>
+{% elif ft_here and ft.error %}<div class="banner" style="border-color:rgba(255,107,122,.45);background:rgba(255,107,122,.08)">Last training stopped: {{ft.error}}</div>
+{% endif %}
+{% if not mlx_ok %}<p class="muted">Training needs Apple's MLX engine, which runs on Apple Silicon Macs only.</p>
+{% elif n < min_examples %}<p class="muted">Add at least {{min_examples}} examples to train ({{n}} so far). 50 or more works much better.</p>
+{% elif not trainable %}<p class="muted">Couldn't find a 4B or 8B abliterated MLX model on Hugging Face just now. Check the internet connection and reload.</p>
+{% else %}
+<form method="post" action="/training/train/{{key}}" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+  <select name="base">{% for m in trainable %}<option value="{{m}}">{{m}}</option>{% endfor %}</select>
+  <label class="muted">Steps <input type="number" name="iters" min="20" max="2000" placeholder="auto" style="width:90px"></label>
+  <button {{'disabled' if ft.running}}>Train on {{n}} examples</button>
+</form>
+<p class="muted" style="margin-top:0">The first run downloads the model (2 to 5 GB). Training takes a few minutes for small sets, up to an hour for large ones.</p>
+{% endif %}
+{% if adapters %}
+<table><thead><tr><th>Trained model</th><th>Examples</th><th>Final loss</th><th>Made</th><th></th></tr></thead><tbody>
+{% for a in adapters %}<tr>
+<td><b>{{a.base_model.split('/')[-1]}}</b>{% if a.path == active_path %} <span class="pill s-delivered">In use</span>{% endif %}</td>
+<td>{{a.examples}}</td><td>{{ "%.3f"|format(a.loss) if a.loss is not none else "-" }}</td><td>{{a.created_at[:10]}}</td>
+<td>{% if a.path != active_path %}<form method="post" action="{{use_url}}"><input type="hidden" name="adapter_id" value="{{a.id}}"><button class="ghost">Use this</button></form>{% endif %}
+<form method="post" action="/training/adapters/{{a.id}}/delete" onsubmit="return confirm('Delete this trained model?')"><button class="danger">Delete</button></form></td></tr>
+{% endfor %}</tbody></table>
+{% endif %}
+</div>

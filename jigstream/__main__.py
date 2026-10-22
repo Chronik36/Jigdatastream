@@ -6,7 +6,7 @@ import sys
 from . import db, discord
 from .config import Config
 from .logs import setup_logging
-from .llm import LLMClient, LLMError
+from .llm import LLMError, from_config as llm_for
 from .orderstore import Store
 from .sync import run_sync, summary
 
@@ -39,7 +39,7 @@ def main(argv=None):
         return
     try:
         if args.command == "check":
-            llm = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout)
+            llm = llm_for(config)
             reply = llm.chat_json("Reply with JSON only.", 'Return {"ok": true}')
             print(f"Model {config.llm_model} at {config.llm_base_url} replied: {reply}")
             return

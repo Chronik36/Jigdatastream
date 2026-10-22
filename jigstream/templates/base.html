@@ -201,8 +201,7 @@ body .fl{color:#7884b3}
 } %}
 {% set sections = [
   ("Overview", [("/", "Dashboard", "dash")]),
-  ("Tracking", [("/orders", "Orders", "orders"), ("/profile-orders", "Profile orders", "profiles"), ("/inbox", "Inbox", "inbox"), ("/expenses", "Expenses", "expenses"), ("/bank", "Bank", "bank")]
-               + ([("/training", "Training", "training")] if config_training else [])),
+  ("Tracking", [("/orders", "Orders", "orders"), ("/profile-orders", "Profile orders", "profiles"), ("/inbox", "Inbox", "inbox"), ("/expenses", "Expenses", "expenses"), ("/bank", "Bank", "bank"), ("/training", "Training", "training")]),
   ("Bot tools", [("/checkouts", "Checkouts", "checkouts"), ("/profiles", "Profiles", "profiles"), ("/cards", "Cards", "cards"), ("/emails", "Emails", "emails"), ("/stock", "Stock", "stock"), ("/keywords", "Keywords", "keywords")]),
 ] %}
 {% set footer = [("/manual", "Manual", "manual"), ("/logs", "Logs", "logs"), ("/setup", "Setup", "setup")] %}

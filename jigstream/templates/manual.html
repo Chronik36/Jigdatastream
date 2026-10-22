@@ -104,7 +104,7 @@ of the page. On a narrow window the sidebar hides behind the <b>☰</b> menu but
   "Inbox: read your Gmail inside BotTrack and teach the AI.",
   "Expenses: what you spend on botting (proxies, bots, groups, servers).",
   "Bank: which order or receipt each card charge paid for.",
-  "Training: emails the AI learned from. Only shown while Training mode is on.",
+  "Training: teach the AI any task, including how it reads your emails.",
   "Checkouts: every checkout your bots reported.",
   "Profiles: your bot profiles, groups, Mass Distribute and export.",
   "Cards: your payment cards, stored encrypted.",
@@ -482,14 +482,39 @@ is open on the Mac.</p>
 
 <section id="training" data-title="Training">
 <h2>Training</h2>
-<div class="where">Sidebar → Tracking → <b>Training</b> (only while Training mode is on)</div>
-<p>The emails the AI has learned from: ones you labelled on Inbox, and ones found when you corrected a status on Orders. The corrected
-ones are shown to the AI before each new email, so it learns how your retailers word things.</p>
+<div class="where">Sidebar → Tracking → <b>Training</b></div>
+<p>Teach the AI on this Mac any job, not just reading emails: sorting Discord checkout messages, pulling the size and price out of
+a pasted product page, tagging raffle results, whatever comes up. Each job is a <b>task</b>. The built-in <b>Email reader</b> is one too.</p>
 {{ fig("training", "The Training page.", [
-  "Export the corrected examples as a .jsonl file, for training a model later.",
+  "Email reader: the built-in task that reads your inbox. It learns from Inbox labels and order corrections.",
+  "Your own tasks, with how many examples each has and whether it's trained.",
+  "New task: a name, plain instructions, and whether answers are plain text or JSON fields."]) }}
+<h4 id="task">Teaching a task</h4>
+<p>Examples are the teaching: an input and the answer you want. The newest ones (up to 6) are shown to the AI before each new input,
+so a new example helps on the very next run. The fastest way to collect them is to run the task, fix its answer, and press
+<b>Save as example</b>.</p>
+{{ fig("training-task", "A task's page.", [
+  "Try it: paste something and press Run to see the AI's answer. Fix it and save it as an example.",
+  "Add an example by hand.",
+  "Import many at once: a CSV with input and output columns, or a JSONL file.",
+  "Run over a file: answer up to 1,000 inputs from a CSV or text file and download the results.",
+  "Train: pick a 4B or 8B model and train it on your examples (needs 10 or more).",
+  "Trained models: which one is in use. Use, switch back, or delete any of them."]) }}
+<h4 id="finetune">Training a model (fine-tuning)</h4>
+<p>Examples guide the AI but don't change it. <b>Train</b> does: BotTrack fine-tunes a small abliterated Qwen3 model on your examples,
+right on this Mac with Apple's MLX engine, for free. It makes a small add-on file (a LoRA adapter, tens of MB) and never changes the
+original model. A trained task answers with its own model from then on.</p>
+<div class="tip">50 or more examples train much better than 10. Delete examples with wrong answers first: the model learns exactly what you give it.</div>
+<div class="warn">On a 16 GB Mac this works for 4B models and usually 8B. The 14B model is too big to train, so a trained task runs on a
+smaller model that knows your task well. While training runs, syncing pauses and the main AI is unloaded to make room. The first run
+downloads the model (2 to 5 GB).</div>
+<h4 id="training-email">The Email reader</h4>
+{{ fig("training-email", "Training → Email reader.", [
+  "Export the corrected examples as a .jsonl file.",
   "You said: the right answer.",
   "Model said: what the AI answered. Green means it was already right, red means it got it wrong.",
-  "Delete an example that's wrong, so the AI doesn't learn from it."]) }}
+  "Delete an example that's wrong, so the AI doesn't learn from it.",
+  "Train an email reader on these examples. Once trained, Use this switches email syncing to it (BotTrack restarts its AI). Go back to the 14B model any time."]) }}
 </section>
 
 <section id="logs" data-title="Logs">

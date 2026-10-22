@@ -1,10 +1,14 @@
 {% extends "base.html" %}{% block body %}
-<h2>Training examples</h2>
-<p class="muted">Emails found after you corrected an order's status. Rows with a corrected answer are used as
+<p><a href="/training">← All tasks</a></p>
+<h2>Email reader</h2>
+<p class="muted">Emails you labelled on the Inbox page or found after you corrected an order's status. Rows with a corrected answer are used as
 examples ({{in_prompt}} shown to the model before each email{% if not config.use_examples %}, but that's switched off on Setup{% endif %}).
 Delete any that are wrong.</p>
+{% if config.llm_adapter %}<div class="banner"><span>New emails are read by your trained email reader on {{config.llm_model.split('/')[-1]}}.</span><span style="flex:1"></span>
+<form method="post" action="/setup/engine"><input type="hidden" name="engine" value="ollama"><input type="hidden" name="model" value="huihui_ai/qwen3-abliterated:14b"><button class="ghost">Go back to qwen3-abliterated:14b</button></form></div>{% endif %}
 <p><a href="/training/export"><button>Export corrected examples (.jsonl)</button></a>
-<span class="muted">for fine-tuning a model later</span></p>
+<span class="muted">for fine-tuning elsewhere</span></p>
+{% with n=email_n, active_path=config.llm_adapter, use_url="/training/email/use" %}{% include "_finetune.html" %}{% endwith %}
 <table><thead><tr><th>Email</th><th>You said</th><th>Model said</th><th>Used</th><th></th></tr></thead><tbody>
 {% for e in examples %}<tr>
 <td><b>{{e.subject or "-"}}</b><div class="muted">{{e.sender}} · {{(e.email_date or "")[:10]}}</div></td>
@@ -12,6 +16,6 @@ Delete any that are wrong.</p>
 <td class="{{'ok' if e.model_was_right == 1 else ('bad' if e.model_was_right == 0 else 'muted')}}">{{e.model_status or "-"}}</td>
 <td>{{"yes" if e.corrected else "no (not about that status)"}}</td>
 <td><form method="post" action="/training/{{e.id}}/delete"><button class="danger">Delete</button></form></td></tr>
-{% else %}<tr><td colspan="5" class="muted">No examples yet. Turn on Training mode on Setup, then correct an order's status on the Orders page.</td></tr>{% endfor %}
+{% else %}<tr><td colspan="5" class="muted">No examples yet. Label emails on the Inbox page, or correct an order's status on the Orders page.</td></tr>{% endfor %}
 </tbody></table>
 {% endblock %}
