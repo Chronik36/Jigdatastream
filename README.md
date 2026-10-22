@@ -57,6 +57,16 @@ there is one, otherwise one built for UPS, USPS, FedEx, DHL or OnTrac.
 
 JSON is at `/api/orders` and `/api/expenses`.
 
+## Discord checkouts
+Instead of exporting webhook JSON by hand, the app can read your bots' checkout webhooks straight from Discord.
+On the Setup page, paste the token of a Discord bot you create (free, in the Developer Portal, with
+**Message Content Intent** on), add it to your server with the link shown, and tick the channels to read.
+Each sync reads new messages: the first pull covers the last year, then it resumes after the last message read.
+Embeds go through the same parsers as imported webhook JSON, as does JSON pasted in a message or attached as a
+`.json` file. Every message is also kept raw in `discord_messages`, so after improving the parsers you can run
+`python -m jigstream reparse-discord` without fetching anything again. `python -m jigstream discord` runs a
+Discord-only sync.
+
 ## Tuning parsers
 Bots change embed layouts. Field-name aliases live in `jigstream/parsers.py` (`ALIASES`) and profile
 column aliases in `jigstream/profiles.py` (`FIELD_ALIASES`). Add real samples under `samples/` and extend.

@@ -11,8 +11,12 @@ Install
    the first time), and opens the dashboard in your browser.
 3. On the Setup page, add each Gmail inbox with an app password (the page explains how).
 
-After that it runs by itself: it starts when you log in and checks your inboxes every
-4 hours, including Spam. Open it from Spotlight by typing "Order Tracker".
+4. Optional: on the same Setup page, connect Discord so your bots' checkout webhooks
+   (and JSON posted in those channels) are read in. The page walks you through making a
+   free Discord bot and picking the channels.
+
+After that it runs by itself: it starts when you log in and checks your inboxes (including Spam)
+and Discord channels every 4 hours. Open it from Spotlight by typing "Order Tracker".
 
 Troubleshooting: the dashboard's Logs page shows what the app, each sync, the AI model and the
 installer did, and "Download all logs" makes a zip you can send for help (app passwords are hidden).

@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
-from . import analysis, db, logs, parsers, profiles
+from . import analysis, db, discord, logs, parsers, profiles
 from .config import Config, format_accounts, save_env
 from .llm import installed_models
 from .mail import check_login
@@ -37,14 +37,28 @@ def create_app(db_path=None):
         sync_state["last"] = text
 
     def background_sync(full):
+        config = Config.from_env()
+        config.full_history = full
+        parts = []
         try:
-            config = Config.from_env()
-            config.full_history = full
-            counts = run_sync(config, Store(con()), log=lambda *a, **k: None, progress=progress)
-            sync_state["last"] = f"Last Gmail sync{' (whole mailbox)' if full else ''}: {summary(counts)}"
-        except Exception as e:
-            logger.exception("Gmail sync failed")
-            sync_state["last"] = f"Gmail sync failed: {e}"
+            if config.discord_bot_token and config.discord_channel_ids:
+                progress("Reading Discord channels...")
+                try:
+                    d = discord.sync_channels(con(), discord.DiscordClient(config.discord_bot_token),
+                                              config.discord_channel_ids, config.first_sync_days, log=progress)
+                    parts.append(f"Discord: {d['checkouts']} new checkouts from {d['messages']} messages"
+                                 + (f", {len(d['failed'])} channel(s) failed (see Setup)" if d["failed"] else "") + ".")
+                except Exception as e:
+                    logger.exception("Discord sync failed")
+                    parts.append(f"Discord sync failed: {e}.")
+            if config.accounts:
+                try:
+                    counts = run_sync(config, Store(con()), log=lambda *a, **k: None, progress=progress)
+                    parts.append(f"Gmail{' (whole mailbox)' if full else ''}: {summary(counts)}")
+                except Exception as e:
+                    logger.exception("Gmail sync failed")
+                    parts.append(f"Gmail sync failed: {e}")
+            sync_state["last"] = "Last sync. " + " ".join(parts)
         finally:
             sync_state["running"] = False
 
@@ -122,7 +136,9 @@ def create_app(db_path=None):
 
     def start_sync(full=False):
         """Start a background sync unless one is running. run.py also calls this on a timer."""
-        if sync_state["running"] or not Config.from_env().accounts:
+        config = Config.from_env()
+        has_discord = bool(config.discord_bot_token and config.discord_channel_ids)
+        if sync_state["running"] or not (config.accounts or has_discord):
             return False
         sync_state["running"] = True
         sync_state["last"] = "Starting Gmail sync..."
@@ -134,8 +150,9 @@ def create_app(db_path=None):
     @app.post("/sync/gmail")
     def sync():
         full = request.form.get("full") == "1"
-        if not Config.from_env().accounts:
-            flash("Add a Gmail inbox first.")
+        config = Config.from_env()
+        if not config.accounts and not (config.discord_bot_token and config.discord_channel_ids):
+            flash("Add a Gmail inbox or Discord channels first.")
             return redirect(url_for("setup"))
         if start_sync(full):
             flash("Whole-mailbox backfill started. It can take hours; already processed mail is skipped, "
@@ -147,8 +164,50 @@ def create_app(db_path=None):
     def setup():
         config = Config.from_env()
         models = installed_models(config.llm_base_url)
+        bot, bot_id, channels, discord_error = None, None, [], None
+        if config.discord_bot_token:
+            try:
+                client = discord.DiscordClient(config.discord_bot_token)
+                me = client.me()
+                bot, bot_id = me.get("username"), me.get("id")
+                channels = client.channels()
+            except discord.DiscordError as e:
+                discord_error = str(e)
         return render_template("setup.html", accounts=[a for a, _ in config.accounts], config=config,
-                               models=models, synced={a["address"]: a for a in Store(con()).accounts()})
+                               models=models, synced={a["address"]: a for a in Store(con()).accounts()},
+                               bot=bot, bot_id=bot_id, channels=channels, discord_error=discord_error,
+                               chosen=set(config.discord_channel_ids), channel_states=discord.channel_states(con()))
+
+    @app.post("/setup/discord/token")
+    def set_discord_token():
+        token = request.form.get("token", "").strip()
+        if token.lower().startswith("bot "):
+            token = token[4:].strip()
+        try:
+            name = discord.DiscordClient(token).me().get("username")
+        except discord.DiscordError as e:
+            flash(str(e))
+            return redirect(url_for("setup") + "#discord")
+        save_env({"DISCORD_BOT_TOKEN": token})
+        logger.info("Discord bot connected: %s", name)
+        flash(f"Connected as {name}. Now tick the channels your bots post checkouts to.")
+        return redirect(url_for("setup") + "#discord")
+
+    @app.post("/setup/discord/channels")
+    def set_discord_channels():
+        ids = [i for i in request.form.getlist("channel") if i.isdigit()]
+        save_env({"DISCORD_CHANNEL_IDS": ",".join(ids)})
+        logger.info("Discord channels set: %s", ids)
+        flash(f"Reading {len(ids)} channel(s). The first pull covers the last year of messages.")
+        start_sync()
+        return redirect(url_for("setup") + "#discord")
+
+    @app.post("/setup/discord/remove")
+    def remove_discord():
+        save_env({"DISCORD_BOT_TOKEN": "", "DISCORD_CHANNEL_IDS": ""})
+        logger.info("Discord disconnected")
+        flash("Discord disconnected. Checkouts already read stay on the dashboard.")
+        return redirect(url_for("setup"))
 
     @app.post("/setup/inbox")
     def add_inbox():
