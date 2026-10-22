@@ -10,6 +10,7 @@ WORK="$(mktemp -d)"
 APP="$WORK/BotTrack.app"
 RES="$APP/Contents/Resources"
 mkdir -p "$APP/Contents/MacOS" "$RES/app" "$OUT"
+OUT="$(cd "$OUT" && pwd)"
 
 echo "==> Python"
 curl -fsSL "$PY_URL" | tar -xz -C "$RES"   # unpacks to Resources/python
@@ -21,7 +22,7 @@ rm -rf "$RES/python/lib/python3.12/test" "$RES/python/lib/python3.12/idlelib" "$
 
 echo "==> App code"
 git -C "$ROOT" archive HEAD jigstream run.py requirements.txt | tar -x -C "$RES/app"
-git -C "$ROOT" rev-parse HEAD > "$RES/app/VERSION"
+echo "${BOTTRACK_BUILD:-$(git -C "$ROOT" rev-parse HEAD)}" > "$RES/app/VERSION"  # build-N-sha on CI
 
 echo "==> AI engine"
 mkdir -p "$RES/ollama"
@@ -58,3 +59,9 @@ cp "$ROOT/packaging/READ ME FIRST.txt" "$DMG_DIR/"
 rm -f "$OUT/BotTrack.dmg"
 hdiutil create -volname BotTrack -srcfolder "$DMG_DIR" -fs HFS+ -format UDZO -ov "$OUT/BotTrack.dmg" >/dev/null
 du -sh "$APP" "$OUT/BotTrack.dmg"
+
+# The app code on its own, for in-app updates (published with each release).
+CODE="$WORK/code/bottrack"; mkdir -p "$CODE"
+cp -R "$ROOT/jigstream" "$ROOT/run.py" "$ROOT/requirements.txt" "$CODE/"
+find "$CODE" -name "__pycache__" -prune -exec rm -rf {} +
+rm -f "$OUT/bottrack-code.zip"; (cd "$WORK/code" && zip -qr "$OUT/bottrack-code.zip" bottrack)

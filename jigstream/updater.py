@@ -1,4 +1,8 @@
-"""Self-update from GitHub: check the update branch for a newer commit, download it, swap it in.
+"""Self-update: check the public releases repository for a newer build, download its code, swap it in.
+
+Every build of the main branch is published as a GitHub Release in a small public repository that
+holds only releases, so no token is needed to check or update. (Developers can instead follow a
+branch of the private code repository with UPDATE_SOURCE=branch and a GITHUB_TOKEN.)
 
 Only the app code folder is replaced. Settings (.env), the database (data/) and logs live
 next to it and are never touched. The old code is kept in backups/ so an update can be rolled back.
@@ -28,13 +32,57 @@ relaunch = None  # set by the Mac app: how to start again after an update
 API = "https://api.github.com"
 KEEP_BACKUPS = 1  # only the version before the last update is kept, for "Undo last update"
 
-state = {"checked_at": None, "available": False, "latest": None, "message": "", "error": None, "installing": False}
+state = {"checked_at": None, "available": False, "latest": None, "message": "", "error": None, "installing": False,
+         "download_url": None}
+
+
+RELEASES_REPO = "Chronik36/BotTrack-releases"
+CODE_ASSET = "bottrack-code.zip"
 
 
 def settings():
     env = os.environ.get
-    return {"repo": env("UPDATE_REPO", "Chronik36/Jigdatastream"), "branch": env("UPDATE_BRANCH", "main"),
+    return {"source": env("UPDATE_SOURCE", "releases"), "releases": env("UPDATE_RELEASES_REPO", RELEASES_REPO),
+            "repo": env("UPDATE_REPO", "Chronik36/Jigdatastream"), "branch": env("UPDATE_BRANCH", "main"),
             "token": env("GITHUB_TOKEN", "").strip()}
+
+
+def build_number(version):
+    """'build-42-abc1234' -> 42; anything else (an older commit-id version) -> 0."""
+    parts = (version or "").split("-")
+    return int(parts[1]) if len(parts) > 1 and parts[0] == "build" and parts[1].isdigit() else 0
+
+
+def _latest_release(s):
+    try:
+        rel = json.loads(_get(f"{API}/repos/{s['releases']}/releases/latest", None))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise RuntimeError("No BotTrack release has been published yet.") from e
+        raise RuntimeError(f"GitHub answered {e.code}") from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Couldn't reach GitHub: {e.reason}") from e
+    asset = next((a for a in rel.get("assets", []) if a["name"] == CODE_ASSET), None)
+    if not asset:
+        raise RuntimeError("The latest release has no app code attached.")
+    return rel["tag_name"], asset["browser_download_url"], (rel.get("body") or rel.get("name") or "").strip().splitlines()[0:1]
+
+
+def check_release(app_dir=APP_DIR, latest_release=None):
+    s = settings()
+    current = installed_version(app_dir)
+    state.update(checked_at=datetime.now(timezone.utc).isoformat(timespec="seconds"), error=None)
+    try:
+        tag, url, title = (latest_release or _latest_release)(s)
+        newer = tag != current and build_number(tag) > build_number(current)
+        state.update(available=newer, latest=tag, download_url=url,
+                     message=(title[0][:120] if title else tag) if newer else "")
+        logger.info("update check: installed %s, latest release %s, update %s",
+                    current[:20] or "unknown", tag, "available" if newer else "not needed")
+    except Exception as e:
+        state.update(error=str(e))
+        logger.warning("update check failed: %s", e)
+    return state
 
 
 def installed_version(app_dir=APP_DIR):
@@ -52,7 +100,7 @@ def can_self_update(app_dir=APP_DIR):
 
 
 def _get(url, token, accept="application/vnd.github+json", timeout=30):
-    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "OrderTracker-updater",
+    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "BotTrack-updater",
                                                "X-GitHub-Api-Version": "2022-11-28"})
     if token:
         req.add_header("Authorization", f"Bearer {token}")
@@ -75,8 +123,10 @@ def _api(path, s):
 
 
 def check(app_dir=APP_DIR, api=None):
-    """Compare the installed commit with the update branch. Updates `state` and returns it."""
+    """Look for a newer version. Updates `state` and returns it."""
     s = settings()
+    if s["source"] != "branch" and api is None:
+        return check_release(app_dir)
     api = api or (lambda path: _api(path, s))
     current = installed_version(app_dir)
     state.update(checked_at=datetime.now(timezone.utc).isoformat(timespec="seconds"), error=None)
@@ -105,6 +155,11 @@ def check(app_dir=APP_DIR, api=None):
 
 
 def _download(sha, s):
+    if s["source"] != "branch":
+        url = state.get("download_url") or check_release().get("download_url")
+        if not url:
+            raise RuntimeError(state.get("error") or "No update found.")
+        return _get(url, None, accept="application/octet-stream", timeout=300)
     return _get(f"{API}/repos/{s['repo']}/zipball/{sha}", s["token"], timeout=120)
 
 
