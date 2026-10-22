@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block body %}
+<h2>Setup</h2>
+
+<h3>Gmail inboxes</h3>
+{% if accounts %}<table><tr><th>Inbox</th><th>Last sync</th><th></th></tr>
+{% for a in accounts %}{% set s = synced.get(a) %}<tr><td>{{a}}</td>
+<td class="muted">{{(s.last_synced_at[:16]|replace("T", " ")) if s and s.last_synced_at else "not yet"}}{% if s and s.backfilled_at %}, whole mailbox done{% endif %}</td>
+<td><form method="post" action="/setup/inbox/remove" onsubmit="return confirm('Stop syncing {{a}}?')"><input type="hidden" name="address" value="{{a}}"><button>Remove</button></form></td></tr>{% endfor %}</table>
+{% else %}<p class="muted">No inboxes yet.</p>{% endif %}
+
+<p>To add an inbox, Gmail needs an <b>app password</b>, a 16-letter code that lets this app read mail (read-only)
+without your real password:</p>
+<ol>
+<li>Turn on <a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener">2-Step Verification</a> for the account, if it isn't already.</li>
+<li>Open <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">App passwords</a>, type a name like "Order tracker", and press Create.</li>
+<li>Paste the 16-letter code below. Repeat for each inbox.</li>
+</ol>
+<form method="post" action="/setup/inbox" style="display:block">
+<input type="email" name="address" placeholder="you@gmail.com" required size="28">
+<input type="password" name="password" placeholder="app password" required size="22" autocomplete="off">
+<button>Check and add</button></form>
+<p class="muted">The password is checked with Gmail, then saved only on this Mac. Your mail never leaves this computer.</p>
+
+<h3>AI model</h3>
+{% if models is none %}<p class="bad">Ollama isn't running. Open the Ollama app, then reload this page.</p>
+{% else %}
+<p>Ollama is running. {% if config.llm_model in models or (config.llm_model ~ ":latest") in models %}<span class="ok">Using {{config.llm_model}}.</span>{% else %}<span class="bad">{{config.llm_model}} isn't downloaded yet; run the installer again, or pick another model.</span>{% endif %}</p>
+{% if models %}<form method="post" action="/setup/model"><select name="model">{% for m in models %}<option {{"selected" if m == config.llm_model}}>{{m}}</option>{% endfor %}</select><button>Use this model</button></form>{% endif %}
+<p class="muted">An 8B model suits a Mac with 16 GB of memory.</p>
+{% endif %}
+{% endblock %}

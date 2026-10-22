@@ -2,11 +2,15 @@
 
 import email
 import imaplib
+import logging
 import re
 from dataclasses import dataclass
 from email import policy
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
+
+
+logger = logging.getLogger("jigstream.mail")
 
 
 @dataclass
@@ -104,6 +108,26 @@ def _batches(items, size):
         yield items[i : i + size]
 
 
+def check_login(config, address, password):
+    """Try an IMAP login; return None if it works, else a message to show."""
+    try:
+        imap = imaplib.IMAP4_SSL(config.imap_host, timeout=20)
+    except OSError as e:
+        return f"Could not reach Gmail: {e}"
+    try:
+        imap.login(address, password)
+        return None
+    except imaplib.IMAP4.error as e:
+        logger.warning("login check failed for %s: %s", address, e)
+        return ("Gmail rejected that address and app password. Use a 16-letter app password "
+                "(not your normal password), and make sure 2-Step Verification is on.")
+    finally:
+        try:
+            imap.logout()
+        except Exception:
+            pass
+
+
 def spam_folder(imap):
     """The Spam folder's name, found by its \\Junk flag since Gmail localizes it."""
     status, data = imap.list()
@@ -161,6 +185,7 @@ def fetch_emails(config, address, password, days=None, skip_ids=(), on_total=Non
         try:
             imap.login(address, password)
         except imaplib.IMAP4.error as e:
+            logger.error("Gmail login failed for %s: %s", address, e)
             raise RuntimeError(f"Gmail login failed for {address}: check the app password ({e})") from e
         skip = set(skip_ids)
         folders = [(config.mailbox, config.search_query + since)]
@@ -173,8 +198,10 @@ def fetch_emails(config, address, password, days=None, skip_ids=(), on_total=Non
             if status != "OK":
                 if folder == config.mailbox:
                     raise RuntimeError(f"Could not open mailbox {folder} for {address}")
+                logger.info("%s: folder %s not available, skipping it", address, folder)
                 continue  # no Spam folder visible over IMAP: carry on without it
             plan.append((folder, _new_uids(imap, query, skip, address)))
+            logger.info("%s %s: %d new matching emails (query: %s)", address, folder, len(plan[-1][1]), query)
         if config.max_emails:
             left, capped = config.max_emails, []
             for folder, uids in plan:

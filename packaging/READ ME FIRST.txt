@@ -1,0 +1,24 @@
+Order Tracker
+=============
+
+Install
+1. Double-click "Install Order Tracker.command".
+   If macOS says it can't be opened because it's from an unidentified developer:
+   open System Settings > Privacy & Security, scroll down, click "Open Anyway",
+   then double-click the installer again.
+   (Or open Terminal, type "bash " and drag the installer into the window, then press Return.)
+2. The installer sets everything up, downloads the AI model through Ollama (about 5 GB
+   the first time), and opens the dashboard in your browser.
+3. On the Setup page, add each Gmail inbox with an app password (the page explains how).
+
+After that it runs by itself: it starts when you log in and checks your inboxes every
+4 hours, including Spam. Open it from Spotlight by typing "Order Tracker".
+
+Troubleshooting: the dashboard's Logs page shows what the app, each sync, the AI model and the
+installer did, and "Download all logs" makes a zip you can send for help (app passwords are hidden).
+The files are in ~/Library/Application Support/OrderTracker/logs.
+
+Your email is read only on this Mac. Nothing is sent anywhere except the connection to Gmail.
+
+To update, download the new version and run the installer again; your inboxes and data are kept.
+To remove it, double-click "Uninstall Order Tracker.command".

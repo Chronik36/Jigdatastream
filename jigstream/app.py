@@ -1,12 +1,18 @@
+import logging
+import os
 import threading
 from urllib.parse import quote
 
-from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
+from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
-from . import analysis, db, parsers, profiles
-from .config import Config
+from . import analysis, db, logs, parsers, profiles
+from .config import Config, format_accounts, save_env
+from .llm import installed_models
+from .mail import check_login
 from .orderstore import Store
 from .sync import run_sync, summary
+
+logger = logging.getLogger("jigstream.app")
 
 TRACK_URLS = {
     "UPS": "https://www.ups.com/track?tracknum={}",
@@ -37,6 +43,7 @@ def create_app(db_path=None):
             counts = run_sync(config, Store(con()), log=lambda *a, **k: None, progress=progress)
             sync_state["last"] = f"Last Gmail sync{' (whole mailbox)' if full else ''}: {summary(counts)}"
         except Exception as e:
+            logger.exception("Gmail sync failed")
             sync_state["last"] = f"Gmail sync failed: {e}"
         finally:
             sync_state["running"] = False
@@ -75,7 +82,7 @@ def create_app(db_path=None):
     def orders():
         store = Store(con())
         return render_template("orders.html", rows=store.orders(), stats=store.stats(), sync=sync_state,
-                               accounts=store.accounts())
+                               accounts=store.accounts(), configured=bool(Config.from_env().accounts))
 
     @app.get("/expenses")
     def expenses():
@@ -113,16 +120,86 @@ def create_app(db_path=None):
             flash(f"Import failed: {e}")
         return redirect(url_for("dashboard"))
 
+    def start_sync(full=False):
+        """Start a background sync unless one is running. run.py also calls this on a timer."""
+        if sync_state["running"] or not Config.from_env().accounts:
+            return False
+        sync_state["running"] = True
+        sync_state["last"] = "Starting Gmail sync..."
+        threading.Thread(target=background_sync, args=(full,), daemon=True).start()
+        return True
+
+    app.start_sync = start_sync
+
     @app.post("/sync/gmail")
     def sync():
-        if not sync_state["running"]:
-            full = request.form.get("full") == "1"
-            sync_state["running"] = True
-            sync_state["last"] = "Starting Gmail sync..."
-            threading.Thread(target=background_sync, args=(full,), daemon=True).start()
+        full = request.form.get("full") == "1"
+        if not Config.from_env().accounts:
+            flash("Add a Gmail inbox first.")
+            return redirect(url_for("setup"))
+        if start_sync(full):
             flash("Whole-mailbox backfill started. It can take hours; already processed mail is skipped, "
                   "so it is safe to stop and run again." if full else
                   "Gmail sync started. Refresh to see progress.")
         return redirect(url_for("orders"))
+
+    @app.get("/setup")
+    def setup():
+        config = Config.from_env()
+        models = installed_models(config.llm_base_url)
+        return render_template("setup.html", accounts=[a for a, _ in config.accounts], config=config,
+                               models=models, synced={a["address"]: a for a in Store(con()).accounts()})
+
+    @app.post("/setup/inbox")
+    def add_inbox():
+        config = Config.from_env()
+        address = request.form.get("address", "").strip()
+        password = request.form.get("password", "").replace(" ", "").strip()
+        if "@" not in address or not password:
+            flash("Enter the Gmail address and its app password.")
+            return redirect(url_for("setup"))
+        error = check_login(config, address, password)
+        if error:
+            flash(f"{address}: {error}")
+            return redirect(url_for("setup"))
+        accounts = [a for a in config.accounts if a[0].lower() != address.lower()] + [(address, password)]
+        save_env({"GMAIL_ACCOUNTS": format_accounts(accounts)})
+        logger.info("inbox added: %s", address)
+        os.environ.pop("GMAIL_ADDRESS", None)
+        os.environ.pop("GMAIL_APP_PASSWORD", None)
+        flash(f"Added {address}. The first sync reads the last year of mail and runs in the background.")
+        start_sync()
+        return redirect(url_for("orders"))
+
+    @app.post("/setup/inbox/remove")
+    def remove_inbox():
+        address = request.form.get("address", "")
+        accounts = [a for a in Config.from_env().accounts if a[0] != address]
+        save_env({"GMAIL_ACCOUNTS": format_accounts(accounts)})
+        logger.info("inbox removed: %s", address)
+        flash(f"Removed {address}. Orders already found from it stay on the dashboard.")
+        return redirect(url_for("setup"))
+
+    @app.post("/setup/model")
+    def set_model():
+        model = request.form.get("model", "").strip()
+        if model:
+            save_env({"LLM_MODEL": model})
+            logger.info("model set to %s", model)
+            flash(f"Using {model} for new emails.")
+        return redirect(url_for("setup"))
+
+    @app.get("/logs")
+    def show_logs():
+        files = logs.log_files()
+        name = request.args.get("file", "app.log")
+        if name not in files:
+            name = files[0] if files else "app.log"
+        return render_template("logs.html", files=files, name=name, text=logs.tail(name, 400))
+
+    @app.get("/logs/download")
+    def download_logs():
+        return Response(logs.zip_logs(), mimetype="application/zip",
+                        headers={"Content-Disposition": "attachment; filename=order-tracker-logs.zip"})
 
     return app

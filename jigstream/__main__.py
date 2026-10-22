@@ -5,6 +5,7 @@ import sys
 
 from . import db
 from .config import Config
+from .logs import setup_logging
 from .llm import LLMClient, LLMError
 from .orderstore import Store
 from .sync import run_sync, summary
@@ -23,6 +24,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     config = Config.from_env()
+    setup_logging()
     try:
         if args.command == "check":
             llm = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout)

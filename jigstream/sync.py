@@ -1,11 +1,15 @@
 """Pull new emails from each inbox in turn, extract them with the local model, and store the results."""
 
+import logging
 import sys
+import time
 from datetime import datetime, timezone
 
 from .extract import extract, looks_like_purchase
 from .llm import LLMClient, LLMError
 from .mail import fetch_emails
+
+logger = logging.getLogger("jigstream.sync")
 
 
 def search_days(config, state):
@@ -25,7 +29,9 @@ def process(email, store, llm, config, counts, log):
     if not looks_like_purchase(email):
         store.record_email(email, "skipped")
         counts["skipped"] += 1
+        logger.debug("skipped (no price or tracking): %s | %s", email.sender, email.subject[:80])
         return
+    started = time.monotonic()
     try:
         result = extract(llm, email, config.max_body_chars)
     except LLMError as e:
@@ -37,6 +43,8 @@ def process(email, store, llm, config, counts, log):
         return
     store.save(email, result)
     counts[result["kind"]] += 1
+    logger.info("%s in %.1fs: %s | %s -> %s", result["kind"], time.monotonic() - started, email.sender,
+                email.subject[:80], {k: v for k, v in result.items() if k not in ("kind", "items")})
     if result["kind"] != "other":
         label = result.get("retailer") or result.get("vendor")
         log(f"  {result['kind']:<16} {label or '?'}: {email.subject[:60]}")
@@ -47,6 +55,15 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
     progress(text) is called as work advances, for the dashboard."""
     llm = llm or LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout)
     progress = progress or (lambda text: None)
+    cli_log = log
+
+    def log(message, file=None):
+        # Everything shown on the command line also goes to logs/app.log.
+        (logger.warning if file is sys.stderr else logger.info)(message.strip())
+        cli_log(message, file=file) if file else cli_log(message)
+
+    logger.info("sync started: %d inbox(es), model %s, %s", len(config.accounts), config.llm_model,
+                "whole mailbox" if config.full_history else f"days={config.days_back or 'auto'}")
     counts = {"order": 0, "botting_expense": 0, "other": 0, "skipped": 0, "error": 0, "failed_inboxes": []}
     seen = store.seen_ids()
 
@@ -86,10 +103,12 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
         # A capped run (MAX_EMAILS) hasn't finished the range, so don't record it as synced.
         if not (config.max_emails and total["n"] >= config.max_emails):
             store.mark_synced(address, started, full=days is None)
+    logger.info("sync finished: %s", summary(counts))
     return counts
 
 
 def summary(counts):
+    """One line for the dashboard and the log."""
     text = (f"{counts['order']} order emails, {counts['botting_expense']} botting receipts, "
             f"{counts['other']} not relevant, {counts['skipped']} skipped without the model, "
             f"{counts['error']} errors")
