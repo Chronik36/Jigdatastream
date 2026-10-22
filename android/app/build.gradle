@@ -1,0 +1,36 @@
+plugins { id "com.android.application" }
+
+android {
+    namespace "com.bottrack.app"
+    compileSdk 34
+    defaultConfig {
+        applicationId "com.bottrack.app"
+        minSdk 24
+        targetSdk 34
+        versionCode System.getenv("VERSION_CODE") ? System.getenv("VERSION_CODE").toInteger() : 1
+        versionName "1.0." + (System.getenv("VERSION_CODE") ?: "0")
+    }
+    // A fixed key lets testers install updates over the old app. CI passes it from repository
+    // secrets; without them the build falls back to the debug key, which can't update older installs.
+    signingConfigs {
+        beta {
+            def ks = System.getenv("ANDROID_KEYSTORE_FILE")
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: "bottrack"
+                keyPassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig System.getenv("ANDROID_KEYSTORE_FILE") ? signingConfigs.beta : signingConfigs.debug
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
