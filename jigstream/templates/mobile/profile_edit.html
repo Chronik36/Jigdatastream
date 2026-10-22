@@ -1,0 +1,24 @@
+{% extends "mobile/base.html" %}{% block title %}{{"Edit profile" if p and p.card_last4 is defined else "New profile"}}{% endblock %}{% block back %}<a class="back" href="{{url_for('mobile.profiles')}}" aria-label="Back">‹</a>{% endblock %}{% block body %}
+<form method="post"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+<fieldset><legend>Profile</legend>
+<div class="two"><label>Profile name<input name="name" value="{{p.name or '' if p}}" required></label>
+<label>Bot / tag<input name="bot" value="{{p.bot or '' if p}}"></label></div>
+<div class="two"><label>First name<input name="first_name" value="{{p.first_name or '' if p}}" autocomplete="off"></label>
+<label>Last name<input name="last_name" value="{{p.last_name or '' if p}}" autocomplete="off"></label></div>
+<label>Email<input type="email" name="email" value="{{p.email or '' if p}}" autocapitalize="off" autocomplete="off"></label>
+<label>Phone<input type="tel" name="phone" value="{{p.phone or '' if p}}" autocomplete="off"></label>
+</fieldset>
+{% for pre, title in [("bill_", "Billing"), ("ship_", "Shipping")] %}
+<fieldset><legend>{{title}}</legend>
+{% if pre == "ship_" %}<label class="check"><input type="checkbox" name="same" {{'checked' if same}} onchange="document.getElementById('ship').hidden=this.checked"> Same as billing</label><div id="ship" {{'hidden' if same}}>{% endif %}
+<label>Address line 1<input name="{{pre}}address1" value="{{p[pre ~ 'address1'] or '' if p}}" autocomplete="off"></label>
+<label>Address line 2<input name="{{pre}}address2" value="{{p[pre ~ 'address2'] or '' if p}}" autocomplete="off"></label>
+<div class="two"><label>City<input name="{{pre}}city" value="{{p[pre ~ 'city'] or '' if p}}" autocomplete="off"></label>
+<label>State<input name="{{pre}}state" value="{{p[pre ~ 'state'] or '' if p}}" autocomplete="off"></label></div>
+<div class="two"><label>ZIP<input name="{{pre}}zip" value="{{p[pre ~ 'zip'] or '' if p}}" inputmode="numeric" autocomplete="off"></label>
+<label>Country<input name="{{pre}}country" value="{{p[pre ~ 'country'] or '' if p}}" autocomplete="off"></label></div>
+{% if pre == "ship_" %}</div>{% endif %}</fieldset>{% endfor %}
+{% if p and p.card_last4 is defined %}<p class="muted small">Payment: {% if p.card_last4 %}{{p.card_brand or "Card"}} •••• {{p.card_last4}}{% if p.card_exp %} · Exp {{p.card_exp}}{% endif %}{% else %}none{% endif %}. Card numbers stay in your bot and are never saved in BotTrack.</p>{% endif %}
+<button>Save profile</button></form>
+{% if p and p.card_last4 is defined %}<form method="post" action="{{url_for('mobile.profile_delete', name=p.name)}}" onsubmit="return confirm('Delete this profile?')"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button class="danger">Delete profile</button></form>{% endif %}
+{% endblock %}

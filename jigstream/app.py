@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
-from . import analysis, db, discord, export, logs, parsers, profiles, training, updater
+from . import analysis, db, discord, export, logs, mobile, parsers, profiles, training, updater
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import LLMClient, installed_models
@@ -37,7 +37,8 @@ PROFILE_FIELDS = ("name", "bot", "first_name", "last_name", "phone", "email",
 
 def create_app(db_path=None):
     app = Flask(__name__)
-    app.secret_key = "local-only"
+    app.config["DB_PATH"] = db_path
+    mobile.init_app(app)
 
     @app.context_processor
     def nav_flags():
@@ -321,7 +322,8 @@ def create_app(db_path=None):
                                bot=bot, bot_id=bot_id, channels=channels, discord_error=discord_error,
                                chosen=set(config.discord_channel_ids), channel_states=discord.channel_states(con()),
                                version=updater.installed_version(), update_settings=updater.settings(),
-                               can_update=updater.can_self_update(), backups=updater.backups())
+                               can_update=updater.can_self_update(), backups=updater.backups(),
+                               **mobile.setup_context())
 
     @app.post("/setup/discord/token")
     def set_discord_token():

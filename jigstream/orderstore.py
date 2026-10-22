@@ -3,6 +3,7 @@ are merged into a single order row."""
 
 import json
 import re
+import uuid
 from datetime import datetime, timezone
 
 from .extract import PROGRESS, STATUSES, status_advances
@@ -238,6 +239,67 @@ class Store:
             (order_id, status, row["shipping_status"], datetime.now(timezone.utc).isoformat(), "pending"))
         self.db.commit()
         return cur.lastrowid
+
+    # Hand edits from the phone pages. Orders and expenses typed in by hand get a "manual:" key so a
+    # later sync never mistakes them for an email it already read.
+    def add_order(self, fields):
+        number = fields.get("order_number")
+        key = f"{_key(fields.get('retailer'))}:{_key(number)}" if number else f"manual:{uuid.uuid4().hex}"
+        if self.db.execute("SELECT 1 FROM tracked_orders WHERE merge_key = ?", (key,)).fetchone():
+            return None
+        cur = self.db.execute(
+            "INSERT INTO tracked_orders (merge_key, retailer, order_number, order_date, items, total, currency,"
+            " shipping_address, tracking_number, carrier, shipping_status, estimated_delivery, message_ids,"
+            " account, status_manual) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)",
+            (key, fields.get("retailer"), number, fields.get("order_date"), json.dumps(fields.get("items") or []),
+             fields.get("total"), fields.get("currency") or "USD", fields.get("shipping_address"),
+             fields.get("tracking_number"), fields.get("carrier"), fields.get("shipping_status") or "ordered",
+             fields.get("estimated_delivery"), "[]", "added by hand"))
+        self.db.commit()
+        return cur.lastrowid
+
+    def update_order(self, order_id, fields):
+        """Save edited order fields. A changed status goes through set_status_manually so syncs keep it."""
+        row = self.db.execute("SELECT * FROM tracked_orders WHERE id = ?", (order_id,)).fetchone()
+        if row is None:
+            return False
+        status = fields.pop("shipping_status", None)
+        if "items" in fields:
+            fields["items"] = json.dumps(fields["items"])
+        if fields.get("tracking_number") != row["tracking_number"]:
+            fields["tracking_url"] = None  # a link from the email only fits the old number
+        if fields:
+            cols = ", ".join(f"{k} = ?" for k in fields)
+            self.db.execute(f"UPDATE tracked_orders SET {cols} WHERE id = ?", (*fields.values(), order_id))
+            self.db.commit()
+        if status and status != row["shipping_status"]:
+            label = self.set_status_manually(order_id, status)
+            self.set_rescan_state(label, "Set from your phone")
+        return True
+
+    def delete_order(self, order_id):
+        self.db.execute("DELETE FROM tracked_orders WHERE id = ?", (order_id,))
+        self.db.commit()
+
+    def expense(self, expense_id):
+        row = self.db.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
+        return dict(row) if row else None
+
+    def add_expense(self, fields):
+        cols = ["message_id", "account", *fields]
+        cur = self.db.execute(f"INSERT INTO expenses ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                              (f"manual:{uuid.uuid4().hex}", "added by hand", *fields.values()))
+        self.db.commit()
+        return cur.lastrowid
+
+    def update_expense(self, expense_id, fields):
+        self.db.execute(f"UPDATE expenses SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
+                        (*fields.values(), expense_id))
+        self.db.commit()
+
+    def delete_expense(self, expense_id):
+        self.db.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+        self.db.commit()
 
     def set_rescan_state(self, label_id, text):
         self.db.execute("UPDATE labels SET rescan = ? WHERE id = ?", (text, label_id))

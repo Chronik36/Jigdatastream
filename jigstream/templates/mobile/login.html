@@ -1,0 +1,9 @@
+{% extends "mobile/base.html" %}{% block title %}Sign in{% endblock %}{% block body %}
+<div style="text-align:center;margin:28px 0 22px"><img src="{{url_for('static', filename='mark.png')}}" alt="" width="72" height="72" style="border-radius:18px">
+<h2 style="margin:12px 0 4px">BotTrack</h2><p class="muted small">Use the email and password from Setup, Phone access, in BotTrack on your Mac.</p></div>
+<form method="post">
+<label>Email<input type="email" name="email" value="{{email or ''}}" autocomplete="username" autocapitalize="off" required></label>
+<label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+<button>Sign in</button></form>
+<p class="muted small" style="margin-top:22px">Tip: in Safari tap Share, then Add to Home Screen. In Chrome tap the menu, then Add to Home screen.</p>
+{% endblock %}
