@@ -254,28 +254,66 @@ def target_name(p, ld):
     return ""
 
 
-def negative_keywords(name, related, page_words, top=20):
+# Name words that say what kind of thing it is but not which one; a monitor gains nothing from them.
+GENERIC = {"shoe", "shoes", "sneaker", "sneakers", "size", "sizes", "color", "colour", "product", "item", "official"}
+
+
+def similar_items(name, related):
+    """Other items on the page whose names share most of the target's main words."""
+    core = {w for w in words(name) if _meaningful(w)}
+    out = []
+    for text in dict.fromkeys(related):
+        toks = set(words(text))
+        if text.strip().lower() != name.lower() and len(core & toks) >= max(1, min(2, len(core) // 2)):
+            out.append((text, toks))
+    return out
+
+
+def positive_keywords(name, similar, brand="", codes=(), top=8):
+    """[(word, reason, in_line)]: words a monitor should require. in_line=False ones are shown but not put
+    in the +/- line (a style code only matches where the site lists it)."""
+    brand_words = set(words(brand))
+    out = []
+    for w in dict.fromkeys(words(name)):
+        if w in GENERIC or not (_meaningful(w) or w.isdigit() or w in VARIANT_TERMS):
+            continue
+        shared = sum(w in toks for _, toks in similar)
+        if w in brand_words:
+            reason = "brand"
+        elif w.isdigit():
+            reason = "model number"
+        elif w in VARIANT_TERMS:
+            reason = "says which version this is, so other versions don't match"
+        elif similar and not shared:
+            reason = "only this item has it, the best word for telling it apart"
+        elif similar and shared == len(similar):
+            reason = "shared with every similar item, so it needs the other words too"
+        else:
+            reason = "in the product name"
+        out.append((w, reason, True))
+    out = out[:top]
+    for code in list(codes)[:1]:
+        out.append((code.lower(), "style code / SKU, an exact match where the site shows it", False))
+    return out
+
+
+def negative_keywords(name, related, page_words, top=20, similar=None):
     """Words that show up on similar items but not in the target's name, most telling first.
 
     related: names of other items on the page (links, image alts, other products in the page data).
-    Returns (positive keywords, [(negative word, reason)]).
+    Returns [(negative word, reason)].
     """
     target = set(words(name))
-    positives = [w for w in dict.fromkeys(words(name)) if _meaningful(w) or (w.isdigit() and len(w) <= 3)][:8]
-    core = {w for w in target if _meaningful(w)}
-    seen, similar = Counter(), {}
-    for text in dict.fromkeys(related):
-        toks = set(words(text))
-        if text.strip().lower() == name.lower() or len(core & toks) < max(1, min(2, len(core) // 2)):
-            continue  # not a near-match for the target, so its words don't help
+    seen, similar_name = Counter(), {}
+    for text, toks in similar if similar is not None else similar_items(name, related):
         for w in toks - target:
             if _meaningful(w) or w in VARIANT_TERMS:
                 seen[w] += 1
-                similar.setdefault(w, text)
+                similar_name.setdefault(w, text)
     out = []
     for w, n in sorted(seen.items(), key=lambda kv: (kv[0] not in VARIANT_TERMS, -kv[1], kv[0])):
         reason = VARIANT_TERMS.get(w, "on a similar item")
-        out.append((w, f"{reason}: “{similar[w][:70]}”" + (f" and {n - 1} more" if n > 1 else "")))
+        out.append((w, f"{reason}: “{similar_name[w][:70]}”" + (f" and {n - 1} more" if n > 1 else "")))
     present = set(page_words)
     for w, reason in VARIANT_TERMS.items():
         if w in present and w not in target and w not in seen:
@@ -283,13 +321,14 @@ def negative_keywords(name, related, page_words, top=20):
     for w in CATCH_ALLS:
         if w not in target and all(w != o for o, _ in out):
             out.append((w, VARIANT_TERMS[w] + " (common wrong match)"))
-    return positives, out[:top]
+    return out[:top]
 
 
 def monitor_line(positives, negatives):
     """"+jordan,+low,-gs,-ps": the keyword format most bots and monitors take."""
+    pos = [w for w, _, in_line in positives if in_line]
     negs = list(dict.fromkeys(w.lower() for w, _ in negatives))
-    return ",".join([f"+{w}" for w in positives] + [f"-{w}" for w in negs if w not in positives])
+    return ",".join([f"+{w}" for w in pos] + [f"-{w}" for w in negs if w not in pos])
 
 
 def analyze(html, url=""):
@@ -306,15 +345,18 @@ def analyze(html, url=""):
     phrases = [(w, c, w in important) for w, c in phrases]
     name = target_name(p, ld)
     related = p.links + p.alts + ld_others + [h for t, h in p.headings if t != "h1"]
-    positives, negatives = negative_keywords(name, related, words(body))
+    similar = similar_items(name, related)
+    codes = product_codes(body + " " + title, ld)
+    positives = positive_keywords(name, similar, ld.get("brand", ""), codes)
+    negatives = negative_keywords(name, related, words(body), similar=similar)
     return {
         "url": url, "host": urlparse(url).netloc, "title": title,
         "description": p.meta.get("description") or p.meta.get("og:description", ""),
         "meta_keywords": meta_kw, "og_title": p.meta.get("og:title", ""), "site": p.meta.get("og:site_name", ""),
-        "headings": p.headings[:40], "product": ld, "codes": product_codes(body + " " + title, ld),
+        "headings": p.headings[:40], "product": ld, "codes": codes,
         "alts": list(dict.fromkeys(p.alts))[:20], "words": single, "phrases": phrases, "word_count": total,
         "thin": total < 60, "name": name, "positives": positives, "negatives": negatives,
-        "related": [r for r in dict.fromkeys(related) if set(words(r)) & set(positives)][:30],
+        "related": [text for text, _ in similar][:30],
     }
 
 
@@ -331,6 +373,8 @@ def ai_summary(result, config):
               '{"summary": "one or two sentences on what the page is about", '
               '"main_keywords": ["the 5-12 keywords or phrases the page is built around, most important first"], '
               '"product": "product name if it is a product page, else empty", '
+              '"positive_keywords": [{"word": "a word from the target item name a monitor should require", '
+              '"reason": "short reason"}], '
               '"negative_keywords": [{"word": "a word that appears in the names of similar but wrong items '
               '(other sizing runs like GS/PS/TD, other genders, other cuts or colourways, apparel, accessories, used '
               'or replica) and NOT in the target item name", "reason": "short reason"}]}. '
@@ -341,7 +385,10 @@ def ai_summary(result, config):
     negs = [(str(n.get("word", "")).strip(), str(n.get("reason", "")).strip()) for n in answer.get("negative_keywords") or []
             if isinstance(n, dict)]
     negs = [(w, r) for w, r in negs if w and w.lower() not in target][:15]  # never exclude the item's own words
+    poss = [(str(n.get("word", "")).strip(), str(n.get("reason", "")).strip()) for n in answer.get("positive_keywords") or []
+            if isinstance(n, dict)]
     return {"summary": str(answer.get("summary") or ""), "product": str(answer.get("product") or ""), "negatives": negs,
+            "positives": [(w, r) for w, r in poss if w][:10],
             "main_keywords": [str(k) for k in kws if str(k).strip()][:15] if isinstance(kws, list) else []}
 
 
