@@ -157,6 +157,14 @@ def plaid_page():
     return render_template("plaid.html", plaid=plaid.settings(c), items=plaid.items(c), plaid_state=plaid.state)
 
 
+@pages.get("/bank/plaid/status")
+def plaid_status():
+    """Lets the BotTrack window notice a bank linked or reconnected in your web browser."""
+    linked = plaid.items(_con())
+    changed = "|".join(f"{i['item_id']}:{i['last_synced_at'] or ''}:{i['error'] or ''}" for i in linked)
+    return jsonify({"changed": changed, "running": plaid.state["running"]})
+
+
 @pages.post("/bank/plaid/keys")
 def plaid_keys():
     c = _con()
