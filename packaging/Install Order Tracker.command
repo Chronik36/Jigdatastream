@@ -8,7 +8,7 @@ HOME_DIR="$HOME/Library/Application Support/OrderTracker"
 LABEL="com.jigdatastream.ordertracker"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 PORT="${PORT:-8765}"
-MODEL="${LLM_MODEL:-llama3.1:8b}"
+MODEL="${LLM_MODEL:-huihui_ai/qwen3-abliterated:14b}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 say() { printf '\n==> %s\n' "$1"; }
@@ -70,13 +70,15 @@ if ! curl -fs http://127.0.0.1:11434/api/version >/dev/null; then
   curl -fs http://127.0.0.1:11434/api/version >/dev/null || fail "Ollama didn't start. Open the Ollama app yourself, then run this installer again."
 fi
 
-say "Downloading the AI model $MODEL (about 5 GB the first time; later runs skip this)"
+say "Downloading the AI model $MODEL (about 9 GB the first time; later runs skip this)"
 "$OLLAMA" pull "$MODEL" || fail "Couldn't download $MODEL. Check your internet connection and run this installer again."
 
 say "Saving settings"
 ENV_FILE="$HOME_DIR/.env"
 touch "$ENV_FILE"; chmod 600 "$ENV_FILE"
 set_default() { grep -q "^$1=" "$ENV_FILE" || echo "$1=$2" >> "$ENV_FILE"; }
+# Move installs still on the old default model to the new one; a model picked on Setup is kept.
+sed -i '' 's|^LLM_MODEL=llama3.1:8b$|LLM_MODEL='"$MODEL"'|' "$ENV_FILE" 2>/dev/null || true
 set_default LLM_MODEL "$MODEL"
 set_default PORT "$PORT"
 set_default SYNC_EVERY_HOURS 4

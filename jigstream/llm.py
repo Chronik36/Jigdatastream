@@ -41,6 +41,10 @@ class LLMClient:
         for example_user, example_answer in examples:
             messages += [{"role": "user", "content": example_user},
                          {"role": "assistant", "content": example_answer}]
+        if "qwen3" in self.model.lower():
+            # Qwen3 thinks out loud by default; its /no_think switch keeps the reply to the JSON
+            # (parse_json still strips any <think> block that slips through).
+            user = f"{user}\n/no_think"
         messages.append({"role": "user", "content": user})
         payload = {
             "model": self.model,
