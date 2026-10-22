@@ -23,7 +23,6 @@
 <p class="muted">Your mail, read straight from Gmail (nothing is changed there). Tick emails and label them, or open one and label it.
 The AI re-reads each labelled email and learns what it should have found; the label is applied to your Orders and Expenses too.</p>
 {% if not configured %}<div class="flash">No Gmail inbox connected yet. <a href="/setup">Add one on the Setup page</a>.</div>{% endif %}
-{% for e in errors %}<p class="bad">{{e}}</p>{% endfor %}
 <div class="chips">{% for name in filters %}<a class="chip{{' on' if filt == name and not q}}" href="/inbox?f={{name|urlencode}}">{{name}}</a>{% endfor %}
 <form method="get" action="/inbox" style="margin:0 0 0 auto"><input name="q" value="{{q}}" placeholder="Search Gmail (e.g. from:nike cancelled)" size="34" style="margin:0"></form></div>
 <form id="labelform" method="post" action="/inbox/label">
@@ -33,15 +32,7 @@ The AI re-reads each labelled email and learns what it should have found; the la
 </form>
 <div class="ibox">
 <div class="mlist">
-{% for r in rows %}{% set mine = marked.get(r.message_id) %}{% set ai = decided.get(r.message_id) %}
-<div class="mrow" data-account="{{r.account}}" data-id="{{r.message_id}}">
-  <input type="checkbox" name="pick" form="labelform" value="{{ {'account': r.account, 'message_id': r.message_id, 'sender': r.sender, 'subject': r.subject, 'date': r.date}|tojson|forceescape }}" onclick="event.stopPropagation(); counted()">
-  <div><div class="from">{{r.sender|replace('"','')}}</div><div class="subj">{{r.subject or "(no subject)"}}</div></div>
-  <div class="meta">{{(r.date or "")[:10]}}{% if r.spam %} · spam{% endif %}<br>
-  {% if mine %}<span class="pill lbl-mine" title="{{mine.state}}">✓ {{labels[mine.label][0]}}</span>
-  {% elif ai %}<span class="pill" title="What the AI decided when it synced">AI: {{"expense" if ai == "botting_expense" else ai}}</span>{% endif %}</div>
-</div>
-{% else %}<div class="mrow" style="cursor:default"><span></span><span class="muted">{{"No emails match." if configured else ""}}</span><span></span></div>{% endfor %}
+<div class="mrow" style="cursor:default" id="loading"><span></span><span class="muted">Loading your inboxes… <span id="secs"></span></span><span></span></div>
 </div>
 <div class="reader" id="reader"><p class="muted">Select an email to read it here.</p></div>
 </div>
@@ -57,7 +48,7 @@ function labelOne(row, key) {
   f.querySelector('select[name=label]').value = key;
   f.submit();
 }
-document.querySelectorAll('.mrow[data-id]').forEach(row => row.addEventListener('click', () => {
+function wire(row) { row.addEventListener('click', () => {
   document.querySelectorAll('.mrow.sel').forEach(r => r.classList.remove('sel'));
   row.classList.add('sel');
   const reader = document.getElementById('reader');
@@ -75,6 +66,14 @@ document.querySelectorAll('.mrow[data-id]').forEach(row => row.addEventListener(
       const body = document.createElement('pre'); body.textContent = m.body;
       reader.append(h, meta, q, body);
     }).catch(() => reader.innerHTML = '<p class="bad">Couldn\'t open that email.</p>');
-}));
+}); }
+// The list loads after the page shows, since searching every inbox can take a while.
+(function load() {
+  const list = document.querySelector('.mlist'), started = Date.now();
+  const tick = setInterval(() => { const el = document.getElementById('secs'); if (el) el.textContent = Math.round((Date.now() - started) / 1000) + 's'; }, 1000);
+  fetch('/inbox/rows' + location.search).then(r => r.text()).then(html => {
+    clearInterval(tick); list.innerHTML = html; list.querySelectorAll('.mrow[data-id]').forEach(wire);
+  }).catch(() => { clearInterval(tick); list.innerHTML = '<div class="mrow"><span></span><span class="bad">Couldn\'t load your inboxes. Reload to try again.</span><span></span></div>'; });
+})();
 </script>
 {% endblock %}

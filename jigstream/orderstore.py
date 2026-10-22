@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS expenses (
 
 # Columns added after the first release; created on older databases at startup.
 MIGRATIONS = [("tracked_orders", "status_manual", "INTEGER DEFAULT 0"),
-              ("tracked_orders", "carrier_status", "TEXT"), ("tracked_orders", "carrier_checked_at", "TEXT")]
+              ("tracked_orders", "carrier_status", "TEXT"), ("tracked_orders", "carrier_checked_at", "TEXT"),
+              ("expenses", "amount_checked", "INTEGER DEFAULT 0")]
 
 LABEL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS labels (
