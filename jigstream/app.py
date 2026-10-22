@@ -77,6 +77,11 @@ def create_app(db_path=None):
                 try:
                     counts = run_sync(config, Store(con()), log=lambda *a, **k: None, progress=progress)
                     parts.append(f"Gmail{' (whole mailbox)' if full else ''}: {summary(counts)}")
+                    progress("Finding missing expense amounts...")
+                    try:
+                        inbox.fill_missing_amounts(config, Store(con()))
+                    except Exception:
+                        logger.exception("filling missing expense amounts failed")
                 except Exception as e:
                     logger.exception("Gmail sync failed")
                     parts.append(f"Gmail sync failed: {e}")
@@ -500,13 +505,19 @@ def create_app(db_path=None):
     def inbox_page():
         config = Config.from_env()
         filt = request.args.get("f", "Purchases" if "q" not in request.args else "")
+        return render_template("inbox.html", q=request.args.get("q", ""), filt=filt, filters=inbox.QUICK_FILTERS,
+                               labels=inbox.LABELS, configured=bool(config.accounts))
+
+    @app.get("/inbox/rows")
+    def inbox_rows():
+        config = Config.from_env()
+        filt = request.args.get("f", "Purchases" if "q" not in request.args else "")
         query = request.args.get("q", "").strip() or inbox.QUICK_FILTERS.get(filt, "")
         rows, errors = inbox.search(config, query) if config.accounts else ([], [])
         store = Store(con())
         decided = {r["message_id"]: r["kind"] for r in store.db.execute("SELECT message_id, kind FROM emails")}
-        return render_template("inbox.html", rows=rows, errors=errors, q=request.args.get("q", ""), filt=filt,
-                               filters=inbox.QUICK_FILTERS, labels=inbox.LABELS, marked=store.inbox_labels(),
-                               decided=decided, configured=bool(config.accounts))
+        return render_template("_inbox_rows.html", rows=rows, errors=errors, labels=inbox.LABELS,
+                               marked=store.inbox_labels(), decided=decided, configured=bool(config.accounts))
 
     @app.get("/inbox/view")
     def inbox_view():
