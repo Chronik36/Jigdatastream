@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block body %}
+<h2>Send logs to developer</h2>
+<p class="muted">The logs show what the app was doing so problems can be found and fixed in the next update.
+They're emailed from your own Gmail, so nothing goes through anyone else's server.</p>
+{% if not to %}
+<p>No developer address is set in this version yet. You can <a href="/logs/download">download the logs</a> and send them yourself.</p>
+{% else %}
+<h3>What's included</h3>
+<ul>{% for f in files %}<li><a href="/logs?file={{f}}">{{f}}</a> <span class="muted">({{ (sizes.get(f, 0) / 1024)|round(1) }} KB)</span></li>{% else %}<li class="muted">No log files yet.</li>{% endfor %}
+<li>about.txt: {% for k, v in about.items() %}{{k}} {{v}}{{ ", " if not loop.last }}{% endfor %}</li></ul>
+<p class="muted">Before sending, app passwords, bot and API tokens, Plaid keys and anything shaped like a card number are replaced with ********.
+Your database, saved cards, bank data, profiles and emails are never sent. Logs can mention store names, order numbers and your email address.</p>
+{% if not accounts %}
+<p>Connect a Gmail inbox on <a href="/setup">Setup</a> first: the logs are sent from it.</p>
+{% else %}
+<form method="post" action="/logs/send" style="display:block" onsubmit="this.querySelector('button').textContent='Sending...'">
+<p>To: <b>{{to}}</b></p>
+<p>From: {% if accounts|length > 1 %}<select name="sender">{% for a in accounts %}<option>{{a}}</option>{% endfor %}</select>
+{% else %}<b>{{accounts[0]}}</b><input type="hidden" name="sender" value="{{accounts[0]}}">{% endif %}</p>
+<p><textarea name="note" rows="4" cols="60" maxlength="4000" placeholder="What went wrong? (optional)"></textarea></p>
+<p><label><input type="checkbox" name="consent" value="yes" required> I've seen what's included and want to send it</label></p>
+<p><button>Send logs</button> <a href="/logs">Cancel</a></p>
+</form>
+{% endif %}{% endif %}
+{% endblock %}
