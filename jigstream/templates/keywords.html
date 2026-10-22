@@ -1,0 +1,108 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.kw-form{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 18px}
+.kw-form input[name=url]{flex:1;min-width:260px;margin:0}
+.kw-form label{color:var(--muted);display:flex;align-items:center;gap:6px}
+.kw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+.kw-grid .panel{margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:999px;padding:3px 10px;font-size:13px}
+.chip.key{border-color:rgba(61,216,239,.4);color:var(--accent-2)}
+.chip.neg{border-color:rgba(255,107,122,.4);color:var(--red)}
+.chip.pos{border-color:rgba(61,220,132,.4);color:var(--green)}
+.chip small{color:var(--muted);font-size:11px}
+.kw-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.kw-head h3{margin:0;flex:1}
+.kw-head button{padding:4px 10px;font-size:12px}
+.kw-table td,.kw-table th{padding:7px 12px}
+.kw-table{margin:0}
+.kw-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;word-break:break-all}
+dl.kw-meta{display:grid;grid-template-columns:120px 1fr;gap:6px 12px;margin:0}dl.kw-meta dt{color:var(--muted)}dl.kw-meta dd{margin:0}
+.star{color:var(--orange)}
+</style>
+<h2>Keyword finder</h2>
+<p class="muted">Paste a product or store page. BotTrack loads it once, the same way your browser would, and lists the words the page is built around,
+plus the + keywords to require and the - keywords that help a monitor skip look-alike products. Sites that block automated visits are reported, not worked around.</p>
+<form class="kw-form" method="post" action="/keywords">
+  <input name="url" value="{{url}}" placeholder="https://www.example.com/product/..." autofocus required>
+  <label><input type="checkbox" name="ai" value="1" {{'checked' if use_ai}}> Also ask the local AI</label>
+  <button>Find keywords</button>
+</form>
+{% if error %}<div class="banner" style="border-color:rgba(255,107,122,.45);background:rgba(255,107,122,.08)">{{error}}</div>{% endif %}
+{% if result %}
+<p class="muted">{{result.word_count}} words read from <a href="{{result.url}}" target="_blank" rel="noopener">{{result.host}}</a>.
+{% if result.thin %}<span style="color:var(--orange)">Very little text came back. This page probably builds itself with JavaScript, so the list below may be incomplete.</span>{% endif %}</p>
+
+{% if ai %}<div class="panel"><div class="kw-head"><h3>Local AI</h3></div>
+<p>{{ai.summary}}</p>
+{% if ai.main_keywords %}<div class="chips" style="margin-bottom:10px">{% for k in ai.main_keywords %}<span class="chip key">{{k}}</span>{% endfor %}</div>{% endif %}
+{% if ai.positives %}<p class="muted" style="margin:10px 0 6px">Suggested + keywords</p>
+<div class="chips">{% for w, r in ai.positives %}<span class="chip pos" title="{{r}}">+{{w}}{% if r %} <small>{{r}}</small>{% endif %}</span>{% endfor %}</div>{% endif %}
+{% if ai.negatives %}<p class="muted" style="margin:10px 0 6px">Suggested negatives</p>
+<div class="chips">{% for w, r in ai.negatives %}<span class="chip neg" title="{{r}}">-{{w}}{% if r %} <small>{{r}}</small>{% endif %}</span>{% endfor %}</div>{% endif %}
+</div>{% elif ai_error %}<div class="banner" style="border-color:rgba(255,138,61,.45);background:rgba(255,138,61,.08)">The local AI couldn't help this time: {{ai_error}}</div>{% endif %}
+
+<div class="panel">
+  <div class="kw-head"><h3>Monitor keywords</h3><button class="ghost" data-copy="kwline">Copy</button></div>
+  <p class="muted" style="margin-bottom:8px">For <b style="color:var(--text)">{{result.name or "this page"}}</b>. Remove any negative that is actually part of the product you want.</p>
+  <div class="kw-line" id="kwline">{{line}}</div>
+  <h3 style="margin:16px 0 8px">+ Keywords to require</h3>
+  {% if result.positives %}<table class="kw-table"><thead><tr><th>Keyword</th><th>Why</th></tr></thead><tbody>
+  {% for w, r, in_line in result.positives %}<tr><td><span class="chip pos">+{{w}}</span></td><td class="muted">{{r}}{% if not in_line %} <span style="color:var(--orange)">(not in the line above; add it if your monitor matches SKUs)</span>{% endif %}</td></tr>{% endfor %}</tbody></table>
+  {% else %}<p class="muted">Couldn't tell which product this page is for.</p>{% endif %}
+  <h3 style="margin:16px 0 8px">- Negative keywords</h3>
+  {% if result.negatives %}<table class="kw-table"><thead><tr><th>Keyword</th><th>Why</th></tr></thead><tbody>
+  {% for w, r in result.negatives %}<tr><td><span class="chip neg">-{{w}}</span></td><td class="muted">{{r}}</td></tr>{% endfor %}</tbody></table>
+  {% else %}<p class="muted">No look-alike products were found on the page.</p>{% endif %}
+</div>
+
+<div class="kw-grid">
+  <div class="panel">
+    <div class="kw-head"><h3>Top keywords</h3><button class="ghost" data-copy="kwwords">Copy</button></div>
+    <p class="muted" style="font-size:12px"><span class="star">★</span> also in the title, description or headings</p>
+    <table class="kw-table"><thead><tr><th>Keyword</th><th class="num">Count</th><th class="num">Share</th></tr></thead><tbody id="kwwords">
+    {% for w, c, pct, imp in result.words %}<tr><td>{{w}}{% if imp %} <span class="star">★</span>{% endif %}</td><td class="num">{{c}}</td><td class="num">{{pct}}%</td></tr>
+    {% else %}<tr><td colspan="3" class="muted">No words found.</td></tr>{% endfor %}</tbody></table>
+  </div>
+  <div class="panel">
+    <div class="kw-head"><h3>Top phrases</h3><button class="ghost" data-copy="kwphrases">Copy</button></div>
+    <p class="muted" style="font-size:12px">Two and three word phrases used at least twice</p>
+    <table class="kw-table"><thead><tr><th>Phrase</th><th class="num">Count</th></tr></thead><tbody id="kwphrases">
+    {% for w, c, imp in result.phrases %}<tr><td>{{w}}{% if imp %} <span class="star">★</span>{% endif %}</td><td class="num">{{c}}</td></tr>
+    {% else %}<tr><td colspan="2" class="muted">No repeated phrases.</td></tr>{% endfor %}</tbody></table>
+  </div>
+  <div class="panel">
+    <div class="kw-head"><h3>Page details</h3></div>
+    <dl class="kw-meta">
+      <dt>Title</dt><dd>{{result.title or "-"}}</dd>
+      <dt>Description</dt><dd>{{result.description or "-"}}</dd>
+      {% if result.meta_keywords %}<dt>Meta keywords</dt><dd><div class="chips">{% for k in result.meta_keywords %}<span class="chip">{{k}}</span>{% endfor %}</div></dd>{% endif %}
+      {% for k in ("brand", "name", "color", "model") %}{% if result.product[k] %}<dt>Product {{k}}</dt><dd>{{result.product[k]}}</dd>{% endif %}{% endfor %}
+      {% if result.codes %}<dt>SKU / style</dt><dd><div class="chips">{% for c in result.codes %}<span class="chip key">{{c}}</span>{% endfor %}</div></dd>{% endif %}
+    </dl>
+  </div>
+  {% if result.headings %}<div class="panel">
+    <div class="kw-head"><h3>Headings</h3></div>
+    {% for t, h in result.headings %}<div style="margin-bottom:4px"><span class="pill" style="font-size:11px">{{t|upper}}</span> {{h}}</div>{% endfor %}
+  </div>{% endif %}
+  {% if result.related %}<div class="panel">
+    <div class="kw-head"><h3>Similar items on the page</h3></div>
+    <p class="muted" style="font-size:12px">Negative keywords above come from these</p>
+    {% for r in result.related %}<div style="margin-bottom:4px">{{r}}</div>{% endfor %}
+  </div>{% endif %}
+</div>
+{% endif %}
+<script>
+document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => {
+  const el = document.getElementById(b.dataset.copy);
+  const text = el.tagName === 'TBODY'
+    ? [...el.querySelectorAll('tr')].map(r => r.cells[0].textContent.replace('★', '').trim()).filter(Boolean).join(', ')
+    : el.textContent.trim();
+  const done = () => { const t = b.textContent; b.textContent = 'Copied'; setTimeout(() => b.textContent = t, 1200); };
+  (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(done).catch(() => {
+    const ta = Object.assign(document.createElement('textarea'), {value: text});
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); done();
+  });
+}));
+</script>
+{% endblock %}
