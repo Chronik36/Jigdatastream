@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timezone
 
 from .extract import extract, looks_like_purchase
-from .llm import LLMClient, LLMError
+from .llm import LLMError, from_config as llm_for
 from .mail import fetch_emails
 from .training import few_shot
 
@@ -54,7 +54,7 @@ def process(email, store, llm, config, counts, log, examples=()):
 def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
     """Sync every configured inbox one after another. `emails` replaces Gmail in tests.
     progress(text) is called as work advances, for the dashboard."""
-    llm = llm or LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout)
+    llm = llm or llm_for(config)
     progress = progress or (lambda text: None)
     cli_log = log
 

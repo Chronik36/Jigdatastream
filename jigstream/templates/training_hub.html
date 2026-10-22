@@ -1,0 +1,33 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.tk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:22px}
+a.tk{display:block;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;color:var(--text);text-decoration:none}
+a.tk:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+a.tk h3{margin:0 0 6px;font-size:15px}a.tk p{margin:0 0 10px;font-size:13px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tk-new textarea{min-height:90px;margin-bottom:10px}.tk-new input[name=name]{width:100%;max-width:420px}
+</style>
+<h2>Training</h2>
+<p class="muted">Teach the local AI any job, not just reading emails. Make a task, give it instructions and examples of the
+right answer, and try it. Every example is shown to the model on the next run. With 10 or more examples you can also train a
+model for the task on this Mac. Everything stays on this Mac.</p>
+{% if ft.running %}<div class="banner"><span>{{ft.progress}}</span></div>{% endif %}
+<div class="tk-grid">
+  <a class="tk" href="/training/email"><h3>Email reader <span class="pill">Built in</span></h3>
+    <p>Reads each email and decides if it's an order, a botting expense, or neither. Taught from the Inbox page and order corrections.</p>
+    <span class="pill">{{email_n}} examples</span> {% if "email" in trained %}<span class="pill s-delivered">Trained</span>{% endif %}
+    {% if config.llm_adapter %}<span class="pill s-in_transit">Trained model in use</span>{% endif %}</a>
+  {% for t in tasks %}<a class="tk" href="/training/tasks/{{t.id}}"><h3>{{t.name}}</h3>
+    <p>{{t.instructions or "No instructions yet."}}</p>
+    <span class="pill">{{t.n}} example{{'' if t.n == 1 else 's'}}</span> <span class="pill">{{"JSON" if t.answer == "json" else "Text"}} answers</span>
+    {% if t.adapter_id %}<span class="pill s-delivered">Trained</span>{% endif %}</a>{% endfor %}
+</div>
+<div class="panel tk-new">
+<h3 style="margin-top:0">New task</h3>
+<form method="post" action="/training/tasks" style="display:block">
+  <input name="name" placeholder="Name, e.g. Sort Discord checkout messages" required>
+  <textarea name="instructions" placeholder="Tell the model what to do, as you would tell a person. For example: Read a Discord checkout message and give the site, product, size and price."></textarea>
+  <label class="muted">Answers are <select name="answer"><option value="text">plain text</option><option value="json">JSON (fields)</option></select></label>
+  <button>Create task</button>
+</form>
+</div>
+{% endblock %}

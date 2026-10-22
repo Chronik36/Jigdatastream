@@ -79,6 +79,7 @@ class Config:
     llm_model: str = "huihui_ai/qwen3-abliterated:14b"
     llm_api_key: str = "ollama"
     llm_timeout: int = 300  # a 14B model on a 16 GB Mac can take a while on long emails
+    llm_adapter: str = ""  # an email reader trained on the Training page (MLX only)
     max_body_chars: int = 12000
 
     training_mode: bool = True  # status dropdowns on Orders; corrections become model examples
@@ -107,6 +108,7 @@ class Config:
         c.llm_engine = env("LLM_ENGINE", c.llm_engine)
         c.llm_api_key = env("LLM_API_KEY", c.llm_api_key)
         c.llm_timeout = int(env("LLM_TIMEOUT", c.llm_timeout))
+        c.llm_adapter = env("LLM_ADAPTER", "") if c.llm_engine == "mlx" else ""
         c.max_body_chars = int(env("MAX_BODY_CHARS", c.max_body_chars))
         c.training_mode = env("TRAINING_MODE", "1") == "1"
         c.use_examples = env("USE_TRAINING_EXAMPLES", "1") == "1"
