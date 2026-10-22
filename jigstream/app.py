@@ -6,7 +6,8 @@ from urllib.parse import quote
 
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
-from . import analysis, db, discord, export, inbox, logs, parsers, profiles, training, updater
+from . import address as A
+from . import analysis, db, discord, export, inbox, logs, parsers, profilebook, profiles, training, updater, wallet
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import LLMClient, installed_models
@@ -29,11 +30,6 @@ TRACK_URLS = {
     "DHL": "https://www.dhl.com/us-en/home/tracking/tracking-express.html?tracking-id={}",
     "OnTrac": "https://www.ontrac.com/tracking/?number={}",
 }
-
-
-PROFILE_FIELDS = ("name", "bot", "first_name", "last_name", "phone", "email",
-                  "ship_address1", "ship_address2", "ship_city", "ship_state", "ship_zip", "ship_country",
-                  "bill_address1", "bill_address2", "bill_city", "bill_state", "bill_zip", "bill_country")
 
 
 def create_app(db_path=None):
@@ -204,33 +200,33 @@ def create_app(db_path=None):
     @app.get("/profiles")
     def profile_list():
         c = con()
+        group = request.args.get("group")
+        q = ("SELECT p.*, c.brand AS linked_brand, c.last4 AS linked_last4, c.exp AS linked_exp, c.name AS linked_name"
+             " FROM profiles p LEFT JOIN cards c ON c.id = p.card_id"
+             + (" WHERE COALESCE(p.group_name, '') = ?" if group is not None else "") + " ORDER BY p.name")
         rows = [(p, analysis.profile_issues(p), export.same_address(p))
-                for p in c.execute("SELECT * FROM profiles ORDER BY name")]
-        bots = sorted(export.templates(c))
-        return render_template("profiles.html", rows=rows, bots=bots)
+                for p in c.execute(q, (group,) if group is not None else ())]
+        groups, ungrouped = profilebook.groups(c)
+        return render_template("profiles.html", rows=rows, bots=sorted(export.templates(c)), groups=groups,
+                               ungrouped=ungrouped, group=group, total=c.execute("SELECT COUNT(*) FROM profiles").fetchone()[0],
+                               fields=profilebook.DISTRIBUTE_FIELDS, addresses=profilebook.saved_addresses(c),
+                               states=sorted(A.STATE_NAMES.items()), profiles_json=[dict(p) for p, _, _ in rows],
+                               cards=wallet.cards(c))
 
-    @app.route("/profiles/<path:name>/edit", methods=["GET", "POST"])
-    def profile_edit(name):
+    def _back_to_profiles():
+        return redirect(request.form.get("back") or request.referrer or url_for("profile_list"))
+
+    @app.post("/profiles/save")
+    def profile_save():
         c = con()
-        p = c.execute("SELECT * FROM profiles WHERE name=?", (name,)).fetchone()
-        if not p:
-            return "Profile not found", 404
-        if request.method == "GET":
-            return render_template("profile_edit.html", p=p, same=export.same_address(p))
-        f = {k: request.form.get(k, "").strip() for k in PROFILE_FIELDS}
-        f["name"] = f["name"] or name
-        if request.form.get("same"):
-            for k in ("address1", "address2", "city", "state", "zip", "country"):
-                f["bill_" + k] = f["ship_" + k]
-        if f["name"] != name and c.execute("SELECT 1 FROM profiles WHERE name=?", (f["name"],)).fetchone():
-            flash(f"There's already a profile called {f['name']}.")
-            return redirect(url_for("profile_edit", name=name))
-        c.execute(f"UPDATE profiles SET {', '.join(k + '=?' for k in PROFILE_FIELDS)} WHERE name=?",
-                  [f[k] for k in PROFILE_FIELDS] + [name])
-        c.commit()
-        logger.info("profile %s edited", f["name"])
-        flash(f"Saved {f['name']}.")
-        return redirect(url_for("profile_list"))
+        name, error = profilebook.save_profile(c, request.form, request.form.get("original") or None)
+        flash(error or f"Saved {name}.")
+        logger.info("profile %s %s", name, "edited" if request.form.get("original") else "created")
+        return _back_to_profiles()
+
+    @app.get("/profiles/<path:name>/edit")
+    def profile_edit(name):
+        return redirect(url_for("profile_list", edit=name))
 
     @app.post("/profiles/<path:name>/delete")
     def profile_delete(name):
@@ -238,7 +234,126 @@ def create_app(db_path=None):
         c.execute("DELETE FROM profiles WHERE name=?", (name,))
         c.commit()
         flash(f"Deleted {name}.")
-        return redirect(url_for("profile_list"))
+        return _back_to_profiles()
+
+    @app.post("/profiles/bulk")
+    def profile_bulk():
+        """Actions on the ticked profiles: move to a group, copy, delete, Mass Distribute."""
+        c = con()
+        names = request.form.getlist("names")
+        action = request.form.get("action")
+        if not names:
+            flash("Tick one or more profiles first.")
+        elif action == "move":
+            group = request.form.get("new_group", "").strip() or request.form.get("group_name", "")
+            profilebook.move(c, names, group)
+            flash(f"Moved {len(names)} profile(s) to {group or 'no group'}.")
+        elif action == "duplicate":
+            count = max(1, min(100, int(request.form.get("count") or 1)))
+            made = [n for name in names for n in profilebook.duplicate(c, name, count)]
+            flash(f"Made {len(made)} copies.")
+        elif action == "delete":
+            c.executemany("DELETE FROM profiles WHERE name=?", [(n,) for n in names])
+            c.commit()
+            flash(f"Deleted {len(names)} profile(s).")
+        elif action == "distribute":
+            n, error = profilebook.distribute(c, names, request.form.get("field", ""),
+                                              request.form.get("values", "").splitlines(),
+                                              bool(request.form.get("billing")), bool(request.form.get("shipping")))
+            flash(error or f"Updated {n} profile(s).")
+        return _back_to_profiles()
+
+    @app.post("/profiles/groups")
+    def profile_groups():
+        c = con()
+        action, name = request.form.get("action"), request.form.get("name", "")
+        if action == "add":
+            profilebook.add_group(c, name)
+        elif action == "rename":
+            profilebook.rename_group(c, name, request.form.get("new_name", ""))
+            return redirect(url_for("profile_list", group=request.form.get("new_name", "").strip()))
+        elif action == "delete":
+            profilebook.delete_group(c, name)
+            return redirect(url_for("profile_list"))
+        return redirect(url_for("profile_list", group=name.strip()) if action == "add" else url_for("profile_list"))
+
+    @app.get("/cards")
+    def cards_page():
+        c = con()
+        group = request.args.get("group")
+        groups, ungrouped = wallet.groups(c)
+        return render_template("cards.html", cards=wallet.cards(c, group), groups=groups, ungrouped=ungrouped,
+                               group=group, total=c.execute("SELECT COUNT(*) FROM cards").fetchone()[0],
+                               providers=wallet.PROVIDERS, types=wallet.CARD_TYPES,
+                               profiles=[r[0] for r in c.execute("SELECT name FROM profiles ORDER BY name")])
+
+    @app.post("/cards/add")
+    def cards_add():
+        c = con()
+        parsed, problems = wallet.parse_lines(request.form.get("lines", ""))
+        limit = request.form.get("spend_limit", "").replace("$", "").replace(",", "").strip()
+        group = request.form.get("new_group", "").strip() or request.form.get("group_name", "").strip()
+        added, dup = wallet.add_cards(c, parsed, request.form.get("provider") or "Other",
+                                      request.form.get("card_type") or "Standard",
+                                      float(limit) if limit.replace(".", "", 1).isdigit() else None, group or None)
+        msg = f"Added {added} card(s)." + (f" {dup} were already saved." if dup else "")
+        flash(msg + (" Skipped: " + "; ".join(problems[:5]) if problems else ""))
+        return redirect(request.referrer or url_for("cards_page"))
+
+    @app.get("/cards/<int:card_id>/reveal")
+    def cards_reveal(card_id):
+        details = wallet.reveal(con(), card_id)
+        logger.info("card %s shown", card_id)  # never the number itself
+        return jsonify(details or {"error": "not found"}), 200 if details else 404
+
+    @app.post("/cards/bulk")
+    def cards_bulk():
+        c = con()
+        ids = [int(i) for i in request.form.getlist("ids") if i.isdigit()]
+        action = request.form.get("action")
+        if action == "link":
+            wallet.link(c, ids[0], request.form.get("profile") or None) if ids else None
+            flash("Card linked." if request.form.get("profile") else "Card unlinked.")
+        elif not ids:
+            flash("Tick one or more cards first.")
+        elif action == "delete":
+            wallet.delete(c, ids)
+            flash(f"Deleted {len(ids)} card(s).")
+        elif action == "move":
+            group = request.form.get("new_group", "").strip() or request.form.get("group_name", "")
+            if group:
+                c.execute("INSERT OR IGNORE INTO card_groups VALUES (?)", (group,))
+            c.executemany("UPDATE cards SET group_name=? WHERE id=?", [(group or None, i) for i in ids])
+            c.commit()
+            flash(f"Moved {len(ids)} card(s).")
+        elif action in ("active", "inactive"):
+            wallet.set_status(c, ids, action)
+            flash(f"Marked {len(ids)} card(s) {action}.")
+        return redirect(request.referrer or url_for("cards_page"))
+
+    @app.post("/cards/groups")
+    def card_groups():
+        c = con()
+        action, name = request.form.get("action"), request.form.get("name", "").strip()
+        if action == "add" and name:
+            c.execute("INSERT OR IGNORE INTO card_groups VALUES (?)", (name,))
+        elif action == "rename" and request.form.get("new_name", "").strip():
+            new = request.form["new_name"].strip()
+            c.execute("INSERT OR IGNORE INTO card_groups VALUES (?)", (new,))
+            c.execute("UPDATE cards SET group_name=? WHERE group_name=?", (new, name))
+            c.execute("DELETE FROM card_groups WHERE name=?", (name,))
+            name = new
+        elif action == "delete":
+            c.execute("UPDATE cards SET group_name=NULL WHERE group_name=?", (name,))
+            c.execute("DELETE FROM card_groups WHERE name=?", (name,))
+            name = None
+        c.commit()
+        return redirect(url_for("cards_page", group=name) if name else url_for("cards_page"))
+
+    @app.post("/profiles/addresses")
+    def profile_address_save():
+        error = profilebook.save_address(con(), request.form)
+        return jsonify({"error": error, "addresses": profilebook.saved_addresses(con())}), 400 if error else 200
 
     @app.post("/profiles/export")
     def profile_export():
@@ -246,10 +361,15 @@ def create_app(db_path=None):
         bot = request.form.get("bot", "")
         names = request.form.getlist("names")
         rows = c.execute("SELECT * FROM profiles ORDER BY name").fetchall()
-        rows = [r for r in rows if not names or r["name"] in names]
+        group = request.form.get("group")
+        rows = [r for r in rows if r["name"] in names] if names else \
+            [r for r in rows if group is None or (r["group_name"] or "") == group]
         fmt, template = export.templates(c).get(bot, ("json", export.GENERIC))
         texts = [f.read().decode("utf-8", "replace") for f in request.files.getlist("cards") if f.filename]
-        ext, text = export.export(rows, fmt, template, export.cards_from(texts))
+        cards = {r["name"]: {**wallet.reveal(c, r["card_id"]), "holder": r["card_holder"] or ""}
+                 for r in rows if r["card_id"] and wallet.reveal(c, r["card_id"])}  # cards you linked
+        cards.update(export.cards_from(texts))
+        ext, text = export.export(rows, fmt, template, cards)
         logger.info("exported %d profiles for %s (%d card files used)", len(rows), bot or "generic", len(texts))
         return Response(text, mimetype="text/csv" if ext == "csv" else "application/json",
                         headers={"Content-Disposition": f"attachment; filename={export.slug(bot or 'generic')}-profiles.{ext}"})

@@ -1,40 +1,96 @@
 {% extends "base.html" %}{% block body %}
 <style>
-.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin:16px 0}
-.pcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;position:relative;transition:border-color .15s}
-.pcard:hover{border-color:var(--line-2)}.pcard.warn{box-shadow:inset 3px 0 0 var(--orange)}
-.pcard h3{margin:0 0 4px;font-size:16px;color:var(--text);text-transform:none;letter-spacing:-.01em;font-weight:600;display:flex;align-items:center;gap:8px;padding-right:64px}
+.playout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px;align-items:start}
+.gside{position:sticky;top:76px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
+.gside a{display:flex;justify-content:space-between;padding:7px 10px;border-radius:9px;color:var(--text);font-weight:500}
+.gside a span{color:var(--muted);font-weight:400}.gside a:hover{background:var(--surface-2)}
+.gside a.on{background:var(--accent-soft);color:var(--accent)}.gside .lbl{color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.07em;margin:12px 10px 6px}
+.gside form{display:flex;margin:10px 0 0}.gside input{width:100%;margin:0 6px 0 0 !important;padding:6px 10px !important}.gside button{padding:6px 10px}
+.phead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.phead h2{margin:0;flex:1}
+.toolbar{position:sticky;top:64px;z-index:5;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--line-2);border-radius:12px;padding:8px 12px;margin-bottom:14px}
+.toolbar form,.toolbar select,.toolbar input,.toolbar button{margin:0}.toolbar .sep{width:1px;height:22px;background:var(--line-2);margin:0 4px}
+.toolbar button{padding:6px 12px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.pcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px 16px 46px;position:relative;transition:border-color .15s}
+.pcard:hover{border-color:var(--line-2)}.pcard.warn{box-shadow:inset 3px 0 0 var(--orange)}.pcard.picked{border-color:rgba(61,216,239,.6)}
+.pcard .pick{position:absolute;left:18px;top:21px}
+.pcard h3{margin:0 0 4px;font-size:16px;color:var(--text);text-transform:none;letter-spacing:-.01em;font-weight:600;display:flex;align-items:center;gap:8px;padding-right:76px}
 .pcard .tag{font-size:11px;font-weight:600;background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:2px 8px}
-.pcard .who{color:var(--muted);font-size:13px;margin-bottom:12px;word-break:break-all}
+.pcard .tag.grp{background:var(--green-soft);color:var(--green)}
+.pcard .who{color:var(--muted);font-size:13px;margin-bottom:10px;word-break:break-all}
 .pcard .lbl{color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.06em;margin-top:10px}
-.pcard .same{color:var(--green)}.pcard .icons{position:absolute;top:14px;right:14px;display:flex;gap:10px}
+.pcard .same{color:var(--green)}.pcard .icons{position:absolute;top:12px;right:12px;display:flex;gap:2px}
 .pcard .icons form{margin:0}.pcard .icons a,.pcard .icons button{background:none;border:0;cursor:pointer;padding:6px;border-radius:8px;display:flex;color:var(--muted);box-shadow:none}
 .pcard .icons a:hover,.pcard .icons button:hover{background:var(--surface-2);filter:none}
-.pcard svg{width:16px;height:16px}
-.pcard .icons .edit{color:var(--accent)}.pcard .icons .del{color:var(--red)}.pcard .warnicon{color:var(--orange);cursor:help;display:flex;padding:6px}
-.pcard .issues{color:var(--orange);font-size:12px;margin-top:10px}
-.pcard .pick{position:absolute;bottom:14px;right:14px}
-.exportbox{display:block}
+.pcard svg{width:16px;height:16px}.pcard .icons .edit{color:var(--accent)}.pcard .icons .del{color:var(--red)}
+.pcard .warnicon{color:var(--orange);cursor:help;display:flex;padding:6px}.pcard .issues{color:var(--orange);font-size:12px;margin-top:10px}
+dialog{background:var(--surface);color:var(--text);border:1px solid var(--line-2);border-radius:16px;padding:0;width:min(640px,94vw);max-height:90vh;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+dialog::backdrop{background:rgba(5,10,30,.7);backdrop-filter:blur(3px)}
+dialog .dh{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--line)}
+dialog .dh h3{margin:0;color:var(--text);text-transform:none;letter-spacing:0;font-size:17px}
+dialog .x{background:none;border:0;color:var(--muted);font-size:20px;padding:2px 8px;box-shadow:none}
+dialog .db{padding:18px 22px;overflow:auto;max-height:calc(90vh - 130px)}
+dialog .df{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--line)}
+dialog form{display:block;margin:0}
+.fl{display:block;color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin:12px 0 6px}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}.f3{display:grid;grid-template-columns:1.2fr 1fr .7fr;gap:0 12px}
+dialog input[type=text],dialog input[type=email],dialog select,dialog textarea{width:100%;margin:0}
+textarea{font:inherit;background:var(--surface-2);color:var(--text);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;outline:none;resize:vertical}
+textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.row{display:flex;gap:8px}.row>*:first-child{flex:1}.sect{color:var(--accent);font-weight:600;margin:18px 0 0;padding-top:14px;border-top:1px solid var(--line)}
+.md{width:min(860px,96vw)}.md .db{display:grid;grid-template-columns:230px 1fr;gap:0;padding:0}
+.md .fields{border-right:1px solid var(--line);padding:14px;overflow:auto;max-height:calc(90vh - 130px)}
+.md .fields .sec{color:var(--accent);font-weight:600;font-size:13px;margin:10px 6px 4px}
+.md .fields label{display:block;padding:7px 10px;border-radius:9px;cursor:pointer;color:var(--text)}
+.md .fields input{display:none}.md .fields label:has(input:checked){background:linear-gradient(135deg,var(--blue),var(--accent));color:#04122a;font-weight:600}
+.md .vals{padding:16px 20px}.md textarea{height:300px}
+.hint{color:var(--accent);font-size:12px;margin:2px 0 8px}
+@media (max-width:900px){.playout{grid-template-columns:1fr}.gside{position:static}.md .db{grid-template-columns:1fr}}
 </style>
-<h2>Profiles <span class="muted" style="font-size:15px;font-weight:500">{{rows|length}}</span></h2>
-{% if not rows %}<p class="muted">No profiles yet. Import a bot's profile export from the Dashboard.</p>{% endif %}
-<form id="exportform" class="exportbox panel" method="post" action="/profiles/export" enctype="multipart/form-data">
-  <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px 0"><b style="margin:0 14px 10px 0">Export profiles</b>
-  <select name="bot">{% for b in bots %}<option value="{{b}}">{{b}} format</option>{% endfor %}<option value="">Generic JSON</option></select>
-  <input type="file" name="cards" multiple title="The bot's original export, to bring card numbers along">
-  <button style="margin-bottom:10px">Download</button></div>
-  <div class="muted" style="font-size:12px">Exports the ticked profiles, or all of them if none are ticked, in the layout of profiles you imported from that bot.
-  Card numbers are never saved here; to include them, choose the bot's original export file(s) too. They're only read for this download.</div>
+
+<div class="phead"><h2>Profiles <span class="muted" style="font-size:15px;font-weight:500">{{rows|length}}{% if group is not none %} in {{group or "no group"}}{% endif %}</span></h2>
+<button type="button" class="ghost" onclick="document.getElementById('exportdlg').showModal()">Export</button>
+<button type="button" onclick="openProfile()">+ Create profile</button></div>
+
+<div class="playout">
+<aside class="gside">
+  <a href="/profiles" class="{{'on' if group is none}}">All profiles <span>{{total}}</span></a>
+  <div class="lbl">GROUPS</div>
+  {% for g, n in groups %}<a href="/profiles?group={{g|urlencode}}" class="{{'on' if group == g}}">{{g}} <span>{{n}}</span></a>{% endfor %}
+  {% if ungrouped %}<a href="/profiles?group=" class="{{'on' if group == ''}}"><i>No group</i> <span>{{ungrouped}}</span></a>{% endif %}
+  <form method="post" action="/profiles/groups"><input type="hidden" name="action" value="add"><input name="name" placeholder="New group" required><button>Add</button></form>
+  {% if group %}<form method="post" action="/profiles/groups"><input type="hidden" name="action" value="rename"><input type="hidden" name="name" value="{{group}}"><input name="new_name" placeholder="Rename {{group}}" required><button class="ghost">Save</button></form>
+  <form method="post" action="/profiles/groups" onsubmit="return confirm('Delete the group {{group}}? Its profiles are kept, just ungrouped.')"><input type="hidden" name="action" value="delete"><input type="hidden" name="name" value="{{group}}"><button class="danger" style="width:100%">Delete group</button></form>{% endif %}
+</aside>
+
+<section>
+<form id="bulk" method="post" action="/profiles/bulk"><input type="hidden" name="back" value="{{request.full_path}}">
+<div class="toolbar">
+  <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="all" onclick="pickAll(this.checked)"> <b id="count">0 selected</b></label>
+  <span class="sep"></span>
+  <select name="group_name"><option value="">Move to…</option>{% for g, n in groups %}<option>{{g}}</option>{% endfor %}<option value="">No group</option></select>
+  <input name="new_group" placeholder="or new group" size="12">
+  <button class="ghost" name="action" value="move">Move</button>
+  <span class="sep"></span>
+  <input name="count" type="number" min="1" max="100" value="1" style="width:64px;margin:0" title="How many copies of each ticked profile">
+  <button class="ghost" name="action" value="duplicate">Copy</button>
+  <span class="sep"></span>
+  <button type="button" onclick="openDistribute()">Mass Distribute</button>
+  <button class="danger" name="action" value="delete" onclick="return confirm('Delete the ticked profiles?')">Delete</button>
+</div>
 </form>
+
+{% if not rows %}<div class="panel muted">No profiles here yet. Create one, or import a bot's profile export from the Dashboard.</div>{% endif %}
 <div class="pgrid">
 {% for p,issues,same in rows %}
 <div class="pcard{{' warn' if issues}}">
+  <input class="pick" type="checkbox" name="names" value="{{p.name}}" form="bulk" onchange="counted()">
   <div class="icons">
     {% if issues %}<span class="warnicon" title="{{issues|join('\n')}}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>{% endif %}
-    <a class="edit" href="{{url_for('profile_edit', name=p.name)}}" title="Edit profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></a>
+    <a class="edit" href="#" onclick="openProfile({{loop.index0}}); return false" title="Edit profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></a>
     <form method="post" action="{{url_for('profile_delete', name=p.name)}}" onsubmit="return confirm('Delete {{p.name}}?')"><button class="del" title="Delete profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button></form>
   </div>
-  <h3>{{p.name}}{% if p.bot %} <span class="tag">{{p.bot}}</span>{% endif %}</h3>
+  <h3>{{p.name}}{% if p.group_name %} <span class="tag grp">{{p.group_name}}</span>{% endif %}{% if p.bot %} <span class="tag">{{p.bot}}</span>{% endif %}</h3>
   <div class="who">{{p.email or "no email"}}{% if p.phone %} · {{p.phone}}{% endif %}</div>
   <div class="lbl">BILLING</div>
   <div>{{p.bill_address1}}{% if p.bill_address2 %}, {{p.bill_address2}}{% endif %}</div>
@@ -44,10 +100,148 @@
   <div>{{p.ship_address1}}{% if p.ship_address2 %}, {{p.ship_address2}}{% endif %}</div>
   <div>{{p.ship_city}}{% if p.ship_city %}, {% endif %}{{p.ship_state}} {{p.ship_zip}}</div>{% endif %}
   <div class="lbl">PAYMENT</div>
-  <div>{% if p.card_last4 %}{{p.card_brand or "Card"}} •••• {{p.card_last4}}{% if p.card_exp %} • Exp {{p.card_exp}}{% endif %}{% else %}<span class="muted">No card on file</span>{% endif %}</div>
+  <div>{% if p.linked_last4 %}{{p.linked_brand}} •••• {{p.linked_last4}} • Exp {{p.linked_exp}}{% elif p.card_last4 %}{{p.card_brand or "Card"}} •••• {{p.card_last4}}{% if p.card_exp %} • Exp {{p.card_exp}}{% endif %} <span class="muted">(in bot file)</span>{% else %}<span class="muted">No card linked</span>{% endif %}{% if p.card_holder %} <span class="muted">· {{p.card_holder}}</span>{% endif %}</div>
   {% if issues %}<div class="issues">{{issues|join("; ")}}</div>{% endif %}
-  <label class="pick muted" title="Include in export"><input type="checkbox" name="names" value="{{p.name}}" form="exportform"></label>
 </div>
 {% endfor %}
 </div>
+</section>
+</div>
+
+<dialog id="profdlg"><form method="post" action="/profiles/save" id="profform">
+<input type="hidden" name="back" value="{{request.full_path}}"><input type="hidden" name="original">
+<div class="dh"><h3 id="proftitle">Create profile</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
+<div class="db">
+  <span class="fl">Profile group</span>
+  <div class="row"><select name="group_name" id="grpsel"><option value="">No group</option>{% for g, n in groups %}<option>{{g}}</option>{% endfor %}</select>
+  <button type="button" class="ghost" onclick="newGroup()">+ New</button></div>
+  <span class="fl">Profile name</span><input type="text" name="name" placeholder="e.g. My Profile #1" required>
+  <div class="f2"><div><span class="fl">First name</span><input type="text" name="first_name"></div><div><span class="fl">Last name</span><input type="text" name="last_name"></div></div>
+  <div class="f2"><div><span class="fl">Email</span><input type="email" name="email" placeholder="user@example.com"></div><div><span class="fl">Phone</span><input type="text" name="phone" placeholder="5551234567"></div></div>
+  {% for pre, title in [("bill_", "Billing address"), ("ship_", "Shipping address")] %}
+  <div class="sect">{{title}}</div>
+  {% if pre == "ship_" %}<label style="display:block;margin-top:10px"><input type="checkbox" name="same" id="same" onchange="document.getElementById('shipbox').style.display=this.checked?'none':''"> Same as billing</label><div id="shipbox">
+  {% else %}<span class="fl">Address nickname (optional)</span><input type="text" name="nickname" placeholder="e.g. Home, Warehouse #2">
+  <div class="row" style="margin-top:10px"><select id="savedsel" onchange="useAddress(this.value)"><option value="">Use saved address…</option></select><button type="button" class="ghost" onclick="saveAddress()">Save</button></div>{% endif %}
+  <span class="fl">Address line 1</span><input type="text" name="{{pre}}address1">
+  <span class="fl">Address line 2</span><input type="text" name="{{pre}}address2" placeholder="Apt, Suite, etc.">
+  <div class="f3"><div><span class="fl">City</span><input type="text" name="{{pre}}city"></div>
+  <div><span class="fl">State / territory</span><select name="{{pre}}state"><option value="">Select state</option>{% for full, code in states %}<option value="{{code}}">{{full|title}}</option>{% endfor %}</select></div>
+  <div><span class="fl">ZIP</span><input type="text" name="{{pre}}zip"></div></div>
+  <span class="fl">Country</span><input type="text" name="{{pre}}country" value="US">
+  {% if pre == "ship_" %}</div>{% endif %}{% endfor %}
+  <div class="sect">Payment</div>
+  <div class="f2"><div><span class="fl">Card</span><select name="card_id"><option value="">No card</option>{% for k in cards %}<option value="{{k.id}}">{{k.name or k.provider}} · {{k.brand}} •••• {{k.last4}} · {{k.exp}}{% if k.profile %} (on {{k.profile}}){% endif %}</option>{% endfor %}</select></div>
+  <div><span class="fl">Name on card</span><input type="text" name="card_holder"></div></div>
+  <p class="muted" style="font-size:12px;margin-top:8px">Add cards on the <a href="/cards">Cards</a> page. They're stored encrypted on this Mac; a card can be on one profile at a time.</p>
+</div>
+<div class="df"><button type="button" class="ghost" onclick="this.closest('dialog').close()">Cancel</button><button>Save profile</button></div>
+</form></dialog>
+
+<dialog id="distdlg" class="md"><form method="post" action="/profiles/bulk" id="distform">
+<input type="hidden" name="back" value="{{request.full_path}}"><input type="hidden" name="action" value="distribute"><div id="distnames"></div>
+<div class="dh"><h3>Mass Distribute</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
+<div class="db">
+  <div class="fields">{% set ns = namespace(sec="") %}{% for key, (sec, label, help) in fields.items() %}
+    {% if sec != ns.sec %}<div class="sec">{{sec}}</div>{% set ns.sec = sec %}{% endif %}
+    <label><input type="radio" name="field" value="{{key}}" data-help="{{help}}" data-label="{{label}}" {{'checked' if loop.index == 2}} onchange="fieldHelp()">{{label}}</label>{% endfor %}
+    <div class="muted" style="font-size:12px;padding:10px">Cards are linked one profile at a time, in the profile window or on the Cards page.</div>
+  </div>
+  <div class="vals"><b id="distcount">Selected 0 profiles</b>
+    <div class="hint" id="disthelp"></div>
+    <textarea name="values" placeholder="Paste values here, one per line" required></textarea>
+    <p class="muted" style="font-size:12px;margin:6px 0 10px">Values go to the ticked profiles in order. If there are fewer values than profiles, the list repeats.</p>
+    <label style="display:block"><input type="checkbox" name="billing" checked> Update billing address</label>
+    <label style="display:block;margin-top:6px"><input type="checkbox" name="shipping" checked> Update shipping address</label>
+  </div>
+</div>
+<div class="df"><button type="button" class="ghost" onclick="this.closest('dialog').close()">Cancel</button><button>Save</button></div>
+</form></dialog>
+
+<dialog id="exportdlg"><form method="post" action="/profiles/export" enctype="multipart/form-data" id="exportform">
+<div class="dh"><h3>Export profiles</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
+<div class="db">
+  <p class="muted" style="margin:0">Exports the ticked profiles, or every profile in this view if none are ticked, in the bot's own file layout (taken from profiles you imported from that bot).</p>
+  <div id="exportnames"></div>{% if group is not none %}<input type="hidden" name="group" value="{{group}}">{% endif %}
+  <span class="fl">Bot format</span><select name="bot">{% for b in bots %}<option value="{{b}}">{{b}}</option>{% endfor %}<option value="">Generic JSON</option></select>
+  <p class="muted" style="font-size:12px;margin-top:12px">Each profile's linked card goes into the file. Profiles without a linked card can take theirs from the bot's original export:</p>
+  <input type="file" name="cards" multiple>
+</div>
+<div class="df"><button type="button" class="ghost" onclick="this.closest('dialog').close()">Cancel</button><button onclick="copyPicks('exportnames'); setTimeout(() => this.closest('dialog').close(), 300)">Download</button></div>
+</form></dialog>
+
+<script>
+const PROFILES = {{ profiles_json|tojson }};
+let ADDRESSES = {{ addresses|tojson }};
+const picks = () => [...document.querySelectorAll('input.pick:checked')].map(c => c.value);
+function counted() {
+  const n = picks().length;
+  document.getElementById('count').textContent = n + ' selected';
+  document.querySelectorAll('input.pick').forEach(c => c.closest('.pcard').classList.toggle('picked', c.checked));
+}
+function pickAll(on) { document.querySelectorAll('input.pick').forEach(c => c.checked = on); counted(); }
+function copyPicks(id) {
+  const box = document.getElementById(id); box.innerHTML = '';
+  picks().forEach(n => { const i = document.createElement('input'); i.type = 'hidden'; i.name = 'names'; i.value = n; box.appendChild(i); });
+}
+function fillAddresses() {
+  const s = document.getElementById('savedsel');
+  s.length = 1;
+  ADDRESSES.forEach((a, i) => s.add(new Option(a.nickname + ' · ' + [a.address1, a.city, a.state].filter(Boolean).join(', '), i)));
+}
+function useAddress(i) {
+  if (i === '') return;
+  const a = ADDRESSES[i], f = document.getElementById('profform');
+  ['address1', 'address2', 'city', 'state', 'zip', 'country'].forEach(k => f.elements['bill_' + k].value = a[k] || '');
+  f.elements.nickname.value = a.nickname;
+}
+function saveAddress() {
+  const f = document.getElementById('profform'), body = new FormData();
+  body.append('nickname', f.elements.nickname.value);
+  ['address1', 'address2', 'city', 'state', 'zip', 'country'].forEach(k => body.append('bill_' + k, f.elements['bill_' + k].value));
+  fetch('/profiles/addresses', {method: 'POST', body}).then(r => r.json()).then(r => {
+    if (r.error) return alert(r.error);
+    ADDRESSES = r.addresses; fillAddresses();
+  });
+}
+function newGroup() {
+  const name = prompt('Name for the new group');
+  if (!name) return;
+  const s = document.getElementById('grpsel'); s.add(new Option(name, name)); s.value = name;
+}
+function openProfile(i) {
+  const f = document.getElementById('profform'), p = i === undefined ? null : PROFILES[i];
+  f.reset(); fillAddresses();
+  document.getElementById('proftitle').textContent = p ? 'Edit ' + p.name : 'Create profile';
+  f.elements.original.value = p ? p.name : '';
+  if (p) {
+    for (const el of f.elements) if (el.name && el.name in p && el.type !== 'hidden' && el.type !== 'checkbox') {
+      if (el.tagName === 'SELECT' && p[el.name] && ![...el.options].some(o => o.value === p[el.name])) el.add(new Option(p[el.name], p[el.name]));
+      el.value = p[el.name] || '';
+    }
+    for (const k of ['state']) for (const pre of ['bill_', 'ship_']) {  // full state names select their code
+      const el = f.elements[pre + k], match = [...el.options].find(o => o.text.toLowerCase() === (p[pre + k] || '').toLowerCase());
+      if (match) el.value = match.value;
+    }
+  } else {
+    const g = new URLSearchParams(location.search).get('group'); if (g) f.elements.group_name.value = g;
+  }
+  const same = p ? ['address1', 'address2', 'city', 'state', 'zip'].every(k => (p['bill_' + k] || '') === (p['ship_' + k] || '')) : true;
+  f.elements.same.checked = same; document.getElementById('shipbox').style.display = same ? 'none' : '';
+  document.getElementById('profdlg').showModal();
+}
+function fieldHelp() {
+  const r = document.querySelector('#distform input[name=field]:checked');
+  document.getElementById('disthelp').textContent = 'Enter ' + r.dataset.label.toLowerCase() + ' to spread over the selected profiles: ' + r.dataset.help + '.';
+}
+function openDistribute() {
+  const n = picks().length;
+  if (!n) return alert('Tick the profiles to update first.');
+  copyPicks('distnames');
+  document.getElementById('distcount').textContent = 'Selected ' + n + ' profile' + (n === 1 ? '' : 's');
+  fieldHelp(); document.getElementById('distdlg').showModal();
+}
+const edit = new URLSearchParams(location.search).get('edit');
+if (edit) { const i = PROFILES.findIndex(p => p.name === edit); if (i >= 0) openProfile(i); }
+</script>
 {% endblock %}
