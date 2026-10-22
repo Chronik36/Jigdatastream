@@ -19,7 +19,7 @@ jobs:
         run: |
           D=$(mktemp -d); hdiutil attach dist/BotTrack.dmg -mountpoint "$D" -nobrowse
           R="$D/BotTrack.app/Contents/Resources"
-          PYTHONPATH="$R/app" "$R/python/bin/python3" -c "import flask, webview, jigstream.macapp, jigstream.app; jigstream.app.create_app('/tmp/t.db'); print('imports ok')"
+          PYTHONPATH="$R/app" "$R/python/bin/python3" -c "import flask, webview, mlx_lm, jigstream.macapp, jigstream.app; jigstream.app.create_app('/tmp/t.db'); print('imports ok')"
           "$R/ollama/ollama" --version || true
           hdiutil detach "$D"
       - uses: actions/upload-artifact@v4

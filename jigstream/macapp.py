@@ -192,9 +192,13 @@ def start_ai(bundle, models_dir, model):
                     break
                 except OSError:
                     time.sleep(0.5)
+            if model is None:  # MLX is the engine in use; Ollama only serves model comparisons
+                remove_unused_models(set(filter(None, os.environ.get("KEEP_MODELS", "").split(","))))
+                return
             if not has_model(model) and not copy_model_from_ollama(model, models_dir):
                 pull(model)
             remove_unused_models({model} | set(filter(None, os.environ.get("KEEP_MODELS", "").split(","))))
+            shutil.rmtree(models_dir / "huggingface", ignore_errors=True)  # MLX models, unused on Ollama
             ai_state.update(ready=True, message="", percent=None)
             logger.info("AI engine ready with %s", model)
         except Exception as e:
@@ -202,6 +206,29 @@ def start_ai(bundle, models_dir, model):
             ai_state.update(error=f"The AI model couldn't be set up: {e}. Details are on the Logs page.")
     threading.Thread(target=prepare, daemon=True).start()
     return proc
+
+
+def start_mlx_engine(models_dir, model):
+    """Run the chosen model on Apple's MLX engine instead of Ollama."""
+    from . import engines
+
+    def prepare():
+        try:
+            hub = models_dir / "huggingface" / "hub"
+            keep = "models--" + model.replace("/", "--")
+            for old in hub.glob("models--*") if hub.exists() else ():
+                if old.name != keep:  # MLX models tried in Compare models but not chosen
+                    shutil.rmtree(old, ignore_errors=True)
+                    logger.info("removed unused MLX model %s", old.name)
+            engines.mlx_download(model, models_dir, lambda text: ai_state.update(message=text, percent=None))
+            ai_state.update(message="Starting the MLX engine")
+            engines.start_mlx(models_dir)
+            ai_state.update(ready=True, message="", percent=None)
+            logger.info("MLX engine ready with %s", model)
+        except Exception as e:
+            logger.exception("MLX engine setup failed")
+            ai_state.update(error=f"The MLX model couldn't be set up: {e}. Switch back to Ollama on the Setup page.")
+    threading.Thread(target=prepare, daemon=True).start()
 
 
 def main():
@@ -223,18 +250,29 @@ def main():
     except Exception:
         logger.exception("cleanup failed")
     load_dotenv(DATA / ".env")
-    os.environ["LLM_BASE_URL"] = f"http://127.0.0.1:{AI_PORT}/v1"  # always the bundled engine
+    os.environ["LLM_BASE_URL"] = f"http://127.0.0.1:{AI_PORT}/v1"  # always a bundled engine
+    from . import engines
     from .config import Config
-    model = Config.from_env().llm_model
+    config = Config.from_env()
+    model = config.llm_model
     models_dir = DATA / "models"
     models_dir.mkdir(exist_ok=True)
 
-    ai = start_ai(bundle, models_dir, model)
+    use_mlx = config.llm_engine == "mlx"
+    if use_mlx and not engines.mlx_available():
+        logger.warning("MLX isn't available on this Mac; using Ollama with the default model")
+        use_mlx, model = False, Config.llm_model
+        os.environ["LLM_ENGINE"], os.environ["LLM_MODEL"] = "ollama", model
+    ai = start_ai(bundle, models_dir, None if use_mlx else model)
+    if use_mlx:
+        os.environ["LLM_BASE_URL"] = engines.base_url("mlx")
+        start_mlx_engine(models_dir, model)
     from . import updater
     from .app import create_app
 
     def relaunch():
         ai.terminate()
+        engines.stop_mlx()
         subprocess.Popen(["/bin/sh", "-c", f"sleep 2; open -n '{bundle}'"], start_new_session=True)
     updater.relaunch = relaunch
     app = create_app()
@@ -267,6 +305,7 @@ def main():
     try:
         open_window(f"http://127.0.0.1:{port}", bundle / "Contents/Resources/AppIcon.icns")
     finally:
+        engines.stop_mlx()
         ai.terminate()
         try:
             ai.wait(10)

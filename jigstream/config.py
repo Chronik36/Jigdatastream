@@ -74,6 +74,7 @@ class Config:
     full_history: bool = False  # set by --all: search the whole mailbox
     max_emails: int = 0  # per inbox per run; 0 means no limit
 
+    llm_engine: str = "ollama"  # or "mlx" (Apple's engine; the Mac app runs whichever is chosen)
     llm_base_url: str = "http://localhost:11434/v1"
     llm_model: str = "huihui_ai/qwen3-abliterated:14b"
     llm_api_key: str = "ollama"
@@ -103,6 +104,7 @@ class Config:
         c.max_emails = int(env("MAX_EMAILS", c.max_emails))
         c.llm_base_url = env("LLM_BASE_URL", c.llm_base_url).rstrip("/")
         c.llm_model = env("LLM_MODEL", c.llm_model)
+        c.llm_engine = env("LLM_ENGINE", c.llm_engine)
         c.llm_api_key = env("LLM_API_KEY", c.llm_api_key)
         c.llm_timeout = int(env("LLM_TIMEOUT", c.llm_timeout))
         c.max_body_chars = int(env("MAX_BODY_CHARS", c.max_body_chars))
