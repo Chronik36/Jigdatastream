@@ -2,12 +2,13 @@ import json
 import logging
 import os
 import threading
+from pathlib import Path
 from urllib.parse import quote
 
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import analysis, db, discord, export, inbox, logs, parsers, profilebook, profiles, training, updater, wallet
+from . import analysis, db, discord, engines, export, inbox, logs, parsers, profilebook, profiles, training, updater, wallet
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import LLMClient, installed_models
@@ -396,7 +397,8 @@ def create_app(db_path=None):
         config = Config.from_env()
         has_discord = bool(config.discord_bot_token and config.discord_channel_ids)
         ai = app.config.get("AI_STATE")
-        if sync_state["running"] or not (config.accounts or has_discord) or (ai and not ai["ready"]):
+        if sync_state["running"] or not (config.accounts or has_discord) or (ai and not ai["ready"]) \
+                or engines.compare_state["running"]:
             return False
         sync_state["running"] = True
         sync_state["last"] = "Starting Gmail sync..."
@@ -479,7 +481,11 @@ def create_app(db_path=None):
                                bot=bot, bot_id=bot_id, channels=channels, discord_error=discord_error,
                                chosen=set(config.discord_channel_ids), channel_states=discord.channel_states(con()),
                                version=updater.installed_version(), update_settings=updater.settings(),
-                               can_update=updater.can_self_update(), backups=updater.backups())
+                               can_update=updater.can_self_update(), backups=updater.backups(),
+                               ollama_choices=engines.OLLAMA_CANDIDATES, mlx_choices=engines.mlx_choices(),
+                               mlx_ok=engines.mlx_available(), compare=engines.compare_state,
+                               best=engines.best(engines.compare_state["results"]),
+                               labelled=len(Store(con()).examples()))
 
     @app.post("/setup/discord/token")
     def set_discord_token():
@@ -549,6 +555,37 @@ def create_app(db_path=None):
             save_env({"LLM_MODEL": model})
             logger.info("model set to %s", model)
             flash(f"Using {model} for new emails.")
+        return redirect(url_for("setup"))
+
+    @app.post("/setup/compare")
+    def compare_models():
+        config = Config.from_env()
+        picks = [c.split("|", 1) for c in request.form.getlist("candidate") if "|" in c]
+        if not picks:
+            flash("Tick at least one model to compare.")
+        elif sync_state["running"]:
+            flash("A sync is running. Compare models once it finishes.")
+        elif engines.start_compare(Store(con()), picks, Path("models").resolve(),
+                                   (config.llm_engine, config.llm_model) if app.config.get("AI_STATE") else None):
+            flash("Comparing models. Models not downloaded yet are fetched first, so this can take a while; "
+                  "syncing pauses until it's done.")
+        return redirect(url_for("setup") + "#compare")
+
+    @app.get("/api/compare")
+    def compare_status():
+        return jsonify(engines.compare_state)
+
+    @app.post("/setup/engine")
+    def set_engine():
+        engine, model = request.form.get("engine", "ollama"), request.form.get("model", "").strip()
+        if engine not in ("ollama", "mlx") or not model:
+            return redirect(url_for("setup"))
+        save_env({"LLM_ENGINE": engine, "LLM_MODEL": model})
+        logger.info("default AI set to %s on %s", model, engine)
+        if app.config.get("AI_STATE"):  # the Mac app restarts its engine with the new model
+            updater.restart_soon()
+            return render_template("restarting.html", what=f"Switched to {model}")
+        flash(f"Using {model} for new emails.")
         return redirect(url_for("setup"))
 
     @app.get("/logs")

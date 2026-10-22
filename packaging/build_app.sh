@@ -14,7 +14,7 @@ mkdir -p "$APP/Contents/MacOS" "$RES/app" "$OUT"
 echo "==> Python"
 curl -fsSL "$PY_URL" | tar -xz -C "$RES"   # unpacks to Resources/python
 "$RES/python/bin/python3" -m pip install --quiet --disable-pip-version-check --no-compile \
-  "flask>=3.0" "pywebview>=5.1,<6" "cryptography>=42"
+  "flask>=3.0" "pywebview>=5.1,<6" "cryptography>=42" "mlx-lm>=0.25"
 find "$RES/python" -name "__pycache__" -prune -exec rm -rf {} +
 rm -rf "$RES/python/lib/python3.12/test" "$RES/python/lib/python3.12/idlelib" "$RES/python/lib/python3.12/tkinter" \
        "$RES/python/lib/python3.12/ensurepip" "$RES/python/share"

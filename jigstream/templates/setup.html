@@ -81,10 +81,36 @@ so it learns how your retailers word things. Example emails are stored on this M
 
 <h3>AI model</h3>
 {% if ai and not ai.ready %}<p class="muted">BotTrack's built-in AI engine is getting ready (see the bar at the top).</p>
+{% elif config.llm_engine == "mlx" %}<p><span class="ok">Using {{config.llm_model}} on Apple's MLX engine.</span></p>
+<form method="post" action="/setup/engine"><input type="hidden" name="engine" value="ollama"><input type="hidden" name="model" value="huihui_ai/qwen3-abliterated:14b"><button class="ghost">Switch back to Ollama (qwen3-abliterated 14B)</button></form>
 {% elif models is none %}<p class="bad">{% if ai %}The built-in AI engine isn't answering. Quit and reopen BotTrack; if it keeps happening, send the logs.{% else %}Ollama isn't running. Open the Ollama app, then reload this page.{% endif %}</p>
 {% else %}
 <p>Ollama is running. {% if config.llm_model in models or (config.llm_model ~ ":latest") in models %}<span class="ok">Using {{config.llm_model}}.</span>{% else %}<span class="bad">{{config.llm_model}} isn't downloaded yet; run the installer again, or pick another model.</span>{% endif %}</p>
 {% if models %}<form method="post" action="/setup/model"><select name="model">{% for m in models %}<option {{"selected" if m == config.llm_model}}>{{m}}</option>{% endfor %}</select><button>Use this model</button></form>{% endif %}
 <p class="muted">The default, huihui_ai/qwen3-abliterated:14b, uses about 9 GB of memory while reading mail, which fits a 16 GB Mac; an 8B model is faster if things feel slow.</p>
+{% endif %}
+
+<h3 id="compare">Compare models</h3>
+<p>Runs the emails you've labelled (on the Inbox page or with the Orders dropdown) through each ticked model and shows how often it agreed with you and how long each email took. You have <b>{{labelled}}</b> labelled email{{"" if labelled == 1 else "s"}}{% if labelled < 5 %}; label at least 5 first{% endif %}. Up to 30 are used.
+Models you haven't downloaded are fetched first (4B about 2.5 GB, 8B about 5 GB, 14B about 9 GB), and the ones you don't pick are removed the next time BotTrack opens.</p>
+{% if compare.running %}<p class="ok" id="cmpprog">{{compare.progress}}</p>
+<script>setInterval(() => fetch('/api/compare').then(r => r.json()).then(s => { if (!s.running) location.reload(); else document.getElementById('cmpprog').textContent = s.progress; }), 4000);</script>
+{% else %}
+<form method="post" action="/setup/compare">
+{% for m in ollama_choices %}<label style="display:block"><input type="checkbox" name="candidate" value="ollama|{{m}}" checked> {{m}} <span class="muted">(Ollama)</span></label>{% endfor %}
+{% for m in mlx_choices %}<label style="display:block"><input type="checkbox" name="candidate" value="mlx|{{m}}" checked> {{m}} <span class="muted">(MLX, Apple's engine)</span></label>{% endfor %}
+{% if not mlx_ok %}<p class="muted">MLX models show up here when BotTrack runs on an Apple Silicon Mac.</p>{% elif not mlx_choices %}<p class="muted">Couldn't reach Hugging Face to list MLX models; reload to try again.</p>{% endif %}
+<button {{"disabled" if labelled < 5}}>Compare</button></form>
+{% endif %}
+{% if compare.error %}<p class="bad">{{compare.error}}</p>{% endif %}
+{% if compare.results %}
+<table><thead><tr><th>Model</th><th>Engine</th><th>Agreed with you</th><th>Seconds per email</th><th></th></tr></thead><tbody>
+{% for r in compare.results %}<tr>
+<td>{{r.model}}{% if best and r.model == best.model and r.engine == best.engine %} <span class="pill status-active">Best</span>{% endif %}</td>
+<td>{{"MLX" if r.engine == "mlx" else "Ollama"}}</td>
+{% if r.error %}<td colspan="2" class="bad">{{r.error}}</td>{% else %}<td>{{r.accuracy}}% ({{r.right}} of {{r.total}}){% if r.unreadable %} <span class="muted">{{r.unreadable}} unreadable</span>{% endif %}</td><td>{{r.seconds}}</td>{% endif %}
+<td>{% if not r.error and not (r.model == config.llm_model and r.engine == config.llm_engine) %}<form method="post" action="/setup/engine" style="margin:0"><input type="hidden" name="engine" value="{{r.engine}}"><input type="hidden" name="model" value="{{r.model}}"><button class="{{'' if best and r.model == best.model else 'ghost'}}">Make default</button></form>{% elif not r.error %}<span class="muted">In use</span>{% endif %}</td>
+</tr>{% endfor %}</tbody></table>
+<p class="muted">Finished {{compare.finished_at}}.</p>
 {% endif %}
 {% endblock %}
