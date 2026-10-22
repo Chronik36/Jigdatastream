@@ -31,7 +31,19 @@ QUICK_FILTERS = {
     "Cancellations": "(cancelled OR canceled OR cancellation OR refund)",
     "Spam": "in:spam",
     "Everything": "",
+    "AI skipped": None,  # read from BotTrack's own records, not a Gmail search
 }
+SKIPPED = "AI skipped"
+
+
+def skipped(store, limit=200):
+    """Emails the AI read and decided were neither an order nor an expense (or that had no purchase
+    words at all), newest first, leaving out ones you've already labelled."""
+    mine = store.inbox_labels()
+    rows = store.db.execute("SELECT message_id, account, sender, subject, date, kind FROM emails"
+                            " WHERE kind IN ('other', 'skipped', 'not_an_order') ORDER BY date DESC LIMIT ?",
+                            (limit * 2,)).fetchall()
+    return [dict(r, spam=False) for r in rows if r["message_id"] not in mine][:limit]
 
 
 def corrected_answer(raw, label):
