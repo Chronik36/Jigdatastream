@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block body %}
+<h2>Botting expenses</h2><div class="stats"><div class="card">Total botting spend <b>{{stats.expense_total|money}}</b></div>
+{% for c, v in stats.expense_by_category.items() %}<div class="card">{{c|replace("_", " ")|title}} <b>{{v|money}}</b></div>{% endfor %}</div>
+{% if stats.expense_by_month %}<p class="muted">By month: {% for m, v in stats.expense_by_month.items() %}{% if loop.index <= 6 %}{{m}}: {{v|money}}{% if not loop.last and loop.index < 6 %} · {% endif %}{% endif %}{% endfor %}</p>{% endif %}
+{% if stats.expense_by_vendor %}<p class="muted">Top vendors: {% for v, amt in stats.expense_by_vendor.items() %}{% if loop.index <= 8 %}{{v}} {{amt|money}}{% if loop.index < 8 and not loop.last %} · {% endif %}{% endif %}{% endfor %}</p>{% endif %}
+{% include "sync.html" %}
+<p><a href="/bank">Bank &amp; card charges →</a> <span class="muted">Import card statements (or link your bank) to see which receipts and orders each charge paid for.</span></p>
+{% set paid = bank_paid("expense") %}
+<input id="q" placeholder="Search vendor or description" size="40">
+<select id="f"><option value="">All categories</option>{% for c in stats.expense_by_category %}<option value="{{c}}">{{c|replace("_", " ")}}</option>{% endfor %}</select>
+<table><thead><tr><th>Date</th><th>Vendor</th><th>Category</th><th>Description</th><th>Billing</th><th>Amount</th><th>Card charge</th><th>Inbox</th></tr></thead><tbody>
+{% for e in rows %}<tr data-f="{{e.category}}"><td>{{e.date or "-"}}</td><td><b>{{e.vendor or "-"}}</b></td><td>{{e.category|replace("_", " ")}}</td>
+<td>{{e.description or "-"}}</td><td>{{(e.billing_period or "")|replace("_", " ")}}</td><td class="num">{{e.amount|money(e.currency)}}</td>
+<td class="muted">{% if paid[e.id] %}<a href="/bank?show=matched">{{paid[e.id].date}}</a> {{paid[e.id].account_name or ""}}{% else %}-{% endif %}</td><td class="muted">{{e.account or ""}}</td></tr>
+{% else %}<tr><td colspan="8" class="muted">No botting receipts yet.</td></tr>{% endfor %}</tbody></table>
+{% include "filter.html" %}
+{% endblock %}

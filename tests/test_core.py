@@ -1,6 +1,6 @@
 import json
 
-from jigstream import analysis, db, emails, parsers, profiles
+from jigstream import analysis, db, parsers, profiles
 from jigstream.app import create_app
 
 HOOK_OK = {"username": "Valor AIO", "embeds": [{"title": "Successful Checkout", "timestamp": "2026-01-01T00:00:00Z",
@@ -23,8 +23,10 @@ def test_pipeline(tmp_path):
     assert rows["prof1"]["status"] == "success" and rows["prof1"]["bot"] == "Valor"
     assert rows["prof2"]["status"] == "decline"
     report, unmatched = analysis.failure_report(c)
-    assert report[0]["profile"] == "prof2" and report[0]["suggested"]["address2"] == "APT 4"
+    assert report[0]["profile"] == "prof2" and report[0]["suggested"]["address1"] == "22 Oak Avenue Apt 4"
+    assert report[0]["suggested"]["state"] == "Texas"  # full state names are fine for bots
     assert any("ZIP" in i for i in report[0]["issues"])
+    assert not any("unit" in i or "state" in i for i in report[0]["issues"])
 
 
 def test_profiles_csv():
@@ -32,15 +34,10 @@ def test_profiles_csv():
     assert profiles.parse_profiles(csv_text)[0]["ship_zip"] == "89501"
 
 
-def test_email_classify():
-    assert emails.classify_kind("Your order has been cancelled") == "cancelled"
-    assert emails.retailer_for("Foot Locker <orders@footlocker.com>") == "Footlocker"
-
-
 def test_web(tmp_path):
     app = create_app(str(tmp_path / "w.db"))
     assert app.test_client().get("/").status_code == 200
-    for p in ("/checkouts", "/orders", "/profiles"):
+    for p in ("/checkouts", "/orders", "/expenses", "/profiles", "/api/orders"):
         assert app.test_client().get(p).status_code == 200
 
 

@@ -53,6 +53,6 @@ def by_dimension(con, col):
 
 def cancelled_after_success(con):
     return con.execute(
-        """SELECT c.site,c.product,c.profile,c.order_number,o.ts cancelled_at
-        FROM checkouts c JOIN orders o ON o.order_number=c.order_number AND o.kind='cancelled'
+        """SELECT c.site,c.product,c.profile,c.order_number,o.last_email_date cancelled_at
+        FROM checkouts c JOIN tracked_orders o ON o.order_number=c.order_number AND o.shipping_status='cancelled'
         WHERE c.status='success' AND c.order_number!=''""").fetchall()

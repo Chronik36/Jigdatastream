@@ -1,0 +1,10 @@
+<script>
+const q = document.getElementById('q'), f = document.getElementById('f');
+function apply() {
+  const text = q.value.toLowerCase(), want = f.value;
+  document.querySelectorAll('tbody tr[data-f]').forEach(tr => {
+    tr.style.display = tr.textContent.toLowerCase().includes(text) && (!want || tr.dataset.f === want) ? '' : 'none';
+  });
+}
+q.addEventListener('input', apply); f.addEventListener('change', apply);
+</script>

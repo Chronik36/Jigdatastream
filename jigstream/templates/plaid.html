@@ -1,0 +1,74 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.phead{display:flex;align-items:center;gap:10px;margin-bottom:14px}.phead h2{margin:0;flex:1}
+.panel h3{margin:0 0 10px}.panel form{margin:0}.steps li{margin-bottom:8px}
+.acct{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}.acct:last-child{border:0}
+.acct .grow{flex:1}.acct form{margin:0}.acct button{padding:4px 12px;font-size:12px}
+</style>
+<div class="phead"><h2>Live bank sync with Plaid</h2><a href="/bank" class="muted">← Bank &amp; card charges</a></div>
+<div class="panel"><h3>How it works</h3>
+<p>Plaid is the service most finance apps use to read bank and card activity. You make your own free Plaid developer
+account, so you get your own free allowance and nothing is shared with anyone. You sign in to your bank in Plaid's
+window; BotTrack never sees your bank password. Your Plaid keys and bank link are stored encrypted on this Mac.</p>
+<p class="muted">If you'd rather not, importing statement files on the Bank page does the same matching for free with no account.</p></div>
+
+<div class="panel"><h3>1. Get your free Plaid keys</h3><ol class="steps">
+<li>Go to <a href="https://dashboard.plaid.com/signup" target="_blank">dashboard.plaid.com/signup</a> and create an account
+(choose "personal use" or your own name as the company if asked).</li>
+<li>Open <a href="https://dashboard.plaid.com/developers/keys" target="_blank">Developers → Keys</a>. Copy the <b>client_id</b>
+and the <b>Sandbox</b> secret.</li>
+<li>Paste them below with <b>Sandbox</b> chosen and press Save. In Sandbox you can try the whole flow with Plaid's test bank
+(username <code>user_good</code>, password <code>pass_good</code>).</li>
+<li>For your real bank, ask for Production access in the Plaid dashboard (the free tier for a few of your own accounts
+is enough; Plaid may ask a few questions about your use). When it is approved, copy the <b>Production</b> secret, paste it
+below with <b>Production</b> chosen, and link your banks.</li></ol>
+{% if plaid.configured %}<p class="ok">Keys saved ({{plaid.env|title}}, client_id {{plaid.client_hint}}).</p>{% endif %}
+<form method="post" action="/bank/plaid/keys" autocomplete="off">
+<input name="client_id" placeholder="client_id" size="28" required>
+<input type="password" name="secret" placeholder="secret" size="34" required>
+<select name="env"><option value="sandbox" {{"selected" if plaid.env == "sandbox"}}>Sandbox (test bank)</option>
+<option value="production" {{"selected" if plaid.env == "production"}}>Production (your real bank)</option></select>
+<button>Save</button></form>
+{% if plaid.configured %}<form method="post" action="/bank/plaid/keys" class="ghost" style="margin-top:6px"><input type="hidden" name="action" value="remove"><button>Remove keys</button></form>{% endif %}
+</div>
+
+<div class="panel"><h3>2. Link your banks and cards</h3>
+{% if not plaid.configured %}<p class="muted">Save your keys first.</p>{% else %}
+<p>Press the button, pick your bank, and sign in. Each card on the same login comes along. Charges from the last
+two years are pulled in the background (the first pull can take a few minutes), then every few hours.</p>
+<button type="button" onclick="startLink()">Link a bank</button>
+<span class="muted" id="linkmsg" style="margin-left:10px"></span>
+<p class="muted" style="margin-top:10px">If your bank's sign-in window doesn't open here, <a href="{{request.host_url}}bank/plaid" target="_blank">open this page in your web browser</a> and link it there.</p>
+{% for i in items %}<div class="acct"><span class="grow"><b>{{i.institution}}</b><br><span class="muted">
+{{("Last synced " ~ i.last_synced_at[:16]|replace("T", " ") ~ " UTC") if i.last_synced_at else "Not synced yet"}}</span>
+{% if i.error %}<br><span class="bad">{{i.error}}</span>{% endif %}</span>
+<button type="button" class="ghost" onclick="startLink('{{i.item_id}}')">Reconnect</button>
+<form method="post" action="/bank/plaid/items/{{i.item_id}}/remove" onsubmit="return confirm('Unlink {{i.institution|e}}? Charges already synced stay unless you tick delete.')">
+<label class="muted" style="font-size:12px"><input type="checkbox" name="transactions" value="delete"> delete its charges</label> <button class="danger">Unlink</button></form></div>{% endfor %}
+{% if items %}<form method="post" action="/bank/plaid/sync" style="margin-top:10px"><button {{"disabled" if plaid_state.running}}>Sync now</button></form>
+<p class="muted">{{plaid_state.last or ""}}</p>{% endif %}{% endif %}</div>
+
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<script>
+function say(t) { document.getElementById('linkmsg').textContent = t; }
+function startLink(item) {
+  if (!window.Plaid) return say("Couldn't load Plaid's sign-in window. Check your internet connection.");
+  say('Opening Plaid...');
+  const body = new FormData(); if (item) body.append('item', item);
+  fetch('/bank/plaid/link-token', {method: 'POST', body}).then(r => r.json()).then(d => {
+    if (d.error) return say(d.error);
+    Plaid.create({
+      token: d.link_token,
+      onSuccess: (public_token, meta) => {
+        if (item) { say('Reconnected. Syncing...'); return fetch('/bank/plaid/sync', {method: 'POST'}).then(() => location.reload()); }
+        say('Linked. Pulling your charges in the background...');
+        fetch('/bank/plaid/exchange', {method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({public_token, institution: meta.institution && meta.institution.name})})
+          .then(r => r.json()).then(x => x.error ? say(x.error) : setTimeout(() => location.reload(), 1500));
+      },
+      onExit: (err) => say(err ? (err.display_message || err.error_message || 'Closed.') : ''),
+    }).open();
+  }).catch(() => say("Couldn't reach BotTrack. Is it still running?"));
+}
+</script>
+{% endblock %}
