@@ -61,3 +61,27 @@ def test_qwen3_gets_no_think(monkeypatch):
     c = LLMClient("http://x/v1", "huihui_ai/qwen3-abliterated:14b", "k", 5)
     assert c.chat_json("sys", "email")["kind"] == "other"
     assert sent["messages"][-1]["content"].endswith("/no_think")
+
+
+def test_release_updates_need_no_token(tmp_path, monkeypatch):
+    import io
+    import zipfile
+    from jigstream import updater
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    app_dir = tmp_path / "app"
+    (app_dir / "jigstream").mkdir(parents=True)
+    (app_dir / "VERSION").write_text("build-7-aaaaaaa\n")
+    release = lambda s: ("build-9-bbbbbbb", "https://example.invalid/bottrack-code.zip", ["New stuff"])  # noqa: E731
+    st = updater.check_release(app_dir, latest_release=release)
+    assert st["available"] and st["latest"] == "build-9-bbbbbbb" and st["message"] == "New stuff"
+    (app_dir / "VERSION").write_text("build-12-ccccccc\n")
+    assert not updater.check_release(app_dir, latest_release=release)["available"]
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("bottrack/jigstream/app.py", "# new")
+        z.writestr("bottrack/run.py", "")
+        z.writestr("bottrack/requirements.txt", "flask\n")
+    updater.install(app_dir, sha="build-9-bbbbbbb", blob=buf.getvalue(), pip=False)
+    assert (app_dir / "jigstream/app.py").read_text() == "# new"
+    assert updater.installed_version(app_dir) == "build-9-bbbbbbb"
+    assert updater.build_number("0123abc") == 0

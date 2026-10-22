@@ -11,10 +11,14 @@ jobs:
   build:
     runs-on: macos-latest  # Apple Silicon
     timeout-minutes: 30
+    env:
+      RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
       - run: bash packaging/build_app.sh dist
+        env:
+          BOTTRACK_BUILD: build-${{ github.run_number }}-${{ github.sha }}
       - name: Smoke test the bundled Python and code
         run: |
           D=$(mktemp -d); hdiutil attach dist/BotTrack.dmg -mountpoint "$D" -nobrowse
@@ -27,3 +31,15 @@ jobs:
           name: BotTrack-dmg
           path: dist/BotTrack.dmg
           retention-days: 30
+      # Builds of main become a release in the public releases-only repository, where the app
+      # checks for updates without a token. Needs the RELEASES_TOKEN secret (see packaging/RELEASES.md).
+      - name: Publish release
+        if: github.ref == 'refs/heads/main' && env.RELEASES_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          tag="build-${{ github.run_number }}-${GITHUB_SHA::7}"
+          git log -1 --pretty=%s > notes.txt
+          gh release create "$tag" dist/BotTrack.dmg dist/bottrack-code.zip \
+            -R "${{ vars.RELEASES_REPO || 'Chronik36/BotTrack-releases' }}" \
+            --title "BotTrack build ${{ github.run_number }}" --notes-file notes.txt
