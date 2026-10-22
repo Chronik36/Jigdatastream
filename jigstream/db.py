@@ -21,9 +21,13 @@ CREATE TABLE IF NOT EXISTS profiles (
     ship_zip TEXT, ship_country TEXT,
     bill_address1 TEXT, bill_address2 TEXT, bill_city TEXT, bill_state TEXT,
     bill_zip TEXT, bill_country TEXT,
-    card_last4 TEXT, raw TEXT
+    card_last4 TEXT, raw TEXT,
+    card_brand TEXT, card_exp TEXT, fmt TEXT
 );
 """
+
+# Columns added after the first release; created on older databases at startup.
+MIGRATIONS = [("profiles", "card_brand", "TEXT"), ("profiles", "card_exp", "TEXT"), ("profiles", "fmt", "TEXT")]
 
 
 def connect(path=None):
@@ -34,6 +38,9 @@ def connect(path=None):
     con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
+    for table, column, kind in MIGRATIONS:
+        if column not in {r[1] for r in con.execute(f"PRAGMA table_info({table})")}:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
     con.executescript(orderstore.SCHEMA)
     con.executescript(discord.SCHEMA)
     return con

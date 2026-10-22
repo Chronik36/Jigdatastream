@@ -23,8 +23,10 @@ def test_pipeline(tmp_path):
     assert rows["prof1"]["status"] == "success" and rows["prof1"]["bot"] == "Valor"
     assert rows["prof2"]["status"] == "decline"
     report, unmatched = analysis.failure_report(c)
-    assert report[0]["profile"] == "prof2" and report[0]["suggested"]["address2"] == "APT 4"
+    assert report[0]["profile"] == "prof2" and report[0]["suggested"]["address1"] == "22 Oak Avenue Apt 4"
+    assert report[0]["suggested"]["state"] == "Texas"  # full state names are fine for bots
     assert any("ZIP" in i for i in report[0]["issues"])
+    assert not any("unit" in i or "state" in i for i in report[0]["issues"])
 
 
 def test_profiles_csv():

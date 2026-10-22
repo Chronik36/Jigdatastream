@@ -6,6 +6,7 @@ OUT="${1:-$ROOT/dist/OrderTracker.zip}"
 STAGE="$(mktemp -d)/OrderTracker"
 mkdir -p "$STAGE/app" "$(dirname "$OUT")"
 git -C "$ROOT" archive HEAD jigstream run.py requirements.txt | tar -x -C "$STAGE/app"
+git -C "$ROOT" rev-parse HEAD > "$STAGE/app/VERSION"  # the in-app updater compares this with GitHub
 cp "$ROOT/packaging/Install Order Tracker.command" "$ROOT/packaging/Uninstall Order Tracker.command" \
    "$ROOT/packaging/READ ME FIRST.txt" "$STAGE/"
 chmod +x "$STAGE"/*.command

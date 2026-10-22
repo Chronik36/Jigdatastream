@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block body %}
+<style>.ef label{display:inline-block;color:var(--muted);font-size:12px;font-weight:500;margin-right:4px}.ef input[type=text]{width:260px;margin-top:4px}.ef fieldset{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin:0 0 16px;padding:14px 20px}.ef legend{color:var(--gold);font-weight:600;padding:0 6px}.ef{display:block}</style>
+<h2>Edit {{p.name}}</h2>
+<form class="ef" method="post">
+<fieldset><legend>Profile</legend>
+{% for k,l in [("name","Profile name"),("bot","Bot / tag"),("first_name","First name"),("last_name","Last name"),("email","Email"),("phone","Phone")] %}
+<label>{{l}}<br><input type="text" name="{{k}}" value="{{p[k] or ''}}"></label>{% endfor %}
+</fieldset>
+{% for pre,title in [("bill_","Billing"),("ship_","Shipping")] %}
+<fieldset id="{{pre}}box"><legend>{{title}}</legend>
+{% if pre == "ship_" %}<label style="display:block;margin-bottom:10px;font-size:13px;color:var(--text)"><input type="checkbox" name="same" id="same" {{'checked' if same}} onchange="document.getElementById('ship_fields').style.display=this.checked?'none':''"> Same as billing</label><div id="ship_fields" style="{{'display:none' if same}}">{% endif %}
+{% for k,l in [("address1","Address line 1"),("address2","Address line 2"),("city","City"),("state","State"),("zip","ZIP"),("country","Country")] %}
+<label>{{l}}<br><input type="text" name="{{pre}}{{k}}" value="{{p[pre ~ k] or ''}}"></label>{% endfor %}
+{% if pre == "ship_" %}</div>{% endif %}
+</fieldset>{% endfor %}
+<p class="muted">Payment: {% if p.card_last4 %}{{p.card_brand or "Card"}} •••• {{p.card_last4}}{% if p.card_exp %} • Exp {{p.card_exp}}{% endif %}{% else %}none{% endif %}. Card numbers stay in your bot; they're never saved here.</p>
+<button>Save profile</button> &nbsp;<a href="/profiles">Cancel</a>
+</form>
+{% endblock %}

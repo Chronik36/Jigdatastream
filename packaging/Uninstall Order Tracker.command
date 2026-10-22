@@ -13,7 +13,7 @@ if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
   rm -rf "$HOME_DIR"
   echo "Removed everything."
 else
-  rm -rf "$HOME_DIR/app" "$HOME_DIR/venv"
+  rm -rf "$HOME_DIR/app" "$HOME_DIR/venv" "$HOME_DIR/backups"
   echo "Removed the app. Your data is kept in $HOME_DIR"
 fi
 echo "Ollama is still installed; drag it to the Trash if you don't need it."
