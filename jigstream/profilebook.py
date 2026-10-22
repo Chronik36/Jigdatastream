@@ -87,6 +87,9 @@ def save_profile(con, form, original=None):
     if original:
         con.execute(f"UPDATE profiles SET {', '.join(k + '=?' for k in EDITABLE)} WHERE name=?",
                     [f[k] for k in EDITABLE] + [original])
+        if f["name"] != original:  # orders matched to the profile follow the new name
+            if "profile_name" in {r[1] for r in con.execute("PRAGMA table_info(tracked_orders)")}:
+                con.execute("UPDATE tracked_orders SET profile_name=? WHERE profile_name=?", (f["name"], original))
     else:
         con.execute(f"INSERT INTO profiles ({', '.join(EDITABLE)}, bot) VALUES ({', '.join('?' * len(EDITABLE))}, '')",
                     [f[k] for k in EDITABLE])

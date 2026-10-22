@@ -54,6 +54,7 @@ JSON keys (use null when unknown, never invent values):
   "total": number (the amount actually paid, e.g. "Total", "Amount paid", "Amount charged"; for expenses too),
   "currency": "USD" or other ISO code,
   "shipping_address": full address as one string,
+  "shipping_name": the name the order ships to (recipient), as written,
   "tracking_number": string,
   "carrier": "UPS" | "USPS" | "FedEx" | "DHL" | "Amazon" | "OnTrac" | other,
   "shipping_status": one of {STATUSES},
@@ -246,12 +247,20 @@ def normalize(data, email):
         "total": total,
         "currency": currency,
         "shipping_address": _str(data.get("shipping_address")),
+        "shipping_name": _str(data.get("shipping_name")),
+        "recipient_email": _recipient(email),
         "tracking_number": tracking,
         "tracking_url": find_tracking_url(email.body, tracking) if tracking else None,
         "carrier": carrier,
         "shipping_status": status,
         "estimated_delivery": _date(data.get("estimated_delivery")),
     }
+
+
+def _recipient(email):
+    """The address the store sent the order email to: the profile's email, even when it forwards to this inbox."""
+    m = re.search(r"[\w.+'-]+@[\w-]+(?:\.[\w-]+)+", getattr(email, "to", "") or "")
+    return m.group(0).lower() if m else None
 
 
 def _sender_name(sender):
