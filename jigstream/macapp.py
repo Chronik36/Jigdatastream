@@ -267,7 +267,7 @@ def main():
     if use_mlx:
         os.environ["LLM_BASE_URL"] = engines.base_url("mlx")
         start_mlx_engine(models_dir, model)
-    from . import updater
+    from . import carriers, db, updater
     from .app import create_app
 
     def relaunch():
@@ -285,7 +285,8 @@ def main():
         """Sync every few hours (first once the AI is ready) and check for updates every few hours."""
         sync_every = float(os.environ.get("SYNC_EVERY_HOURS", 4)) * 3600
         check_every = float(os.environ.get("UPDATE_CHECK_HOURS", 6)) * 3600
-        last_sync = last_check = 0
+        track_every = float(os.environ.get("TRACK_EVERY_HOURS", 3)) * 3600
+        last_sync = last_check = last_track = 0
         time.sleep(30)
         while True:
             now = time.time()
@@ -295,6 +296,12 @@ def main():
                 except Exception:
                     logger.exception("scheduled sync failed to start")
                 last_sync = now
+            if track_every > 0 and now - last_track >= track_every and carriers.configured(os.environ):
+                try:
+                    carriers.run(db.connect(), dict(os.environ))
+                except Exception:
+                    logger.exception("scheduled carrier tracking failed")
+                last_track = now
             if check_every > 0 and now - last_check >= check_every:
                 updater.check()
                 last_check = now

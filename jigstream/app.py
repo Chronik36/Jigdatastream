@@ -8,7 +8,7 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import analysis, db, discord, engines, export, inbox, logs, parsers, profilebook, profiles, training, updater, wallet
+from . import analysis, carriers, db, discord, engines, export, inbox, logs, parsers, profilebook, profiles, training, updater, wallet
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import LLMClient, installed_models
@@ -485,7 +485,10 @@ def create_app(db_path=None):
                                ollama_choices=engines.OLLAMA_CANDIDATES, mlx_choices=engines.mlx_choices(),
                                mlx_ok=engines.mlx_available(), compare=engines.compare_state,
                                best=engines.best(engines.compare_state["results"]),
-                               labelled=len(Store(con()).examples()))
+                               labelled=len(Store(con()).examples()),
+                               carrier_keys={c: bool(os.environ.get(k) and os.environ.get(v))
+                                             for c, (k, v) in carriers.KEYS.items()},
+                               tracking=carriers.state)
 
     @app.post("/setup/discord/token")
     def set_discord_token():
@@ -556,6 +559,41 @@ def create_app(db_path=None):
             logger.info("model set to %s", model)
             flash(f"Using {model} for new emails.")
         return redirect(url_for("setup"))
+
+    @app.post("/setup/carriers")
+    def set_carrier_keys():
+        carrier = request.form.get("carrier")
+        if carrier not in carriers.KEYS:
+            return redirect(url_for("setup") + "#tracking")
+        key_name, secret_name = carriers.KEYS[carrier]
+        if request.form.get("action") == "remove":
+            save_env({key_name: "", secret_name: ""})
+            flash(f"Removed the {carrier} key.")
+            return redirect(url_for("setup") + "#tracking")
+        key, secret = request.form.get("key", "").strip(), request.form.get("secret", "").strip()
+        if not key or not secret:
+            flash(f"Paste both the {carrier} key and its secret.")
+            return redirect(url_for("setup") + "#tracking")
+        carriers._tokens.pop(carrier, None)
+        try:
+            carriers._token(carrier, {key_name: key, secret_name: secret})
+        except carriers.CarrierError as e:
+            flash(f"{carrier} didn't accept that key: {e}")
+            return redirect(url_for("setup") + "#tracking")
+        save_env({key_name: key, secret_name: secret})
+        logger.info("%s tracking key saved", carrier)
+        flash(f"{carrier} key works. Checking your open {carrier} packages now.")
+        threading.Thread(target=carriers.run, args=(con(), dict(os.environ)), daemon=True).start()
+        return redirect(url_for("setup") + "#tracking")
+
+    @app.post("/tracking/check")
+    def check_tracking():
+        if not carriers.configured(os.environ):
+            flash("Add a USPS, UPS or FedEx key on the Setup page first.")
+            return redirect(url_for("setup") + "#tracking")
+        threading.Thread(target=carriers.run, args=(con(), dict(os.environ)), daemon=True).start()
+        flash("Checking every open package with its carrier. Refresh in a minute.")
+        return redirect(request.referrer or url_for("orders"))
 
     @app.post("/setup/compare")
     def compare_models():
