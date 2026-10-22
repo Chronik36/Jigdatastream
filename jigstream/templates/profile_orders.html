@@ -1,0 +1,55 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.playout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:20px;align-items:start}
+.gside{position:sticky;top:76px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px;max-height:calc(100vh - 100px);overflow:auto}
+.gside a{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border-radius:9px;color:var(--text);font-weight:500}
+.gside a span{color:var(--muted);font-weight:400}.gside a:hover{background:var(--surface-2)}
+.gside a.on{background:var(--accent-soft);color:var(--accent)}.gside .lbl{color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.07em;margin:12px 10px 6px}
+.sites{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 18px}
+.sites span{background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:4px 10px;font-weight:500}
+.sites span b{color:var(--text);margin-left:6px}.sites span.bot{background:var(--surface-2);color:var(--muted)}
+@media (max-width:900px){.playout{grid-template-columns:1fr}.gside{position:static;max-height:none}}
+</style>
+{% set on_way = ("shipped", "in_transit", "out_for_delivery") %}
+<h2>Profile orders</h2>
+<p class="muted">Each order from your inboxes is matched to a profile by its shipping address, the name on it and the email it was sent to. When several profiles fit, pick the right one on <a href="/orders">Orders</a>; it stays that way.</p>
+<div class="playout">
+<aside class="gside">
+  <a href="/profile-orders" class="{{'on' if not pick}}">All profiles <span>{{used|length}}</span></a>
+  <div class="lbl">PROFILES WITH ORDERS</div>
+  {% for h in used %}<a href="/profile-orders?profile={{h.profile.name|urlencode}}" class="{{'on' if pick_name == h.profile.name}}">{{h.profile.name}} <span>{{h.orders|length}}</span></a>
+  {% else %}<p class="muted" style="padding:0 10px">None yet.</p>{% endfor %}
+  {% if unmatched %}<div class="lbl">NOT MATCHED</div><a href="/orders?profile=__none__">Orders without a profile <span>{{unmatched|length}}</span></a>{% endif %}
+</aside>
+<section>
+{% if pick %}{% set p = pick.profile %}
+<h3 style="margin-top:0">{{p.name}}{% if p.group_name %} <span class="muted" style="font-weight:400">· {{p.group_name}}</span>{% endif %}</h3>
+<p class="muted">{{p.first_name}} {{p.last_name}}{% if p.email %} · {{p.email}}{% endif %}{% if p.ship_address1 %} · {{p.ship_address1}}, {{p.ship_city}} {{p.ship_state}} {{p.ship_zip}}{% endif %}
+ · <a href="/orders?profile={{p.name|urlencode}}">Show on Orders</a></p>
+<div class="stats"><div class="card">Orders <b>{{pick.orders|length}}</b></div><div class="card">Spend <b>{{pick.spend|money}}</b></div>
+<div class="card">On the way <b>{{pick.orders|selectattr("shipping_status", "in", on_way)|list|length}}</b></div>
+<div class="card ok">Delivered <b>{{pick.statuses.get("delivered", 0)}}</b></div></div>
+<div class="lbl muted" style="font-size:11px;font-weight:600;letter-spacing:.07em">CHECKED OUT ON</div>
+<div class="sites">{% for site, n in pick.sites|dictsort(by="value", reverse=true) %}<span class="{{'bot' if not n}}" title="{{'From your bot checkouts; no order email yet' if not n else ''}}">{{site}}{% if n %}<b>{{n}}</b>{% endif %}</span>{% else %}<span class="bot">No checkouts yet</span>{% endfor %}</div>
+<table><thead><tr><th>Date</th><th>Site / order #</th><th>Items</th><th>Total</th><th>Status</th><th>Tracking</th><th>Matched on</th></tr></thead><tbody>
+{% for o in pick.orders %}{% set status = o.shipping_status or "unknown" %}<tr>
+<td>{{o.order_date or "-"}}</td><td><a href="/orders#order-{{o.id}}"><b>{{o.retailer or "-"}}</b></a><div class="muted">{{o.order_number or ""}}</div></td>
+<td><ul class="items">{% for i in o["items"] %}<li>{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}</li>{% endfor %}</ul></td>
+<td class="num">{{o.total|money(o.currency)}}</td>
+<td><span class="pill s-{{status}}">{{status|status_label}}</span>{% if o.estimated_delivery %}<div class="muted" style="white-space:nowrap;font-size:12px;margin-top:4px">ETA {{o.estimated_delivery}}</div>{% endif %}</td>
+<td>{% if o.tracking_number %}<a class="track" href="{{o|track_url}}" target="_blank" rel="noopener"><span class="muted">{{o.carrier or "Track"}}</span> {{o.tracking_number}} ↗</a>{% else %}<span class="muted">No tracking yet</span>{% endif %}</td>
+<td class="muted">{{o.profile_match or ""}}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">No order emails matched to this profile yet.</td></tr>{% endfor %}</tbody></table>
+{% elif pick_name %}<div class="panel muted">There's no profile called {{pick_name}}.</div>
+{% else %}
+<table><thead><tr><th>Profile</th><th>Sites</th><th class="num">Orders</th><th class="num">On the way</th><th class="num">Delivered</th><th class="num">Cancelled</th><th class="num">Spend</th></tr></thead><tbody>
+{% for h in used %}<tr><td><a href="/profile-orders?profile={{h.profile.name|urlencode}}"><b>{{h.profile.name}}</b></a>{% if h.profile.group_name %}<div class="muted">{{h.profile.group_name}}</div>{% endif %}</td>
+<td>{{h.sites|dictsort(by="value", reverse=true)|map("first")|join(", ")}}</td>
+<td class="num">{{h.orders|length}}</td><td class="num">{{h.orders|selectattr("shipping_status", "in", on_way)|list|length}}</td>
+<td class="num">{{h.statuses.get("delivered", 0)}}</td><td class="num">{{h.statuses.get("cancelled", 0) + h.statuses.get("refunded", 0)}}</td>
+<td class="num">{{h.spend|money}}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">No orders matched to your {{total_profiles}} profiles yet. Sync Gmail on Orders, and make sure your profiles have their shipping address, name and email filled in.</td></tr>{% endfor %}</tbody></table>
+{% endif %}
+</section>
+</div>
+{% endblock %}

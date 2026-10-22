@@ -101,6 +101,8 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
   <div>{{p.ship_city}}{% if p.ship_city %}, {% endif %}{{p.ship_state}} {{p.ship_zip}}</div>{% endif %}
   <div class="lbl">PAYMENT</div>
   <div>{% if p.linked_last4 %}{{p.linked_brand}} •••• {{p.linked_last4}} • Exp {{p.linked_exp}}{% elif p.card_last4 %}{{p.card_brand or "Card"}} •••• {{p.card_last4}}{% if p.card_exp %} • Exp {{p.card_exp}}{% endif %} <span class="muted">(in bot file)</span>{% else %}<span class="muted">No card linked</span>{% endif %}{% if p.card_holder %} <span class="muted">· {{p.card_holder}}</span>{% endif %}</div>
+  <div class="lbl">ORDERS</div>
+  <div><a href="/profile-orders?profile={{p.name|urlencode}}">{% set n = order_counts.get(p.name, 0) %}{{n}} order{{"" if n == 1 else "s"}} from your inboxes →</a></div>
   {% if issues %}<div class="issues">{{issues|join("; ")}}</div>{% endif %}
 </div>
 {% endfor %}

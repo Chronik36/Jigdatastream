@@ -21,6 +21,7 @@ class Email:
     date: str  # ISO 8601, or "" when the header is missing
     body: str
     account: str = ""  # the inbox it was read from
+    to: str = ""  # the address the email was sent to (a profile's email that forwards here)
 
 
 class _TextExtractor(HTMLParser):
@@ -96,6 +97,7 @@ def parse_message(raw):
         subject=str(msg["Subject"] or ""),
         date=date,
         body=message_text(msg),
+        to=str(msg["To"] or msg["Delivered-To"] or ""),
     )
 
 
