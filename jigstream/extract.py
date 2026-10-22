@@ -40,7 +40,7 @@ SYSTEM_PROMPT = f"""You read one email and extract purchase data as JSON. Reply 
 Decide "kind":
 - "order": a purchase of physical goods from a store (order confirmation, shipping notice, delivery notice, cancellation, refund, return).
 - "botting_expense": a receipt for tools used for retail botting or reselling automation. Judge from what was bought, not who sent it, because new sellers appear all the time. Examples: proxies (residential, ISP, datacenter, per-GB data plans), bot software licenses, keys or renewals, cook group or Discord memberships (often sold through whop.com), captcha solving credits, servers/VPS, ACO (auto-checkout) services, aged or generated accounts.
-- "other": anything else: marketing, newsletters, account notices, receipts unrelated to retail or botting.
+- "other": anything else: marketing, newsletters, account notices, receipts unrelated to retail or botting. Payment reminders, unpaid or upcoming invoices and "your plan will renew" notices are "other": only money actually charged counts.
 
 For botting expenses, "vendor" is the business that sold the product, not the payment processor. If the receipt comes from Stripe, PayPal, Paddle, Sellix, Shopify, Whop, Gumroad or similar, use the product's or community's own name shown in the receipt (for whop.com, the community or product name). Only use the processor's name if no other seller is named.
 
@@ -51,7 +51,7 @@ JSON keys (use null when unknown, never invent values):
   "order_number": string,
   "order_date": "YYYY-MM-DD",
   "items": [{{"name": string, "quantity": number, "price": number}}],
-  "total": number,
+  "total": number (the amount actually paid, e.g. "Total", "Amount paid", "Amount charged"; for expenses too),
   "currency": "USD" or other ISO code,
   "shipping_address": full address as one string,
   "tracking_number": string,
@@ -123,6 +123,35 @@ def botting_signals(email):
     return sorted(words)[:8]
 
 
+TOTAL_LINE = re.compile(r"(amount (paid|charged|due)|total( paid| charged| due| amount)?|grand total|order total|"
+                        r"you paid|payment amount|charged|paid)\b", re.I)
+MONEY_VALUE = re.compile(r"(?:(?:US)?[$\u00a3\u20ac]\s?(\d[\d,]*(?:\.\d{1,2})?)|"
+                         r"\b(\d[\d,]*\.\d{2})\s?(?:USD|EUR|GBP|CAD)\b|\b(?:USD|EUR|GBP|CAD)\s?(\d[\d,]*(?:\.\d{1,2})?))")
+NOT_A_CHARGE = re.compile(r"\b(reminder|past due|overdue|unpaid|due (soon|on|date)|upcoming (payment|invoice|renewal)|"
+                          r"will (renew|be charged)|payment failed|failed payment)\b", re.I)
+PAID_WORDS = re.compile(r"\b(receipt|paid|payment (received|successful|confirmed)|thank you for your (payment|purchase|order))\b", re.I)
+
+
+def find_total(text):
+    """The amount paid, read straight from the email when the model didn't give one: the money on or
+    just after a Total / Amount paid line (the last such line wins, as subtotals come first)."""
+    lines = [l.strip() for l in (text or "").splitlines() if l.strip()]
+    found = None
+    for i, line in enumerate(lines):
+        if not TOTAL_LINE.search(line) or re.search(r"\bsub ?total\b", line, re.I):
+            continue
+        for candidate in (line[TOTAL_LINE.search(line).start():], *lines[i + 1:i + 3]):
+            m = MONEY_VALUE.search(candidate)
+            if m:
+                found = float(next(g for g in m.groups() if g).replace(",", ""))
+                break
+    if found is None:
+        amounts = [float(next(g for g in m.groups() if g).replace(",", "")) for m in MONEY_VALUE.finditer(text or "")]
+        if len(set(amounts)) == 1:  # one price in the whole email: that's the charge
+            found = amounts[0]
+    return found
+
+
 def _money(value):
     if value is None or value == "":
         return None
@@ -161,6 +190,11 @@ def normalize(data, email):
     email_day = email.date[:10] if email.date else None
     total = _money(data.get("total"))
     currency = (_str(data.get("currency")) or "USD").upper()[:3]
+
+    if kind == "botting_expense" and NOT_A_CHARGE.search(email.subject or "") and not PAID_WORDS.search(email.subject or ""):
+        kind = "other"  # a reminder or renewal notice, not money spent
+    if kind in ("botting_expense", "order") and total is None:
+        total = find_total(email.body)
 
     if kind == "botting_expense":
         category = data.get("expense_category")

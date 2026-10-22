@@ -48,13 +48,20 @@ def corrected_answer(raw, label):
 
 def search(config, query, limit=50):
     """Header rows from every inbox for a Gmail search, newest first."""
+    from concurrent.futures import ThreadPoolExecutor
     rows, errors = [], []
-    for address, password in config.accounts:
+
+    def one(account):
+        address, password = account
         try:
-            rows += search_headers(config, address, password, query, limit)
+            return search_headers(config, address, password, query, limit), None
         except Exception as e:
             logger.warning("inbox search failed for %s: %s", address, e)
-            errors.append(f"{address}: {e}")
+            return [], f"{address}: {e}"
+    with ThreadPoolExecutor(max_workers=max(1, min(6, len(config.accounts)))) as pool:  # all inboxes at once
+        for found, error in pool.map(one, config.accounts):
+            rows += found
+            errors += [error] if error else []
     rows.sort(key=lambda r: r["date"] or "", reverse=True)
     return rows[:limit], errors
 
@@ -89,3 +96,33 @@ def label_emails(config, store, llm, picks, label):
         except Exception as e:
             logger.exception("inbox label failed for %s", row.get("subject"))
             store.set_inbox_label(row, label, f"failed: {e}")
+
+
+def fill_missing_amounts(config, store, limit=200):
+    """Re-open expenses saved without an amount and read the total straight from the email.
+    Reminders and unpaid invoices that were filed as expenses are removed. Each email is tried once."""
+    from .extract import NOT_A_CHARGE, PAID_WORDS, find_total
+    rows = store.db.execute("SELECT e.id, e.message_id, e.account, m.subject FROM expenses e"
+                            " LEFT JOIN emails m ON m.message_id = e.message_id"
+                            " WHERE e.amount IS NULL AND COALESCE(e.amount_checked, 0) = 0 LIMIT ?", (limit,)).fetchall()
+    filled = removed = 0
+    for r in rows:
+        subject = r["subject"] or ""
+        if NOT_A_CHARGE.search(subject) and not PAID_WORDS.search(subject):
+            store.db.execute("DELETE FROM expenses WHERE id = ?", (r["id"],))
+            store.db.execute("UPDATE emails SET kind = 'other' WHERE message_id = ?", (r["message_id"],))
+            removed += 1
+            continue
+        amount = None
+        try:
+            email = open_email(config, r["account"], r["message_id"])
+            amount = find_total(email.body) if email else None
+        except Exception as e:
+            logger.warning("couldn't re-open expense email %s: %s", r["message_id"], e)
+        store.db.execute("UPDATE expenses SET amount = COALESCE(?, amount), amount_checked = 1 WHERE id = ?",
+                         (amount, r["id"]))
+        filled += amount is not None
+    store.db.commit()
+    if rows:
+        logger.info("missing expense amounts: %d filled, %d reminders removed, %d checked", filled, removed, len(rows))
+    return filled, removed
