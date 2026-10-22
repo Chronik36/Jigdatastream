@@ -550,9 +550,12 @@ def create_app(db_path=None):
     def inbox_rows():
         config = Config.from_env()
         filt = request.args.get("f", "Purchases" if "q" not in request.args else "")
-        query = request.args.get("q", "").strip() or inbox.QUICK_FILTERS.get(filt, "")
-        rows, errors = inbox.search(config, query) if config.accounts else ([], [])
+        query = request.args.get("q", "").strip() or inbox.QUICK_FILTERS.get(filt) or ""
         store = Store(con())
+        if filt == inbox.SKIPPED and not request.args.get("q", "").strip():
+            rows, errors = inbox.skipped(store), []
+        else:
+            rows, errors = inbox.search(config, query) if config.accounts else ([], [])
         decided = {r["message_id"]: r["kind"] for r in store.db.execute("SELECT message_id, kind FROM emails")}
         return render_template("_inbox_rows.html", rows=rows, errors=errors, labels=inbox.LABELS,
                                marked=store.inbox_labels(), decided=decided, configured=bool(config.accounts))
