@@ -25,6 +25,7 @@ The AI re-reads each labelled email and learns what it should have found; the la
 {% if not configured %}<div class="flash">No Gmail inbox connected yet. <a href="/setup">Add one on the Setup page</a>.</div>{% endif %}
 <div class="chips">{% for name in filters %}<a class="chip{{' on' if filt == name and not q}}" href="/inbox?f={{name|urlencode}}">{{name}}</a>{% endfor %}
 <form method="get" action="/inbox" style="margin:0 0 0 auto"><input name="q" value="{{q}}" placeholder="Search Gmail (e.g. from:nike cancelled)" size="34" style="margin:0"></form></div>
+{% if filt == "AI skipped" and not q %}<p class="muted" style="margin-top:-4px">Emails the AI decided weren't an order or an expense. Tick any it got wrong and label them; each label teaches the AI and adds the order or expense.</p>{% endif %}
 <form id="labelform" method="post" action="/inbox/label">
 <div class="labelbar"><b id="count">0 selected</b>
 <select name="label" required><option value="">Label as…</option>{% for key, (name, _) in labels.items() %}<option value="{{key}}">{{name}}</option>{% endfor %}</select>
