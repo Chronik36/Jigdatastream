@@ -88,6 +88,16 @@ CREATE TABLE IF NOT EXISTS training_examples (
     created_at TEXT,
     UNIQUE (label_id, message_id)
 );
+CREATE TABLE IF NOT EXISTS inbox_labels (
+    message_id TEXT PRIMARY KEY,
+    account TEXT,
+    sender TEXT,
+    subject TEXT,
+    email_date TEXT,
+    label TEXT,
+    state TEXT,
+    created_at TEXT
+);
 """
 
 ORDER_FIELDS = [
@@ -318,6 +328,30 @@ class Store:
             (label_id, order_id, email.message_id, email.sender, email.subject, email.date, prompt,
              json.dumps(raw), raw.get("shipping_status"), json.dumps(corrected) if matched else None,
              status, int(raw.get("shipping_status") == status) if matched else None,
+             datetime.now(timezone.utc).isoformat()))
+        self.db.commit()
+
+    def set_inbox_label(self, row, label, state):
+        self.db.execute(
+            "INSERT OR REPLACE INTO inbox_labels VALUES (?,?,?,?,?,?,?,?)",
+            (row["message_id"], row["account"], row.get("sender"), row.get("subject"), row.get("date"),
+             label, state, datetime.now(timezone.utc).isoformat()))
+        self.db.commit()
+
+    def inbox_labels(self):
+        return {r["message_id"]: dict(r) for r in self.db.execute("SELECT * FROM inbox_labels")}
+
+    def add_inbox_example(self, email, prompt, raw, corrected, label):
+        """An email labelled on the Inbox page: the answer the model should have given."""
+        self.db.execute("DELETE FROM training_examples WHERE label_id IS NULL AND message_id = ?", (email.message_id,))
+        right = raw.get("kind") == corrected.get("kind") and (
+            corrected.get("kind") != "order" or raw.get("shipping_status") == corrected.get("shipping_status"))
+        self.db.execute(
+            "INSERT INTO training_examples (label_id, order_id, message_id, sender, subject, email_date,"
+            " prompt, model_output, model_status, corrected, status, model_was_right, created_at)"
+            " VALUES (NULL,NULL,?,?,?,?,?,?,?,?,?,?,?)",
+            (email.message_id, email.sender, email.subject, email.date, prompt, json.dumps(raw),
+             raw.get("shipping_status") or raw.get("kind"), json.dumps(corrected), label, int(right),
              datetime.now(timezone.utc).isoformat()))
         self.db.commit()
 

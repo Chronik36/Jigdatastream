@@ -172,3 +172,27 @@ def test_ai_progress_banner(tmp_path):
     assert 'id="aibar"' in c.get("/orders").get_data(as_text=True) and c.get("/api/ai").get_json()["percent"] == 42
     app.config["AI_STATE"].update(ready=True)
     assert 'id="aibar"' not in c.get("/orders").get_data(as_text=True)
+
+
+def test_cleanup_keeps_user_data(tmp_path):
+    import os, time as _t
+    from jigstream import macapp
+    d = tmp_path / "BotTrack"
+    for name in ("app-20260101-000000-aaa", "app-20260201-000000-bbb", "app-20260301-000000-ccc"):
+        (d / "backups" / name).mkdir(parents=True)
+    (d / "pydeps" / "flask").mkdir(parents=True)
+    (d / "data").mkdir()
+    (d / "data" / "jigstream.db").write_text("orders")
+    (d / ".env").write_text("GMAIL_ACCOUNTS=x")
+    (d / "logs").mkdir()
+    old_log = d / "logs" / "install.log"
+    old_log.write_text("old")
+    os.utime(old_log, (_t.time() - 40 * 86400,) * 2)
+    big = d / "logs" / "ai-engine.log"
+    big.write_bytes(b"x" * (macapp.LOG_KEEP_BYTES + 10))
+    (tmp_path / "Applications" / "Order Tracker.app").mkdir(parents=True)
+    macapp.cleanup(d, tmp_path, running_bundled_code=True)
+    assert [p.name for p in (d / "backups").iterdir()] == ["app-20260301-000000-ccc"]
+    assert not (d / "pydeps").exists() and not old_log.exists() and big.stat().st_size < macapp.LOG_KEEP_BYTES
+    assert (d / "data" / "jigstream.db").read_text() == "orders" and (d / ".env").exists()
+    assert not (tmp_path / "Applications" / "Order Tracker.app").exists()

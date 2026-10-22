@@ -26,7 +26,7 @@ RUNNING_DIR = Path(__file__).resolve().parent.parent  # the code running now: ji
 APP_DIR = Path(os.environ["BOTTRACK_CODE_DIR"]) if os.environ.get("BOTTRACK_CODE_DIR") else RUNNING_DIR
 relaunch = None  # set by the Mac app: how to start again after an update
 API = "https://api.github.com"
-KEEP_BACKUPS = 3
+KEEP_BACKUPS = 1  # only the version before the last update is kept, for "Undo last update"
 
 state = {"checked_at": None, "available": False, "latest": None, "message": "", "error": None, "installing": False}
 
