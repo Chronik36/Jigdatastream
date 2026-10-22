@@ -210,3 +210,16 @@ def test_plaid_errors_are_kept_and_due(tmp_path, monkeypatch):
     client = create_app(str(tmp_path / "p.db")).test_client()
     assert client.post("/bank/plaid/link-token").get_json()["error"].startswith("the login details changed")
     assert "Reconnect" in client.get("/bank/plaid").get_data(as_text=True)
+
+
+def test_plaid_status_notices_a_bank_linked_in_the_browser(tmp_path, monkeypatch):
+    path = str(tmp_path / "p.db")
+    c = plaid.ensure(db.connect(path))
+    monkeypatch.setattr(plaid, "call", FakePlaid())
+    plaid.save_keys(c, "cid", "sec", "sandbox")
+    client = create_app(path).test_client()
+    before = client.get("/bank/plaid/status").get_json()["changed"]
+    page = client.get("/bank/plaid?link=1").get_data(as_text=True)
+    assert "handOff" in page and "bank/plaid?link=1" in page
+    plaid.exchange(c, "pub", "American Express")
+    assert client.get("/bank/plaid/status").get_json()["changed"] != before

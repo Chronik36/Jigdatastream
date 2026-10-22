@@ -38,7 +38,8 @@ below with <b>Production</b> chosen, and link your banks.</li></ol>
 two years are pulled in the background (the first pull can take a few minutes), then every few hours.</p>
 <button type="button" onclick="startLink()">Link a bank</button>
 <span class="muted" id="linkmsg" style="margin-left:10px"></span>
-<p class="muted" style="margin-top:10px">If your bank's sign-in window doesn't open here, <a href="{{request.host_url}}bank/plaid" target="_blank">open this page in your web browser</a> and link it there.</p>
+<p class="muted" style="margin-top:10px">Banks like Amex and Chase sign you in on their own site, which only works in a web browser, so
+from the BotTrack window this opens your browser to finish. If nothing opens, <a id="browserlink" href="{{request.host_url}}bank/plaid?link=1" target="_blank">open it in your web browser</a>.</p>
 {% for i in items %}<div class="acct"><span class="grow"><b>{{i.institution}}</b><br><span class="muted">
 {{("Last synced " ~ i.last_synced_at[:16]|replace("T", " ") ~ " UTC") if i.last_synced_at else "Not synced yet"}}</span>
 {% if i.error %}<br><span class="bad">{{i.error}}</span>{% endif %}</span>
@@ -51,7 +52,32 @@ two years are pulled in the background (the first pull can take a few minutes), 
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 <script>
 function say(t) { document.getElementById('linkmsg').textContent = t; }
+// The BotTrack window (WebKit without Safari) can't open the bank's own sign-in pop-up that OAuth banks
+// (Amex, Chase, ...) need, so linking happens in your web browser and this window waits for it.
+const inApp = !!window.pywebview || (/AppleWebKit/.test(navigator.userAgent) && !/Safari\//.test(navigator.userAgent));
+const params = new URLSearchParams(location.search);
+function handOff(item) {
+  const a = document.createElement('a');
+  a.href = '{{request.host_url}}bank/plaid?link=1' + (item ? '&item=' + encodeURIComponent(item) : '');
+  a.target = '_blank'; document.body.appendChild(a); a.click(); a.remove();
+  say('Finish signing in to your bank in your web browser. This page updates by itself when you are done.');
+  fetch('/bank/plaid/status').then(r => r.json()).then(start => {
+    const stop = Date.now() + 15 * 60 * 1000;
+    (function poll() {
+      fetch('/bank/plaid/status', {cache: 'no-store'}).then(r => r.json()).then(s => {
+        if (s.changed !== start.changed) return location.reload();
+        if (Date.now() < stop) setTimeout(poll, 3000);
+      }).catch(() => setTimeout(poll, 5000));
+    })();
+  });
+}
+function finished(text) {
+  if (params.get('link')) say(text + ' You can close this tab and go back to BotTrack.');
+  else setTimeout(() => location.reload(), 1500);
+}
+if (params.get('link') && !inApp) window.addEventListener('load', () => startLink(params.get('item') || undefined));
 function startLink(item) {
+  if (inApp) return handOff(item);
   if (!window.Plaid) return say("Couldn't load Plaid's sign-in window. Check your internet connection.");
   say('Opening Plaid...');
   const body = new FormData(); if (item) body.append('item', item);
@@ -60,11 +86,11 @@ function startLink(item) {
     Plaid.create({
       token: d.link_token,
       onSuccess: (public_token, meta) => {
-        if (item) { say('Reconnected. Syncing...'); return fetch('/bank/plaid/sync', {method: 'POST'}).then(() => location.reload()); }
+        if (item) { say('Reconnected. Syncing...'); return fetch('/bank/plaid/sync', {method: 'POST'}).then(() => finished('Reconnected.')); }
         say('Linked. Pulling your charges in the background...');
         fetch('/bank/plaid/exchange', {method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({public_token, institution: meta.institution && meta.institution.name})})
-          .then(r => r.json()).then(x => x.error ? say(x.error) : setTimeout(() => location.reload(), 1500));
+          .then(r => r.json()).then(x => x.error ? say(x.error) : finished('Linked. Pulling your charges in the background.'));
       },
       onExit: (err) => say(err ? (err.display_message || err.error_message || 'Closed.') : ''),
     }).open();
