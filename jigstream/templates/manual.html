@@ -355,6 +355,36 @@ version of the same shoe.</p>
 the same site. If very little text comes back, the page builds itself with JavaScript and the list may be incomplete.</p>
 </section>{% endif %}
 
+{% if "stock.stock_page" in pages %}<section id="stock" data-title="In-store stock">
+<h2>In-store stock</h2>
+<div class="where">Sidebar → Bot tools → <b>In-store stock</b></div>
+<p>Shows which stores near you have a product on the shelf. It works for <b>Target</b> (with how many each store expects to have) and
+<b>Best Buy</b> (with a free key, see below). BotTrack only checks when you ask, spaces its requests out, and backs off if a store refuses.</p>
+<ol class="steps">
+<li>Copy the product's link from Target or Best Buy, or just its ID (Target's TCIN or Best Buy's SKU).</li>
+<li>Paste it in, type your ZIP code, pick how far you'll drive, and press <span class="ui">Check stores</span>.</li>
+</ol>
+{{ fig("stock", "In-store stock for a Target item, with sample stores.", [
+  "The product link or ID.",
+  "Retailer: worked out from the link, or pick it yourself when you paste an ID.",
+  "Your ZIP code. BotTrack remembers it for next time.",
+  "How far to look: 10, 25, 50 or 100 miles.",
+  "The stores, in-stock ones first and nearest first, with the quantity Target expects on the shelf. A New tag means a store has just come into stock since your last check.",
+  "Recheck: check again by itself every 15, 30 or 60 minutes while this page is open.",
+  "Best Buy API key: paste your free key here once."]) }}
+<h4 id="stock-bestbuy">Best Buy needs a free key</h4>
+<ol class="steps">
+<li>Sign up with your email at <b>developer.bestbuy.com</b>.</li>
+<li>Activate the key from the email Best Buy sends you.</li>
+<li>Paste it into <b>Best Buy API key</b> on this page and press <span class="ui">Save key</span>. It's stored only on this Mac.</li>
+</ol>
+<p>Best Buy only lists the stores that have the item, and says "low stock" rather than giving a count.</p>
+<div class="warn">Walmart and GameStop keep their store lookups behind bot protection, so BotTrack doesn't check them; it would have to get
+around that, and it never does. Pasting one of their links shows a button to open the product page, where you can use the site's own
+store-availability check. Quantities from Target are an estimate and can be off by a few.</div>
+<p>If a retailer refuses a request, the page says <b>Blocked</b> and BotTrack leaves that retailer alone for 15 minutes before trying again.</p>
+</section>{% endif %}
+
 <section id="setup" data-title="Setup">
 <h2>Setup</h2>
 <div class="where">Sidebar → <b>Setup</b> (bottom left)</div>

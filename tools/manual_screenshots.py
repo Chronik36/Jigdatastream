@@ -186,6 +186,17 @@ def patch():
         {"model": "mlx-community/Qwen3-8B-abliterated-4bit", "engine": "mlx", "accuracy": 87, "right": 26,
          "total": 30, "unreadable": 1, "seconds": 2.2}]})
     discord.DiscordClient = FakeDiscord
+    if has_module("stock"):
+        from jigstream import stock
+        stores = [("Austin Downtown", "1124", "415 Congress Ave, Austin, TX", 1.2, 6), ("Austin North", "2211", "9900 Lamar Blvd, Austin, TX", 8.4, 2),
+                  ("Round Rock", "1797", "301 Louis Henna Blvd, Round Rock, TX", 17.9, 0), ("Pflugerville", "2350", "1601 Pecan St, Pflugerville, TX", 15.3, 1),
+                  ("Cedar Park", "1423", "1335 E Whitestone Blvd, Cedar Park, TX", 19.6, 0)]
+        stock.CHECKERS["target"] = lambda product, zip_code, radius: {
+            "retailer": "target", "product_id": "89238122", "title": "Pokemon TCG Elite Trainer Box",
+            "link": "https://www.target.com/p/-/A-89238122", "quantities": True, "only_in_stock": False,
+            "stores": sorted([{"store_id": i, "name": n, "address": a, "distance": d, "quantity": q, "in_stock": q > 0,
+                               "note": "Limited stock" if q == 1 else "", "status": ""} for n, i, a, d, q in stores],
+                             key=lambda r: (not r["in_stock"], r["distance"]))}
     if has_module("keywords"):
         from jigstream import keywords
         keywords.fetch = lambda url: (url, SAMPLE_PAGE)
@@ -388,6 +399,10 @@ shot("keywords", "/keywords", [("input[name=url]", 1), ("label:has(> input[name=
                                (".kw-grid .panel + .panel + .panel", 7)],
      js="document.querySelector('input[name=url]').value = 'https://demo-sneakers.example/air-jordan-1-chicago';"
         "document.querySelector('form.kw-form').submit()", viewport={"width": 1360, "height": 1250}, needs=lambda: has_module("keywords"))
+shot("stock", "/stock?run=1&retailer=target&product=https%3A%2F%2Fwww.target.com%2Fp%2F-%2FA-89238122&zip=78701&radius=25",
+     [("input[name=product]", 1), ("select[name=retailer]", 2), ("input[name=zip]", 3), ("select[name=radius]", 4),
+      ("table.st-table", 5), ("#recheck", 6), ("form[action='/stock/bestbuy-key']", 7)],
+     viewport={"width": 1360, "height": 1100}, needs=lambda: has_module("stock"))
 shot("setup-phone", "/setup", [("input[name=on]", 1), ("input[name=email][type=email]", 2),
                                ("input[name=allow_lan]", 3)], scroll="h3@Phone access", needs=has_phone)
 shot("phone-login", "/m/login", phone=True, needs=has_phone)
