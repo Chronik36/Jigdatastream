@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block body %}
+<h2>Training examples</h2>
+<p class="muted">Emails found after you corrected an order's status. Rows with a corrected answer are used as
+examples ({{in_prompt}} shown to the model before each email{% if not config.use_examples %}, but that's switched off on Setup{% endif %}).
+Delete any that are wrong.</p>
+<p><a href="/training/export"><button>Export corrected examples (.jsonl)</button></a>
+<span class="muted">for fine-tuning a model later</span></p>
+<table><thead><tr><th>Email</th><th>You said</th><th>Model said</th><th>Used</th><th></th></tr></thead><tbody>
+{% for e in examples %}<tr>
+<td><b>{{e.subject or "-"}}</b><div class="muted">{{e.sender}} · {{(e.email_date or "")[:10]}}</div></td>
+<td>{{e.status}}</td>
+<td class="{{'ok' if e.model_was_right == 1 else ('bad' if e.model_was_right == 0 else 'muted')}}">{{e.model_status or "-"}}</td>
+<td>{{"yes" if e.corrected else "no (not about that status)"}}</td>
+<td><form method="post" action="/training/{{e.id}}/delete"><button>Delete</button></form></td></tr>
+{% else %}<tr><td colspan="5" class="muted">No examples yet. Turn on Training mode on Setup, then correct an order's status on the Orders page.</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}

@@ -228,7 +228,7 @@ def _sender_name(sender):
     return m.group(1) if m else (sender or None)
 
 
-def extract(llm, email, max_body_chars=12000):
+def email_prompt(email, max_body_chars=12000):
     user = (
         f"From: {email.sender}\nSubject: {email.subject}\nDate: {email.date}\n\n"
         f"{email.body[:max_body_chars]}"
@@ -236,4 +236,15 @@ def extract(llm, email, max_body_chars=12000):
     signals = botting_signals(email)
     if signals:
         user += f"\n\n(Botting-related words found: {', '.join(signals)}. Decide from the content.)"
-    return normalize(llm.chat_json(SYSTEM_PROMPT, user), email)
+    return user
+
+
+def extract_raw(llm, email, max_body_chars=12000, examples=()):
+    """(the model's raw JSON, the cleaned result)."""
+    user = email_prompt(email, max_body_chars)
+    raw = llm.chat_json(SYSTEM_PROMPT, user, examples=examples) if examples else llm.chat_json(SYSTEM_PROMPT, user)
+    return raw, normalize(raw, email)
+
+
+def extract(llm, email, max_body_chars=12000, examples=()):
+    return extract_raw(llm, email, max_body_chars, examples)[1]

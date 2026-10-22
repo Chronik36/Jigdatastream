@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS tracked_orders (
     estimated_delivery TEXT,
     last_email_date TEXT,
     message_ids TEXT,
-    account TEXT
+    account TEXT,
+    status_manual INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS expenses (
     id INTEGER PRIMARY KEY,
@@ -54,6 +55,37 @@ CREATE TABLE IF NOT EXISTS expenses (
     order_number TEXT,
     billing_period TEXT,
     account TEXT
+);
+"""
+
+# Columns added after the first release; created on older databases at startup.
+MIGRATIONS = [("tracked_orders", "status_manual", "INTEGER DEFAULT 0")]
+
+LABEL_SCHEMA = """
+CREATE TABLE IF NOT EXISTS labels (
+    id INTEGER PRIMARY KEY,
+    order_id INTEGER,
+    status TEXT,
+    previous_status TEXT,
+    created_at TEXT,
+    rescan TEXT
+);
+CREATE TABLE IF NOT EXISTS training_examples (
+    id INTEGER PRIMARY KEY,
+    label_id INTEGER,
+    order_id INTEGER,
+    message_id TEXT,
+    sender TEXT,
+    subject TEXT,
+    email_date TEXT,
+    prompt TEXT,
+    model_output TEXT,
+    model_status TEXT,
+    corrected TEXT,
+    status TEXT,
+    model_was_right INTEGER,
+    created_at TEXT,
+    UNIQUE (label_id, message_id)
 );
 """
 
@@ -71,6 +103,12 @@ class Store:
     def __init__(self, con):
         self.db = con
         self.db.executescript(SCHEMA)
+        self.db.executescript(LABEL_SCHEMA)
+        for table, column, kind in MIGRATIONS:
+            cols = {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}
+            if column not in cols:
+                self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+        self.db.commit()
 
     def seen_ids(self):
         """Message ids already handled; failed ones are retried on the next sync."""
@@ -172,6 +210,8 @@ class Store:
             updates["items"] = json.dumps(result["items"])
         status = result["shipping_status"]
         old = row["shipping_status"]
+        if row["status_manual"]:
+            status = None  # a status you set by hand only changes when you change it
         # Newer emails can cancel or advance an order; an older email arriving late can only
         # move it forward (e.g. a missed "shipped" email after "ordered").
         if status_advances(old, status) and (newer or status in PROGRESS or old in (None, "unknown")):
@@ -185,6 +225,50 @@ class Store:
             cols = ", ".join(f"{k} = ?" for k in updates)
             self.db.execute(f"UPDATE tracked_orders SET {cols} WHERE id = ?", (*updates.values(), row["id"]))
             self.db.commit()
+
+    def set_status_manually(self, order_id, status):
+        """Record a correction from the Orders page. Returns the label id."""
+        row = self.db.execute("SELECT shipping_status FROM tracked_orders WHERE id = ?", (order_id,)).fetchone()
+        if row is None or status not in STATUSES:
+            return None
+        self.db.execute("UPDATE tracked_orders SET shipping_status = ?, status_manual = 1 WHERE id = ?",
+                        (status, order_id))
+        cur = self.db.execute(
+            "INSERT INTO labels (order_id, status, previous_status, created_at, rescan) VALUES (?,?,?,?,?)",
+            (order_id, status, row["shipping_status"], datetime.now(timezone.utc).isoformat(), "pending"))
+        self.db.commit()
+        return cur.lastrowid
+
+    def set_rescan_state(self, label_id, text):
+        self.db.execute("UPDATE labels SET rescan = ? WHERE id = ?", (text, label_id))
+        self.db.commit()
+
+    def add_example(self, label_id, order_id, email, prompt, raw, status, matched):
+        """Keep one email from a labelled order as a training example. For emails about the status
+        you chose, the corrected answer is the model's own answer with that status."""
+        corrected = dict(raw)
+        if matched:
+            corrected.update({"kind": "order", "shipping_status": status})
+        self.db.execute(
+            "INSERT OR REPLACE INTO training_examples (label_id, order_id, message_id, sender, subject, email_date,"
+            " prompt, model_output, model_status, corrected, status, model_was_right, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (label_id, order_id, email.message_id, email.sender, email.subject, email.date, prompt,
+             json.dumps(raw), raw.get("shipping_status"), json.dumps(corrected) if matched else None,
+             status, int(raw.get("shipping_status") == status) if matched else None,
+             datetime.now(timezone.utc).isoformat()))
+        self.db.commit()
+
+    def examples(self, only_corrected=True):
+        q = "SELECT * FROM training_examples" + (" WHERE corrected IS NOT NULL" if only_corrected else "")
+        return [dict(r) for r in self.db.execute(q + " ORDER BY id DESC")]
+
+    def labels(self):
+        """Latest correction per order."""
+        return {r["order_id"]: dict(r) for r in self.db.execute("SELECT * FROM labels ORDER BY id")}
+
+    def order(self, order_id):
+        return next((o for o in self.orders() if o["id"] == order_id), None)
 
     def orders(self):
         rows = self.db.execute(
