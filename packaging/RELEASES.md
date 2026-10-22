@@ -13,7 +13,7 @@ One-time setup:
    - Permissions → Repository permissions → **Contents: Read and write**
    - Pick the longest expiration you're comfortable with, and note the date to renew it.
 3. In Jigdatastream, open Settings → Secrets and variables → Actions → **New repository secret**,
-   name it `RELEASES_TOKEN`, and paste the token.
+   name it `RELEASES_TOKEN` (or `BOTTRACK`), and paste the token.
 
 After that, each push or merge to `main` builds the app and publishes a release named
 `build-N-<commit>`. To publish without a code change, run the "Build BotTrack for Mac" workflow
