@@ -1,0 +1,48 @@
+{# Full-window loading screen: the BotTrack logo with a light running around its outlines.
+   Rendered by Flask (base.html, restarting.html) and by window.py for the startup splash, so it takes
+   the image URLs as variables instead of calling url_for. `shown` puts it on screen right away. #}
+<style>
+.loader{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;
+  background:radial-gradient(640px 420px at 50% 42%,rgba(61,216,239,.13),transparent 70%),radial-gradient(520px 360px at 50% 80%,rgba(61,220,132,.06),transparent 70%),#0a1230;
+  color:#e8eeff;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;
+  opacity:0;visibility:hidden;transition:opacity .35s ease,visibility 0s .35s}
+.loader.on{opacity:1;visibility:visible;transition:opacity .35s ease}
+.loader .tile{position:relative;width:min(260px,58vw);aspect-ratio:1;animation:ld-breathe 3.2s ease-in-out infinite}
+.loader .tile>*{position:absolute;inset:0;width:100%;height:100%}
+.loader .logo{border-radius:23%;box-shadow:0 0 0 1px rgba(61,216,239,.18),0 24px 70px rgba(0,0,0,.45),0 0 90px rgba(61,216,239,.16)}
+/* the light on the drawing: a beam turning around the box, shown only where the logo has lines */
+.loader .glow{filter:drop-shadow(0 0 3px #bff6ff) drop-shadow(0 0 9px rgba(61,216,239,.9));mix-blend-mode:screen}
+.loader .lines{position:absolute;inset:0;overflow:hidden;-webkit-mask:var(--lines) center/100% 100% no-repeat;mask:var(--lines) center/100% 100% no-repeat}
+.loader .beam{position:absolute;left:50%;top:41%;width:300%;aspect-ratio:1;translate:-50% -50%;
+  background:conic-gradient(from 0deg,transparent 0deg,rgba(61,216,239,.0) 250deg,rgba(61,216,239,.55) 318deg,#f2feff 352deg,transparent 360deg);
+  animation:ld-spin 1.9s linear infinite}
+/* the light on the tile's edge: a short bright dash running around the rounded square */
+.loader svg{overflow:visible}
+.loader .edge{fill:none;stroke:url(#ld-comet);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:16 84;
+  filter:drop-shadow(0 0 4px #3dd8ef) drop-shadow(0 0 10px rgba(61,216,239,.8));animation:ld-run 2.6s linear infinite}
+.loader .edge.b{stroke-dasharray:6 94;stroke:#3ddc84;opacity:.8;filter:drop-shadow(0 0 5px #3ddc84);animation-delay:-1.3s}
+.loader .txt{text-align:center;max-width:440px;padding:0 16px}
+.loader .txt b{display:block;font-size:19px;font-weight:600;letter-spacing:-.01em}
+.loader .txt span{color:#8592bd}
+.loader .dots{display:flex;gap:7px;justify-content:center;margin-top:14px}
+.loader .dots i{width:6px;height:6px;border-radius:50%;background:#3dd8ef;animation:ld-dot 1.2s ease-in-out infinite}
+.loader .dots i:nth-child(2){animation-delay:.15s;background:#3ddc84}.loader .dots i:nth-child(3){animation-delay:.3s;background:#ff8a3d}
+@keyframes ld-spin{to{rotate:360deg}}
+@keyframes ld-run{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
+@keyframes ld-breathe{50%{scale:1.025}}
+@keyframes ld-dot{0%,100%{opacity:.25;translate:0 0}50%{opacity:1;translate:0 -4px}}
+@media (prefers-reduced-motion:reduce){.loader .beam{animation-duration:6s}.loader .tile,.loader .dots i{animation:none}}
+</style>
+<div class="loader{{' on' if shown}}" id="loader" role="status" aria-live="polite" style="--lines:url('{{lines}}')">
+  <div class="tile">
+    <img class="logo" src="{{logo}}" alt="BotTrack">
+    <div class="glow"><div class="lines"><div class="beam"></div></div></div>
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <defs><linearGradient id="ld-comet" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#86ecfb"/><stop offset="1" stop-color="#3dd8ef"/></linearGradient></defs>
+      <rect class="edge" x=".4" y=".4" width="99.2" height="99.2" rx="23" pathLength="100"/>
+      <rect class="edge b" x=".4" y=".4" width="99.2" height="99.2" rx="23" pathLength="100"/>
+    </svg>
+  </div>
+  <div class="txt"><b id="loader-title">{{title}}</b><span id="loader-msg">{{msg}}</span>
+    <div class="dots"><i></i><i></i><i></i></div></div>
+</div>
