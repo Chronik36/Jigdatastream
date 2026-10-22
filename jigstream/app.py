@@ -7,13 +7,19 @@ from flask import Flask, Response, flash, jsonify, redirect, render_template, re
 
 from . import analysis, db, discord, export, logs, parsers, profiles, training, updater
 from .config import Config, format_accounts, save_env
-from .extract import STATUSES
+from .extract import STATUSES, carrier_for
 from .llm import LLMClient, installed_models
 from .mail import check_login
 from .orderstore import Store
 from .sync import run_sync, summary
 
 logger = logging.getLogger("jigstream.app")
+
+# Statuses offered in the Orders dropdown, with how each status is shown.
+STATUS_CHOICES = ["ordered", "in_transit", "out_for_delivery", "delivered", "cancelled", "returned"]
+STATUS_LABELS = {"shipped": "In transit", "in_transit": "In transit", "out_for_delivery": "Out for delivery"}
+# Any carrier, when the email didn't say which: a free page that detects the carrier from the number.
+ANY_CARRIER_URL = "https://parcelsapp.com/en/tracking/{}"
 
 TRACK_URLS = {
     "UPS": "https://www.ups.com/track?tracknum={}",
@@ -83,8 +89,27 @@ def create_app(db_path=None):
         # Prefer the carrier link from the email itself, else build the carrier's public page.
         if order.get("tracking_url"):
             return order["tracking_url"]
-        url = TRACK_URLS.get(order["carrier"] or "")
-        return url.format(quote(order["tracking_number"])) if url and order["tracking_number"] else None
+        number = (order["tracking_number"] or "").strip()
+        if not number:
+            return None
+        given = (order["carrier"] or "").lower()
+        carrier = next((c for c in TRACK_URLS if c.lower() in given), None) or carrier_for(number)
+        return TRACK_URLS.get(carrier or "", ANY_CARRIER_URL).format(quote(number))
+
+    @app.template_filter("status_label")
+    def status_label(status):
+        status = status or "unknown"
+        return STATUS_LABELS.get(status, status.replace("_", " ").capitalize())
+
+    def status_counts(by_status):
+        counts = {}
+        for s, n in by_status.items():
+            counts[status_group(s)] = counts.get(status_group(s), 0) + n
+        return counts
+
+    @app.template_filter("status_group")
+    def status_group(status):
+        return "in_transit" if status == "shipped" else (status or "unknown")
 
     @app.get("/")
     def dashboard():
@@ -109,7 +134,7 @@ def create_app(db_path=None):
         return render_template("orders.html", rows=store.orders(), stats=store.stats(), sync=sync_state,
                                accounts=store.accounts(), configured=bool(config.accounts),
                                training=config.training_mode, labels=store.labels(),
-                               label_choices=["ordered", "shipped", "delivered", "cancelled", "returned"])
+                               label_choices=STATUS_CHOICES, status_counts=status_counts(store.stats()["by_status"]))
 
     def background_rescan(label_id, order):
         config = Config.from_env()

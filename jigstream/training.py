@@ -26,7 +26,7 @@ STATUS_WORDS = {
     "ordered": r"order (is )?(confirm|received|placed)|thanks? (you )?for (your )?(order|purchase)|order summary",
     "processing": r"processing|preparing your order",
     "shipped": r"shipped|on (its|the) way|has been sent|dispatched|tracking (number|info)",
-    "in_transit": r"in transit|on (its|the) way",
+    "in_transit": r"in transit|on (its|the) way|shipped|has been sent|dispatched|tracking (number|info)",
     "out_for_delivery": r"out for delivery",
     "delivered": r"\bdelivered\b|has arrived|was delivered",
     "cancelled": r"cancel+ed|cancel+ation|has been cancel",
