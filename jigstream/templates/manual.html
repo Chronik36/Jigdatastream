@@ -1,0 +1,520 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.man{display:grid;grid-template-columns:250px minmax(0,1fr);gap:32px;align-items:start}
+.toc{position:sticky;top:84px;max-height:calc(100vh - 108px);overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
+.toc input{width:100%;margin:0 0 6px}
+.toc .hits{font-size:12px;color:var(--muted);min-height:18px;margin:0 2px 8px}
+.toc a{display:block;color:var(--muted);padding:5px 10px;border-radius:8px;font-weight:500}
+.toc a.sub{padding-left:24px;font-size:13px;font-weight:400}
+.toc a[hidden]{display:none}
+.toc a:hover{color:var(--text);background:var(--surface-2)}.toc a.on{color:var(--accent);background:var(--accent-soft)}
+.doc{max-width:900px;font-size:15px;line-height:1.65}
+.doc section{scroll-margin-top:84px;padding-bottom:12px;margin-bottom:28px;border-bottom:1px solid var(--line)}
+.doc section:last-child{border-bottom:0}
+.doc h2{display:flex;align-items:center;gap:10px}
+.doc h2 .tag{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--green);background:var(--green-soft);border-radius:999px;padding:2px 10px}
+.doc h4{font-size:16px;font-weight:600;margin:24px 0 8px;color:var(--accent-2);scroll-margin-top:84px}
+.doc p,.doc li{color:#cfd8f5}.doc b{color:var(--text)}
+.doc ul,.doc ol{padding-left:22px;margin:0 0 14px}
+.lead{font-size:17px;color:var(--text)!important}
+.where{display:inline-block;font-size:13px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line-2);border-radius:999px;padding:3px 12px;margin:-8px 0 14px}
+.where b{color:var(--accent)}
+kbd,.ui{font:600 13px Inter,sans-serif;background:var(--surface-2);border:1px solid var(--line-2);border-radius:7px;padding:1px 7px;color:var(--text);white-space:nowrap}
+.tip,.warn{border-radius:12px;padding:12px 16px;margin:14px 0;font-size:14px}
+.tip{background:var(--green-soft);border:1px solid rgba(61,220,132,.3)}
+.tip:before{content:"Tip  ";font-weight:700;color:var(--green)}
+.warn{background:rgba(255,138,61,.08);border:1px solid rgba(255,138,61,.35)}
+.warn:before{content:"Good to know  ";font-weight:700;color:var(--orange)}
+figure{margin:16px 0 22px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+figure img{display:block;width:100%;height:auto;cursor:zoom-in;border-bottom:1px solid var(--line)}
+figure.phone{max-width:340px}
+figcaption{padding:10px 16px 4px;font-size:13px;color:var(--muted)}
+ol.keys{list-style:none;padding:4px 16px 12px;margin:0;counter-reset:k;font-size:14px}
+ol.keys li{counter-increment:k;display:flex;gap:10px;margin:6px 0}
+ol.keys li:before{content:counter(k);flex:none;width:22px;height:22px;border-radius:50%;background:var(--orange);color:#0b1436;font:700 12px/22px Inter,sans-serif;text-align:center;margin-top:1px}
+.steps{counter-reset:s;list-style:none;padding:0!important}
+.steps>li{counter-increment:s;position:relative;padding-left:40px;margin-bottom:12px}
+.steps>li:before{content:counter(s);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;background:var(--accent-soft);border:1px solid rgba(61,216,239,.4);color:var(--accent);font-weight:700;text-align:center;line-height:26px}
+.doc table td,.doc table th{font-size:14px}
+mark{background:rgba(255,138,61,.35);color:var(--text);border-radius:3px;padding:0 1px}
+#nomatch{display:none}
+.zoom[hidden]{display:none}
+.zoom{position:fixed;inset:0;z-index:50;background:rgba(5,10,30,.92);display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out}
+.zoom img{max-width:100%;max-height:100%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+@media (max-width:900px){.man{grid-template-columns:1fr}.toc{position:static;max-height:none}.toc a.sub{display:none}}
+</style>
+
+{% macro fig(name, caption, keys=(), phone=False) %}{% if name in shots %}
+<figure{{' class=phone' if phone}}><img src="{{url_for('static', filename='manual/' ~ name ~ '.png')}}" alt="{{caption}}" loading="lazy">
+<figcaption>{{caption}}{% if keys %} The orange numbers are explained below.{% endif %}</figcaption>
+{% if keys %}<ol class="keys">{% for k in keys %}<li><span>{{k}}</span></li>{% endfor %}</ol>{% endif %}</figure>{% endif %}{% endmacro %}
+
+<div class="man">
+<aside class="toc">
+<input id="msearch" type="text" placeholder="Search the manual  ( / )" autocomplete="off">
+<div class="hits" id="hits"></div>
+<div id="toclinks"></div>
+</aside>
+
+<div class="doc" id="doc">
+<p id="nomatch" class="muted">Nothing in the manual matches that. Try a shorter word, like "card" or "spam".</p>
+
+<section id="welcome" data-title="Welcome">
+<h2>BotTrack manual</h2>
+<p class="lead">BotTrack reads your Gmail inboxes with an AI model that runs on your own Mac, and turns the emails into one list of
+orders (tracking, address, dates, shipping status) and one list of botting expenses (proxies, bots, cook groups, whop.com and so on).
+It also keeps your bot profiles, cards and email lists in one place, and reads your bots' checkout webhooks from Discord.</p>
+<p data-skip>Use the search box on the left to jump to anything, for example <i>tracking</i>, <i>app password</i> or <i>mass distribute</i>.
+Every picture has orange numbers on it; the list under the picture says what each number is. Click a picture to see it bigger.</p>
+<div class="tip">Everything stays on this Mac. Your mail is read here, the AI runs here, and nothing in BotTrack costs money.</div>
+</section>
+
+<section id="start" data-title="Getting started">
+<h2>Getting started</h2>
+<h4 id="install">Installing BotTrack</h4>
+<ol class="steps">
+<li>Open <b>BotTrack.dmg</b> and drag <b>BotTrack</b> into your <b>Applications</b> folder.</li>
+<li>The first time, <b>right-click</b> (or Control-click) BotTrack in Applications and choose <b>Open</b>, then <b>Open</b> again.
+macOS asks this once because BotTrack doesn't come from the App Store. After that it opens normally.</li>
+<li>BotTrack opens in its own window. Everything it needs (Python, the AI engine) is inside the app, so there is nothing else to install.</li>
+</ol>
+<h4 id="ai-download">The first launch downloads the AI</h4>
+<p>On first launch BotTrack downloads its AI model, about 9 GB. A bar at the top of every page shows how far along it is, and the
+<b>Local AI</b> card at the bottom of the sidebar says <i>Getting ready</i> until it's done.
+You can look around and set things up while it downloads; syncing starts by itself as soon as the AI is ready.</p>
+{{ fig("ai-banner", "The AI download bar at the top of the page.", ["How much of the AI model has downloaded. When it reaches 100% the bar disappears."]) }}
+<h4 id="first-steps">Your first five minutes</h4>
+<ol class="steps">
+<li>Go to <a href="#setup-inboxes">Setup → Gmail inboxes</a> and add each Gmail inbox you use for orders.</li>
+<li>If your bots post checkouts in Discord, connect them on <a href="#setup-discord">Setup → Discord</a>.</li>
+<li>Import your bots' profile exports on the <a href="#dashboard">Dashboard</a>, or create profiles on the <a href="#profiles">Profiles</a> page.</li>
+<li>Open <a href="#orders">Orders</a> and press <span class="ui">Sync now</span>. The first sync reads the last year of mail and can take a while.</li>
+<li>When something looks wrong, fix it. Correcting a status on Orders or labelling an email on <a href="#inbox">Inbox</a> teaches the AI.</li>
+</ol>
+</section>
+
+<section id="nav" data-title="Finding your way around">
+<h2>Finding your way around</h2>
+<p>Every page is one click away in the sidebar on the left. The page you're on is highlighted, and its name is shown at the top
+of the page. On a narrow window the sidebar hides behind the <b>☰</b> menu button at the top left.</p>
+<p>The sidebar also has a <b>Bank</b> page for importing bank and card transactions; it gets its own chapter here once it's finished.</p>
+{{ fig("nav", "The sidebar.", [
+  "Dashboard: checkout totals, imports, and profiles that keep failing.",
+  "Orders: every order found in your email, with tracking and status.",
+  "Inbox: read your Gmail inside BotTrack and teach the AI.",
+  "Expenses: what you spend on botting (proxies, bots, groups, servers).",
+  "Training: emails the AI learned from. Only shown while Training mode is on.",
+  "Checkouts: every checkout your bots reported.",
+  "Profiles: your bot profiles, groups, Mass Distribute and export.",
+  "Cards: your payment cards, stored encrypted.",
+  "Emails: lists of email addresses to hand out to profiles.",
+  "Local AI: whether the AI on this Mac is ready, still getting ready, or needs attention.",
+  "Manual: this page.",
+  "Logs: what the app has been doing, for troubleshooting.",
+  "Setup: inboxes, Discord, AI model, updates and phone access. An orange dot here means an update is ready.",
+  "Collapse: shrink the sidebar to icons only. Click it again to bring the names back.",
+  "Where you are: the section and page you're on."]) }}
+</section>
+
+<section id="dashboard" data-title="Dashboard">
+<h2>Dashboard</h2>
+<div class="where">Sidebar → Overview → <b>Dashboard</b></div>
+<p>The Dashboard is about your bots' checkouts: how many worked, which sites and bots do best, and which profiles keep failing and why.</p>
+{{ fig("dashboard", "The Dashboard.", [
+  "Totals: all checkouts, successful ones, and ones that weren't (declined or failed).",
+  "Import webhook JSON: pick the webhook files your bots exported (Valor, Stellar, Hayha, Polar). Not needed if Discord is connected.",
+  "Import profiles: type the bot's name, pick its profile export (.json or .csv), press Import.",
+  "Failing profiles: each profile's success rate, the problems found in its address, and a cleaned-up address to try instead."]) }}
+<p>Below that are the same totals <b>by site</b> and <b>by bot</b>, and a list of orders a retailer <b>cancelled after the bot said "success"</b>,
+found by matching your checkouts against cancellation emails.</p>
+<div class="tip">Under <i>Issues</i>, look for things like a ZIP code that's too short or billing and shipping that don't match. Those are the usual reasons a card is declined.</div>
+</section>
+
+<section id="orders" data-title="Orders">
+<h2>Orders</h2>
+<div class="where">Sidebar → Tracking → <b>Orders</b></div>
+<p>Every order the AI found in your inboxes, from any retailer. The order confirmation, shipping email and delivery email for the
+same order are merged into one row, and the newest email decides the status.</p>
+{{ fig("orders", "The Orders page.", [
+  "Totals: number of orders, total spend, orders on the way, and orders delivered.",
+  "Sync now: read new mail from every inbox (and Discord). BotTrack also syncs by itself every 4 hours while it's open.",
+  "Backfill whole inboxes: search each entire mailbox instead of just the last year. It can take hours; you can stop and run it again without repeating work.",
+  "Search: type a retailer, item, tracking number or address to narrow the list as you type.",
+  "Status filter: show only one status, for example just Out for delivery.",
+  "Status, with the dropdown to correct it. The ETA under it is the delivery date from the latest email.",
+  "Tracking number: click it to open the carrier's free tracking page in your browser."]) }}
+<h4 id="statuses">What each status means</h4>
+<table><thead><tr><th>Status</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><span class="pill s-ordered">Ordered</span></td><td>The retailer confirmed the order but hasn't shipped it.</td></tr>
+<tr><td><span class="pill s-in_transit">In transit</span></td><td>It shipped and is on the way.</td></tr>
+<tr><td><span class="pill s-out_for_delivery">Out for delivery</span></td><td>It's on the truck today.</td></tr>
+<tr><td><span class="pill s-delivered">Delivered</span></td><td>The retailer or carrier says it arrived.</td></tr>
+<tr><td><span class="pill s-cancelled">Cancelled</span> / <span class="pill s-returned">Returned</span></td><td>The order was cancelled, returned or refunded.</td></tr>
+</tbody></table>
+<h4 id="fix-status">Fixing a wrong status</h4>
+<p>Pick the right status in the <span class="ui">Change status…</span> dropdown under the status. BotTrack then searches your inboxes for that
+order's emails, re-reads them, and saves them as examples so the AI gets it right next time (see <a href="#training">Training</a>).
+A <b>✎</b> next to the status means you set it by hand; it stays that way until you change it again.</p>
+<div class="warn">The dropdowns only show while <a href="#setup-ai">Training mode</a> is on (it is unless you switch it off).</div>
+<h4 id="tracking">Tracking links</h4>
+<p>Status comes from your emails, so nothing is paid for or checked online. The tracking number links to the carrier's own public page
+(UPS, USPS, FedEx, DHL, OnTrac), using the link from the email when there is one. If the carrier isn't known, it opens a free page that
+works out the carrier from the number. For automatic updates straight from the carrier, add a free key on
+<a href="#setup-tracking">Setup → Live package tracking</a>; the carrier's latest scan then shows under the tracking number.</p>
+<p>The <b>Ship to</b> column is the address from the email, and <b>Inbox</b> shows which of your inboxes the order came from.</p>
+</section>
+
+<section id="inbox" data-title="Inbox">
+<h2>Inbox</h2>
+<div class="where">Sidebar → Tracking → <b>Inbox</b></div>
+<p>Your Gmail, inside BotTrack. Nothing is changed in Gmail: no emails are marked read, moved or deleted. Use it to look at what the
+AI saw and to teach it by labelling emails.</p>
+{{ fig("inbox", "The Inbox page with an email open.", [
+  "Quick filters: Purchases, Shipping, Cancellations, Spam or Everything.",
+  "Search box: works like Gmail search, for example from:nike cancelled.",
+  "Tick boxes: tick several emails to label them all at once.",
+  "Label bar: choose a label and press Label and train.",
+  "When an email is open, these buttons label just that email in one click.",
+  "A green ✓ pill is your label. A grey AI: pill shows what the AI decided when it synced."]) }}
+<h4 id="labels">The labels</h4>
+<p><b>Order placed</b>, <b>Shipped / In transit</b>, <b>Out for delivery</b>, <b>Delivered</b>, <b>Cancelled</b>, <b>Returned / refunded</b>,
+<b>Botting expense</b> and <b>Not an order</b>. When you label an email the AI re-reads it, compares its answer to yours, and saves the pair
+as a training example. The label is also applied: a <i>Delivered</i> label updates that order, and a <i>Botting expense</i> label adds
+the receipt to Expenses. Give it a minute, then refresh.</p>
+<div class="tip">Label a handful of emails from your usual retailers and vendors early on. Five or more labelled emails also unlock
+<a href="#setup-compare">Compare models</a>.</div>
+</section>
+
+<section id="expenses" data-title="Expenses">
+<h2>Expenses</h2>
+<div class="where">Sidebar → Tracking → <b>Expenses</b></div>
+<p>Receipts for botting: proxies, bots, cook groups, captcha solvers, servers, ACO services and accounts. There's no list of vendors to keep
+up to date; the AI decides from the receipt itself, so a new proxy company is picked up automatically. When a receipt comes through Stripe,
+PayPal or whop.com, it names the actual seller.</p>
+{{ fig("expenses", "The Expenses page.", [
+  "Totals: all botting spend, then spend for each category.",
+  "Spend by month for the last six months, and your top vendors.",
+  "Search by vendor or description.",
+  "Show one category only.",
+  "Billing: whether the charge is one-time, monthly, and so on."]) }}
+<p>Expenses are found by the same <span class="ui">Sync now</span> as orders, and the Sync buttons are on this page too.
+If a receipt is missing, find it on <a href="#inbox">Inbox</a> and label it <b>Botting expense</b>.</p>
+</section>
+
+<section id="checkouts" data-title="Checkouts">
+<h2>Checkouts</h2>
+<div class="where">Sidebar → Bot tools → <b>Checkouts</b></div>
+<p>Every checkout your bots reported, newest first, from Discord (see <a href="#setup-discord">Setup → Discord</a>) or from webhook JSON
+imported on the Dashboard.</p>
+{{ fig("checkouts", "The Checkouts page.", [
+  "Show only successes, declines, failures, or all.",
+  "Status: green for success, red for anything else.",
+  "Reason: why a checkout didn't go through, when the bot said."]) }}
+</section>
+
+<section id="profiles" data-title="Profiles">
+<h2>Profiles</h2>
+<div class="where">Sidebar → Bot tools → <b>Profiles</b></div>
+<p>Your bot profiles as cards you can sort into groups, edit, copy, fill in bulk, and export back into any bot's file layout.</p>
+{{ fig("profiles", "The Profiles page.", [
+  "Groups: click a group to see only its profiles. Type a name and press Add to make a new one. With a group open you can rename or delete it (its profiles are kept).",
+  "+ Create profile: opens the profile window.",
+  "Export: download profiles in a bot's own file layout.",
+  "Toolbar for ticked profiles: move them to a group, make copies (type how many), or delete them.",
+  "Mass Distribute: fill one field across all ticked profiles at once.",
+  "Pencil: edit this profile. The bin next to it deletes it.",
+  "A profile with an address problem has an orange edge and a warning triangle, with the problem written underneath."]) }}
+<h4 id="profile-window">Creating or editing a profile</h4>
+{{ fig("profile-edit", "The profile window.", [
+  "Group the profile belongs to. + New makes a group on the spot.",
+  "Saved addresses: pick one to fill the address in, or give this address a nickname and press Save to reuse it later.",
+  "Same as billing: untick to type a different shipping address.",
+  "Card: pick a card from the Cards page. A card can be on one profile at a time."]) }}
+<p><b>Copy</b> makes numbered copies: copying <i>Target 1</i> twice gives <i>Target 2</i> and <i>Target 3</i>. Profile names must be unique.</p>
+<h4 id="export">Exporting profiles to a bot</h4>
+{{ fig("export", "The Export window.", [
+  "Bot format: the bot whose file layout to use. A bot appears here once you've imported a profile file from it, or pick Generic JSON.",
+  "Optional: the bot's original export, to copy card details from for profiles without a linked card. It's read in memory only.",
+  "Download: exports the ticked profiles, or every profile in the group you're viewing if none are ticked."]) }}
+</section>
+
+<section id="mass-distribute" data-title="Mass Distribute">
+<h2>Mass Distribute</h2>
+<div class="where">Profiles → tick profiles → <b>Mass Distribute</b></div>
+<p>Changes one field on many profiles at once, for example giving 20 profiles 20 different emails or addresses.</p>
+<ol class="steps">
+<li>On Profiles, tick the profiles to change. Open a group first to see just its profiles.</li>
+<li>Press <span class="ui">Mass Distribute</span>.</li>
+<li>Pick the field on the left, paste the new values on the right, one per line, and press <span class="ui">Save</span>.</li>
+</ol>
+{{ fig("mass-distribute", "Mass Distribute, filling emails from a saved group.", [
+  "Fields you can fill: profile names, email, name, first and last name, phone, address lines, city, state, ZIP, country, name on card.",
+  "For Email: fill the list from an email group saved on the Emails page. Keep 'only addresses not on a profile yet' ticked to avoid reusing one.",
+  "The values, one per line. The first line goes to the first ticked profile, and so on. If there are fewer lines than profiles, the list starts again.",
+  "For address fields: choose whether billing, shipping or both change.",
+  "Save applies it to every ticked profile."]) }}
+<div class="warn">Cards aren't handed out here. Link a card to a profile in the profile window or on the Cards page.</div>
+</section>
+
+<section id="cards" data-title="Cards">
+<h2>Cards</h2>
+<div class="where">Sidebar → Bot tools → <b>Cards</b></div>
+<p>Your payment cards. Numbers and CVVs are encrypted on this Mac with a key kept in your Keychain; only the last four digits are shown.</p>
+{{ fig("cards", "The Cards page.", [
+  "Card groups, like profile groups.",
+  "+ Add cards: paste many cards at once.",
+  "Profile: link the card to a profile, or unlink it.",
+  "Eye: shows the full number for 20 seconds.",
+  "Status: tick cards and press Active or Inactive in the toolbar to mark cards you've stopped using."]) }}
+<h4 id="add-cards">Adding cards</h4>
+{{ fig("cards-add", "The Add cards window.", [
+  "Provider, card type, spend limit and group apply to every card in this batch.",
+  "One card per line, as CARDNAME:CARDNUMBER:EXPIRY:CVV, for example Main:4111111111111111:04/2029:123.",
+  "The button counts the cards it understood. Lines it can't read are listed so you can fix them."]) }}
+</section>
+
+<section id="emails" data-title="Emails">
+<h2>Emails</h2>
+<div class="where">Sidebar → Bot tools → <b>Emails</b></div>
+<p>Lists of email addresses (Gmail dot tricks, catchall addresses and so on), kept in groups so you can hand them out to profiles with
+<a href="#mass-distribute">Mass Distribute</a>. Only the addresses are saved, never passwords.</p>
+{{ fig("emails", "The Emails page.", [
+  "Email groups.",
+  "+ Add emails: paste addresses one per line, or import a .txt or .csv file. Anything after the address on a line is ignored, so lists from other tools work.",
+  "Export .txt: download the addresses in this view.",
+  "Status: In use means a profile already has this address; Available means none does."]) }}
+</section>
+
+<section id="setup" data-title="Setup">
+<h2>Setup</h2>
+<div class="where">Sidebar → <b>Setup</b> (bottom left)</div>
+<p>Everything BotTrack connects to, and the AI it uses. Each part below is a heading on the Setup page, from top to bottom.</p>
+
+<h4 id="setup-updates">Updates</h4>
+<p>BotTrack checks for a new version by itself every few hours. When one is ready, an orange dot appears on <b>Setup</b> in the sidebar,
+and an <b>Update ready</b> chip and a green bar appear at the top of every page.</p>
+{{ fig("update-banner", "When an update is ready.", ["Update ready: click to open Setup → Updates.", "Update now: installs the new version and restarts BotTrack."]) }}
+{{ fig("setup-updates", "Setup → Updates.", [
+  "Check for update: look right now instead of waiting.",
+  "Update now: install the new version.",
+  "Undo last update: go back to the version you had before.",
+  "GitHub access: while the code is kept private, updates need a free GitHub token. Open this and follow the steps: pick only the BotTrack repository and give it Contents: Read-only."]) }}
+<div class="tip">Updating only replaces the app. Your inboxes, settings, orders, cards and logs are never touched.</div>
+
+<h4 id="setup-inboxes">Gmail inboxes</h4>
+<p>Gmail needs an <b>app password</b> for each inbox: a 16-letter code that lets BotTrack read mail without your real password.
+It can only read, never send or delete.</p>
+<ol class="steps">
+<li>Turn on <b>2-Step Verification</b> for the Google account, if it isn't on already (the link is on the Setup page).</li>
+<li>Open <b>App passwords</b> (also linked), type a name like "BotTrack", and press <b>Create</b>.</li>
+<li>Back in BotTrack, type the Gmail address, paste the 16-letter code, and press <span class="ui">Check and add</span>.</li>
+<li>Repeat for each inbox. They are synced one after another.</li>
+</ol>
+{{ fig("setup-inboxes", "Setup → Gmail inboxes.", [
+  "Your connected inboxes and when each last synced.",
+  "Add another inbox here.",
+  "Remove: disconnect an inbox. Orders already found from it stay."]) }}
+<div class="warn">Spam is read too, because forwarded receipts often land there. Gmail deletes spam after 30 days, so sync at least every couple of weeks.</div>
+
+<h4 id="setup-tracking">Live package tracking</h4>
+<p>Optional. With a free developer key from USPS, UPS or FedEx, BotTrack asks that carrier about every open order every 3 hours and moves
+it to In transit, Out for delivery or Delivered. Without a key, status still comes from your emails.</p>
+{{ fig("setup-tracking", "Setup → Live package tracking.", [
+  "Open 'How to get a free … key' for step-by-step instructions for that carrier.",
+  "Paste the two values and press Save and test. It says straight away whether the key works."]) }}
+<p><span class="ui">Check all packages now</span> runs a check immediately instead of waiting for the next one.</p>
+
+<h4 id="setup-discord">Discord bot checkouts</h4>
+<p>Reads the checkout webhooks your bots post in Discord into Checkouts and the Dashboard. It uses a free Discord bot that only you
+control and that can read only the channels you pick.</p>
+<ol class="steps">
+<li>Open the <b>Discord Developer Portal</b> (linked on Setup), click <b>New Application</b> and name it "BotTrack".</li>
+<li>Go to <b>Bot</b> and turn on <b>Message Content Intent</b>, then save. Without it, Discord hides the checkout details.</li>
+<li>Still on <b>Bot</b>, click <b>Reset Token</b>, copy the token, paste it into BotTrack and press <span class="ui">Connect</span>.</li>
+<li>Use the link BotTrack shows to add the bot to your server, then reload Setup.</li>
+<li>Tick the channels your bots post checkouts in and press <span class="ui">Save channels</span>.</li>
+</ol>
+{{ fig("setup-discord", "Setup → Discord, connected.", [
+  "Add the bot to a server. It only asks to view channels and read message history.",
+  "Tick the channels to read. Last read shows when each was last read, or an error.",
+  "Save channels. The next sync reads the last year, then only new messages."]) }}
+
+<h4 id="setup-ai">Training mode and AI model</h4>
+{{ fig("setup-ai", "Setup → Training mode and AI model.", [
+  "Training mode: 'Show status dropdowns on Orders' turns the correction dropdowns on or off. 'Show saved examples to the model' lets the AI use what you taught it.",
+  "The AI model in use. The default, qwen3-abliterated 14B, uses about 9 GB of memory while reading mail; an 8B model is faster.",
+  "Use this model: switch to the one you picked."]) }}
+<p>If BotTrack says the AI isn't answering, quit and reopen BotTrack. If that keeps happening, send the logs (see <a href="#logs">Logs</a>).</p>
+
+<h4 id="setup-compare">Compare models</h4>
+<p>Not sure which AI model is best on your Mac? Compare runs the emails you've labelled through each model you tick, and shows how often
+each one agreed with you and how many seconds each email took. You need at least 5 labelled emails; up to 30 are used.</p>
+{{ fig("setup-compare", "Setup → Compare models, after a run.", [
+  "Tick the models to try and press Compare. MLX models use Apple's own engine and are often faster on Apple Silicon.",
+  "'Best' marks the most accurate model.",
+  "Make default: use that model from now on."]) }}
+<div class="warn">Models you haven't downloaded are fetched first (4B about 2.5 GB, 8B about 5 GB, 14B about 9 GB). Ones you don't keep are removed the next time BotTrack opens.</div>
+
+<h4 id="setup-phone">Phone access</h4>
+<p>Lets your iPhone or Android phone see and edit orders, expenses and profiles. See <a href="#phone">Using BotTrack on your phone</a>.</p>
+{{ fig("setup-phone", "Setup → Phone access.", [
+  "Let my phones connect: turn phone access on or off.",
+  "The email and password your phone signs in with (10 or more characters).",
+  "Also allow phones on the same Wi-Fi without Tailscale. Less private, because Wi-Fi traffic isn't encrypted."]) }}
+</section>
+
+<section id="phone" data-title="Using BotTrack on your phone">
+<h2>Using BotTrack on your phone <span class="tag">iPhone &amp; Android</span></h2>
+<p>Your phone talks straight to BotTrack on your Mac, so nothing goes through anyone's server and it's free. It only works while BotTrack
+is open on the Mac.</p>
+<ol class="steps">
+<li>Install the free <b>Tailscale</b> app on your Mac and your phone, and sign in to both with the same account. It connects them privately, even away from home.</li>
+<li>On the Mac, open <a href="#setup-phone">Setup → Phone access</a>, tick <b>Let my phones connect</b>, choose an email and password, press <span class="ui">Save</span>, then <span class="ui">Restart now</span>. If macOS asks whether BotTrack can accept incoming connections, choose <b>Allow</b>.</li>
+<li>Setup now shows an address. Open it on your phone in Safari (iPhone) or Chrome (Android) and sign in.</li>
+<li>Add it to your home screen. iPhone: tap <b>Share</b> → <b>Add to Home Screen</b>. Android: tap <b>⋮</b> → <b>Add to Home screen</b>, or install the BotTrack Android app and type the address in.</li>
+</ol>
+{{ fig("phone-login", "Signing in on the phone.", phone=True) }}
+{{ fig("phone-orders", "Orders on the phone. Tap an order to edit it, or + Add for a new one.", phone=True) }}
+{{ fig("phone-expenses", "Expenses on the phone.", phone=True) }}
+{{ fig("phone-profiles", "Profiles on the phone.", phone=True) }}
+<div class="warn">Phones stay signed in for 30 days. Changing the password signs every phone out. Setup, Logs and updates can only be opened on the Mac.</div>
+</section>
+
+<section id="training" data-title="Training">
+<h2>Training</h2>
+<div class="where">Sidebar → Tracking → <b>Training</b> (only while Training mode is on)</div>
+<p>The emails the AI has learned from: ones you labelled on Inbox, and ones found when you corrected a status on Orders. The corrected
+ones are shown to the AI before each new email, so it learns how your retailers word things.</p>
+{{ fig("training", "The Training page.", [
+  "Export the corrected examples as a .jsonl file, for training a model later.",
+  "You said: the right answer.",
+  "Model said: what the AI answered. Green means it was already right, red means it got it wrong.",
+  "Delete an example that's wrong, so the AI doesn't learn from it."]) }}
+</section>
+
+<section id="logs" data-title="Logs">
+<h2>Logs</h2>
+<div class="where">Sidebar → <b>Logs</b> (bottom left)</div>
+<p>A running record of what BotTrack, the syncs, the AI and the installer have done, newest at the bottom. App passwords, tokens and card
+numbers are always hidden.</p>
+{{ fig("logs", "The Logs page.", [
+  "Log files: click one to read it.",
+  "Download all logs (.zip): send this to whoever is helping you when something goes wrong.",
+  "The log itself."]) }}
+</section>
+
+<section id="faq" data-title="Questions and fixes">
+<h2>Questions and fixes</h2>
+<h4>No orders show up</h4>
+<ul><li>Check that an inbox is listed on <a href="#setup-inboxes">Setup → Gmail inboxes</a>.</li>
+<li>If the AI download bar is still at the top, wait for it to finish; syncing starts by itself.</li>
+<li>Press <span class="ui">Sync now</span> on Orders. The message next to the button says how far it got.</li>
+<li>Still nothing? Look at <a href="#logs">Logs</a>, or download them and send them over.</li></ul>
+<h4>An order is missing</h4>
+<p>Find its email on <a href="#inbox">Inbox</a> (try searching the order number) and label it. For orders older than a year, press
+<span class="ui">Backfill whole inboxes</span>.</p>
+<h4>An order has the wrong status</h4>
+<p>Correct it with the dropdown on <a href="#fix-status">Orders</a>. The AI learns from it.</p>
+<h4>Gmail won't accept the app password</h4>
+<p>App passwords only exist once 2-Step Verification is on. Make sure you created it while signed in to the same Gmail account you're adding.
+Spaces in the code don't matter.</p>
+<h4>Syncing is slow</h4>
+<p>Each email takes the AI a few seconds. Try an 8B model or an MLX model on <a href="#setup-compare">Compare models</a>; they're faster,
+and Compare shows how accurate they are on your own mail.</p>
+<h4>Discord checkouts don't come in</h4>
+<p>Check that <b>Message Content Intent</b> is on for your bot, that the bot is in the server, and that the channels are ticked on
+<a href="#setup-discord">Setup → Discord</a>. A channel with a problem shows the error in its <i>Last read</i> column.</p>
+<h4>Updates fail</h4>
+<p>Open <a href="#setup-updates">Setup → Updates → GitHub access</a> and paste a fresh token.</p>
+<h4>Where is my data?</h4>
+<p>In <b>~/Library/Application Support/BotTrack</b> on this Mac: your settings, database, logs and AI models. Updates never touch it.
+Card numbers are encrypted with a key kept in your Keychain.</p>
+<h4>Does any of this cost money?</h4>
+<p>No. The AI runs on your Mac, Gmail is read with a free app password, tracking links go to the carriers' free pages, and Discord,
+Tailscale and the carrier keys are free.</p>
+</section>
+</div>
+</div>
+
+<div class="zoom" id="zoom" hidden><img alt=""></div>
+<script>
+(function () {
+  const doc = document.getElementById('doc'), box = document.getElementById('msearch'), hits = document.getElementById('hits');
+  const sections = [...doc.querySelectorAll('section')], toc = document.getElementById('toclinks');
+  // Table of contents from the sections and their sub-headings.
+  sections.forEach(s => {
+    const a = document.createElement('a'); a.href = '#' + s.id; a.textContent = s.dataset.title; a.dataset.for = s.id; toc.append(a);
+    s.querySelectorAll('h4[id]').forEach(h => {
+      const b = document.createElement('a'); b.href = '#' + h.id; b.className = 'sub'; b.textContent = h.textContent; b.dataset.for = s.id; toc.append(b);
+    });
+  });
+  const links = [...toc.querySelectorAll('a')];
+
+  function unmark() {
+    doc.querySelectorAll('mark').forEach(m => m.replaceWith(m.textContent));
+    doc.normalize();
+  }
+  const esc = w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Text of a section, leaving out the "how to search" hint so it doesn't match everything.
+  function textOf(s) {
+    const c = s.cloneNode(true); c.querySelectorAll('[data-skip]').forEach(e => e.remove());
+    return (c.textContent + ' ' + [...s.querySelectorAll('img')].map(i => i.alt).join(' ')).toLowerCase().replace(/\s+/g, ' ');
+  }
+  function mark(root, re) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(n => {
+      if (n.parentElement.closest('mark,script,style,[data-skip]')) return;
+      let node = n, m;
+      re.lastIndex = 0;
+      while (node && (m = re.exec(node.data))) {
+        const hit = node.splitText(m.index), rest = hit.splitText(m[0].length), el = document.createElement('mark');
+        el.textContent = hit.data; hit.replaceWith(el); node = rest; re.lastIndex = 0;
+      }
+    });
+  }
+  function search() {
+    unmark();
+    const q = box.value.toLowerCase().trim().replace(/\s+/g, ' ');
+    const words = q.split(' ').filter(w => w.length > 1);
+    const texts = sections.map(textOf);
+    // A phrase like "app password" first; if no section has it, every word anywhere in a section.
+    const phrase = words.length > 1 && texts.some(t => t.includes(q));
+    let shown = 0;
+    sections.forEach((s, i) => {
+      const ok = phrase ? texts[i].includes(q) : words.every(w => texts[i].includes(w));
+      s.hidden = !ok; shown += ok;
+      if (ok && words.length) mark(s, new RegExp(phrase ? esc(q).replace(/ /g, '\\s+') : '\\b(' + words.map(esc).join('|') + ')', 'gi'));
+    });
+    links.forEach(a => a.hidden = !!document.getElementById(a.dataset.for).hidden);
+    document.getElementById('nomatch').style.display = shown ? 'none' : 'block';
+    hits.textContent = words.length ? shown + ' section' + (shown === 1 ? '' : 's') + ' match' + (shown === 1 ? 'es' : '') : '';
+    const first = doc.querySelector('mark');
+    if (first) first.scrollIntoView({block: 'center'});
+  }
+  let t; box.addEventListener('input', () => { clearTimeout(t); t = setTimeout(search, 150); });
+  box.addEventListener('keydown', e => { if (e.key === 'Escape') { box.value = ''; search(); } });
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && document.activeElement !== box && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); box.focus(); }
+  });
+  // Clicking a link clears the search so the target is visible.
+  doc.addEventListener('click', e => { if (e.target.closest('a[href^="#"]') && box.value) { box.value = ''; search(); } });
+
+  // Highlight the section being read.
+  const spy = new IntersectionObserver(entries => entries.forEach(en => {
+    if (!en.isIntersecting) return;
+    links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id));
+  }), {rootMargin: '-80px 0px -70% 0px'});
+  sections.forEach(s => spy.observe(s)); doc.querySelectorAll('h4[id]').forEach(h => spy.observe(h));
+
+  // Click a picture to see it full size.
+  const zoom = document.getElementById('zoom');
+  doc.addEventListener('click', e => {
+    if (e.target.tagName !== 'IMG') return;
+    zoom.querySelector('img').src = e.target.src; zoom.hidden = false;
+  });
+  zoom.addEventListener('click', () => zoom.hidden = true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') zoom.hidden = true; });
+})();
+</script>
+{% endblock %}
