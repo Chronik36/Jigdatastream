@@ -1,0 +1,15 @@
+{% extends "mobile/base.html" %}{% block title %}{{"Edit expense" if e and e.id else "New expense"}}{% endblock %}{% block back %}<a class="back" href="{{url_for('mobile.expenses')}}" aria-label="Back">‹</a>{% endblock %}{% block body %}
+<form method="post"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+<fieldset><legend>Expense</legend>
+<label>Paid to<input name="vendor" value="{{e.vendor or '' if e}}" required></label>
+<div class="two"><label>Amount<input name="amount" inputmode="decimal" value="{{'%.2f'|format(e.amount) if e and e.amount is not none else ''}}" required></label>
+<label>Currency<input name="currency" value="{{e.currency or 'USD' if e else 'USD'}}" maxlength="3" autocapitalize="characters"></label></div>
+<div class="two"><label>Category<select name="category">{% for c in categories %}<option value="{{c}}" {{'selected' if e and e.category == c}}>{{c|replace("_", " ")|capitalize}}</option>{% endfor %}</select></label>
+<label>Billing<select name="billing_period"><option value="">-</option>{% for b in periods %}<option value="{{b}}" {{'selected' if e and e.billing_period == b}}>{{b|replace("_", " ")|capitalize}}</option>{% endfor %}</select></label></div>
+<label>Date<input type="date" name="date" value="{{(e.date or '')[:10] if e}}"></label>
+<label>What for<input name="description" value="{{e.description or '' if e}}"></label>
+<label>Order / invoice #<input name="order_number" value="{{e.order_number or '' if e}}"></label>
+</fieldset>
+<button>Save expense</button></form>
+{% if e and e.id %}<form method="post" action="{{url_for('mobile.expense_delete', expense_id=e.id)}}" onsubmit="return confirm('Delete this expense?')"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button class="danger">Delete expense</button></form>{% endif %}
+{% endblock %}

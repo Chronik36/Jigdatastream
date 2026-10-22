@@ -278,7 +278,10 @@ def main():
     app = create_app()
     app.config["AI_STATE"] = ai_state
     port = free_port(int(os.environ.get("PORT", 8765)))
-    threading.Thread(target=lambda: app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False),
+    # Phones can only connect when phone access is on; jigstream/mobile.py checks every request.
+    host = "0.0.0.0" if os.environ.get("PHONE_ACCESS") == "1" else "127.0.0.1"
+    app.config.update(PORT=port, BIND_HOST=host)
+    threading.Thread(target=lambda: app.run(host=host, port=port, debug=False, use_reloader=False),
                      daemon=True).start()
 
     def timers():

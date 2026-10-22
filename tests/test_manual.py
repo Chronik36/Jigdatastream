@@ -14,7 +14,7 @@ def test_manual_page_covers_every_tab_and_its_pictures_exist(tmp_path, monkeypat
                     "cards", "emails", "setup", "setup-updates", "setup-inboxes", "setup-discord", "setup-compare",
                     "training", "logs", "faq"]:
         assert f'id="{section}"' in html, section
-    assert 'id="phone"' not in html  # chapters for pages this app doesn't have yet are left out
+    assert 'id="phone"' in html  # shown now that the phone companion is part of the app
     images = re.findall(r'src="/static/(manual/[^"]+)"', html)
     assert len(images) >= 20
     assert all((STATIC / i).is_file() for i in images)

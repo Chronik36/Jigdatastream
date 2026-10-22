@@ -9,7 +9,7 @@ from flask import Flask, Response, flash, jsonify, redirect, render_template, re
 
 from . import address as A
 from . import (analysis, bankpages, carriers, db, discord, emailbook, engines, export, inbox, keywords, logs, manual,
-               parsers, profilebook, profiles, stock, training, updater, wallet)
+               mobile, parsers, profilebook, profiles, stock, training, updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import LLMClient, installed_models
@@ -37,6 +37,8 @@ TRACK_URLS = {
 def create_app(db_path=None):
     app = Flask(__name__)
     app.secret_key = "local-only"
+    app.config["DB_PATH"] = db_path
+    mobile.init_app(app)
     app.register_blueprint(stock.bp)
     app.register_blueprint(manual.bp)
     app.register_blueprint(keywords.bp)
@@ -562,7 +564,8 @@ def create_app(db_path=None):
                                labelled=len(Store(con()).examples()),
                                carrier_keys={c: bool(os.environ.get(k) and os.environ.get(v))
                                              for c, (k, v) in carriers.KEYS.items()},
-                               tracking=carriers.state)
+                               tracking=carriers.state,
+                               **mobile.setup_context())
 
     @app.post("/setup/discord/token")
     def set_discord_token():
