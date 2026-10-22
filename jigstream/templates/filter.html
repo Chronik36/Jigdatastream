@@ -1,10 +1,12 @@
 <script>
-const q = document.getElementById('q'), f = document.getElementById('f');
+const q = document.getElementById('q'), f = document.getElementById('f'), pf = document.getElementById('pf');
 function apply() {
-  const text = q.value.toLowerCase(), want = f.value;
+  const text = q.value.toLowerCase(), want = f.value, prof = pf ? pf.value : '';
   document.querySelectorAll('tbody tr[data-f]').forEach(tr => {
-    tr.style.display = tr.textContent.toLowerCase().includes(text) && (!want || tr.dataset.f === want) ? '' : 'none';
+    tr.style.display = tr.textContent.toLowerCase().includes(text) && (!want || tr.dataset.f === want)
+      && (!prof || tr.dataset.p === (prof === '__none__' ? '' : prof)) ? '' : 'none';
   });
 }
 q.addEventListener('input', apply); f.addEventListener('change', apply);
+if (pf) { pf.addEventListener('change', apply); if (pf.value) apply(); }
 </script>

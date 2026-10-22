@@ -6,8 +6,10 @@
 {% if accounts %}<p class="muted">{% for a in accounts %}{{a.address}}: synced {{(a.last_synced_at or "never")[:16]|replace("T", " ")}}{% if a.backfilled_at %}, whole mailbox done{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
 <input id="q" placeholder="Search retailer, item, tracking, address" size="40">
 <select id="f"><option value="">All statuses</option>{% for s, n in status_counts.items() %}<option value="{{s}}">{{s|status_label}} ({{n}})</option>{% endfor %}</select>
-<table><thead><tr><th>Date</th><th>Retailer / order #</th><th>Items</th><th>Total</th><th>Status</th><th>Tracking</th><th>Ship to</th><th>Inbox</th></tr></thead><tbody>
-{% for o in rows %}{% set status = o.shipping_status or "unknown" %}<tr data-f="{{status|status_group}}" id="order-{{o.id}}">
+{% if profile_names %}<select id="pf"><option value="">All profiles</option>{% for n in profile_names %}{% if profile_counts.get(n) %}<option value="{{n}}" {{"selected" if request.args.get("profile") == n}}>{{n}} ({{profile_counts[n]}})</option>{% endif %}{% endfor %}
+{% if profile_counts.get("?") %}<option value="?">Needs a pick ({{profile_counts["?"]}})</option>{% endif %}{% if profile_counts.get("") %}<option value="__none__" {{"selected" if request.args.get("profile") == "__none__"}}>No profile ({{profile_counts[""]}})</option>{% endif %}</select>{% endif %}
+<table><thead><tr><th>Date</th><th>Retailer / order #</th><th>Items</th><th>Total</th><th>Status</th><th>Tracking</th><th>Profile</th><th>Ship to</th></tr></thead><tbody>
+{% for o in rows %}{% set status = o.shipping_status or "unknown" %}<tr data-f="{{status|status_group}}" data-p="{{o.profile_name or ('?' if o.profile_candidates else '')}}" id="order-{{o.id}}">
 <td>{{o.order_date or "-"}}</td><td><b>{{o.retailer or "-"}}</b><div class="muted">{{o.order_number or ""}}</div></td>
 <td><ul class="items">{% for i in o["items"] %}<li>{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}</li>{% endfor %}</ul></td>
 <td class="num">{{o.total|money(o.currency)}}</td>
@@ -16,7 +18,11 @@
 {% set lb = labels.get(o.id) %}{% if lb %}<div class="muted" style="font-size:12px;max-width:220px">{{"Searching..." if lb.rescan == "pending" else lb.rescan}}</div>{% endif %}{% endif %}{% if o.estimated_delivery %}<div class="muted" style="white-space:nowrap;font-size:12px;margin-top:4px">ETA {{o.estimated_delivery}}</div>{% endif %}</td>
 <td>{% if o.tracking_number %}{% set url = o|track_url %}<a class="track" href="{{url}}" target="_blank" rel="noopener" title="Open the carrier's tracking page"><span class="muted">{{o.carrier or "Track"}}</span> {{o.tracking_number}} ↗</a>{% else %}<span class="muted">No tracking yet</span>{% endif %}
 {% if o.carrier_status %}<div class="muted" style="font-size:12px;margin-top:4px" title="From the carrier, checked {{o.carrier_checked_at}}">{{o.carrier_status}}</div>{% endif %}</td>
-<td>{{o.shipping_address or "-"}}</td><td class="muted">{{o.account or ""}}</td></tr>
+<td>{% if o.profile_name %}<a href="/profile-orders?profile={{o.profile_name|urlencode}}"><b>{{o.profile_name}}</b></a><div class="muted" style="font-size:12px">{{o.profile_match}}</div>
+{% elif o.profile_candidates %}<span style="color:var(--orange)" title="These profiles share the address, name and email on this order">Could be {{o.profile_candidates|join(", ")}}</span>
+{% else %}<span class="muted">{{"None of yours" if o.profile_manual else "No match"}}</span>{% endif %}
+{% if profile_names %}<form method="post" action="/orders/{{o.id}}/profile" style="display:block;margin:6px 0 0"><select name="profile" onchange="if (this.value !== '__keep__') this.form.submit()" style="margin:0;padding:4px 8px;font-size:12px" title="Pick the profile this order was placed with"><option value="__keep__">{{"Pick profile…" if o.profile_candidates else "Change…"}}</option>{% for n in o.profile_candidates %}<option value="{{n}}">{{n}}</option>{% endfor %}{% if o.profile_candidates %}<option disabled>──────────</option>{% endif %}{% for n in profile_names %}<option value="{{n}}">{{n}}</option>{% endfor %}<option disabled>──────────</option><option value="">None of my profiles</option>{% if o.profile_manual %}<option value="__auto__">Match automatically</option>{% endif %}</select></form>{% endif %}</td>
+<td>{% if o.shipping_name %}<b>{{o.shipping_name}}</b><br>{% endif %}{{o.shipping_address or "-"}}<div class="muted" style="font-size:12px">{% if o.recipient_email %}sent to {{o.recipient_email}}{% if o.account and o.account != o.recipient_email %} · {% endif %}{% endif %}{% if o.account != o.recipient_email %}{{o.account or ""}}{% endif %}</div></td></tr>
 {% else %}<tr><td colspan="8" class="muted">No orders yet. Press Sync Gmail.</td></tr>{% endfor %}</tbody></table>
 {% include "filter.html" %}
 {% endblock %}
