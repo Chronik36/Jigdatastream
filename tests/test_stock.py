@@ -113,9 +113,42 @@ def test_bot_check_page_counts_as_block(monkeypatch):
         stock.check("target", "91619929", "55401", 25)
 
 
-def test_bestbuy_needs_key(monkeypatch):
+BB_SITE = {"ispu": {"locations": [
+    {"id": "281", "name": "Richfield", "address": "1000 W 78th St", "city": "Richfield", "state": "MN", "distance": 7.4},
+    {"id": "10", "name": "Maplewood", "address": "1795 County Rd D E", "city": "Maplewood", "state": "MN",
+     "distance": 3.1}],
+    "items": [{"sku": "6566040", "locations": [
+        {"locationId": "281", "availability": {"availablePickupQuantity": 2},
+         "inStoreAvailability": {"availableInStoreQuantity": 3}},
+        {"locationId": "10", "availability": {"availablePickupQuantity": 0},
+         "inStoreAvailability": {"availableInStoreQuantity": 0}}]}]}}
+
+
+def test_bestbuy_without_key_uses_site_lookup(monkeypatch):
     monkeypatch.delenv("BESTBUY_API_KEY", raising=False)
-    with pytest.raises(stock.StockError, match="API key"):
+    sent = []
+
+    def fake(req, timeout=None):
+        sent.append((req.full_url, req.get_method(), json.loads(req.data)))
+        return FakeResp(json.dumps(BB_SITE).encode())
+    monkeypatch.setattr(stock.urllib.request, "urlopen", fake)
+    r = stock.check("bestbuy", "https://www.bestbuy.com/site/x/6566040.p?skuId=6566040", "55401", 25)
+    url, method, body = sent[0]
+    assert "storeAvailability" in url and method == "POST"
+    assert body["zipCode"] == "55401" and body["items"][0]["sku"] == "6566040"
+    assert [(s["name"], s["in_stock"], s["quantity"]) for s in r["stores"]] == [("Richfield", True, 3),
+                                                                                ("Maplewood", False, 0)]
+    assert r["via_site"] and r["quantities"]
+    with pytest.raises(stock.StockError, match="UPC"):
+        stock.check("bestbuy", "711719577294", "55401", 25)
+
+
+def test_bestbuy_site_silence_counts_as_block(monkeypatch):
+    monkeypatch.delenv("BESTBUY_API_KEY", raising=False)
+    serve(monkeypatch, lambda url: TimeoutError("timed out"))
+    with pytest.raises(stock.Blocked, match="didn't answer"):
+        stock.check("bestbuy", "6566040", "55401", 25)
+    with pytest.raises(stock.Blocked, match="leaving it alone"):
         stock.check("bestbuy", "6566040", "55401", 25)
 
 

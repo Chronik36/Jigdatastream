@@ -141,15 +141,18 @@ def _pause(retailer, why):
                    BLOCK_PAUSE // 60)
 
 
-def get_json(retailer, url, headers=None):
-    """One plain GET. Returns parsed JSON; raises Blocked on a refusal, StockError otherwise."""
+def get_json(retailer, url, headers=None, body=None, timeout=TIMEOUT, silence_is_block=False):
+    """One plain request (GET, or POST when `body` is given). Returns parsed JSON; raises Blocked on a
+    refusal, StockError otherwise. silence_is_block: a site that just never answers is refusing too."""
     _pace(retailer)
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json",
-                                               "Accept-Language": "en-US,en;q=0.9", **(headers or {})})
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, headers={
+        "User-Agent": USER_AGENT, "Accept": "application/json", "Accept-Language": "en-US,en;q=0.9",
+        **({"Content-Type": "application/json"} if data else {}), **(headers or {})})
     name = RETAILERS[retailer]
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            body = resp.read(2_000_000).decode("utf-8", errors="replace")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            text = resp.read(2_000_000).decode("utf-8", errors="replace")
     except urllib.error.HTTPError as e:
         detail = e.read(2000).decode("utf-8", errors="replace") if e.fp else ""
         if e.code == 429 or (e.code == 403 and "key" not in detail.lower()):
@@ -161,11 +164,16 @@ def get_json(retailer, url, headers=None):
     except urllib.error.URLError as e:
         raise StockError(f"Couldn't reach {name}: {e.reason}") from e
     except (TimeoutError, OSError) as e:
+        if silence_is_block:
+            _pause(retailer, "no answer")
+            raise Blocked(f"{name} didn't answer. Its website holds back requests it thinks are automated, and "
+                          f"BotTrack doesn't work around that; it will wait {BLOCK_PAUSE // 60} minutes before "
+                          f"trying {name} again.") from e
         raise StockError(f"{name} didn't answer in time ({e}).") from e
     try:
-        return json.loads(body)
+        return json.loads(text)
     except ValueError:
-        if re.search(r"captcha|are you a (human|robot)|access denied|press (and|&) hold", body, re.I):
+        if re.search(r"captcha|are you a (human|robot)|access denied|press (and|&) hold", text, re.I):
             _pause(retailer, "bot check page")
             raise Blocked(f"{name} answered with a bot check instead of stock data. BotTrack doesn't solve those; "
                           f"it will wait {BLOCK_PAUSE // 60} minutes before trying {name} again.")
@@ -330,8 +338,55 @@ def _bb_info(p):
             "price": f"${price:,.2f}" if price is not None else "", "link": p.get("url") or ""}
 
 
+BESTBUY_SITE = "https://www.bestbuy.com/productfulfillment/c/api/2.0/storeAvailability"
+BESTBUY_SITE_TIMEOUT = 15
+
+
+def parse_bestbuy_site(data):
+    """Store rows from bestbuy.com's own pickup lookup: store details under ispu.locations, stock per
+    store under ispu.items[].locations."""
+    ispu = data.get("ispu") or data
+    places = {str(loc.get("id") or loc.get("locationId")): loc for loc in ispu.get("locations") or []}
+    rows = []
+    for item in ispu.get("items") or []:
+        for loc in item.get("locations") or []:
+            sid = str(loc.get("locationId") or loc.get("id") or "")
+            place = places.get(sid, {})
+            qty = _num(_find(loc, ["availableInStoreQuantity"]))
+            pickup = _num(_find(loc, ["availablePickupQuantity"]))
+            in_stock = bool((qty and qty > 0) or (pickup and pickup > 0))
+            rows.append({
+                "store_id": sid, "name": place.get("name") or f"Best Buy #{sid}",
+                "address": ", ".join(x for x in (place.get("address"), place.get("city"), place.get("state")) if x),
+                "distance": _num(place.get("distance")), "quantity": int(qty) if qty is not None else None,
+                "in_stock": in_stock, "note": "Pickup only" if pickup and not qty else "", "status": "",
+            })
+    return rows
+
+
+def check_bestbuy_site(sku, zip_code, radius):
+    """No API key: ask the lookup bestbuy.com's own "Pickup" button uses, once, with a normal request."""
+    body = {"zipCode": zip_code, "showOnShelf": True, "lookupInStoreQuantity": True, "consolidated": True,
+            "showOnlyOnShelf": False, "showInStore": True, "pickupTypes": ["UPS_ACCESS_POINT", "FEDEX_HAL"],
+            "items": [{"sku": sku, "condition": None, "quantity": 1, "itemSeqNumber": "1", "reservationToken": None,
+                       "selectedServices": [], "requiredAccessories": [], "isTradeIn": False, "isLeased": False}]}
+    data = get_json("bestbuy", BESTBUY_SITE, {"Origin": "https://www.bestbuy.com",
+                                              "Referer": f"https://www.bestbuy.com/site/{sku}.p?skuId={sku}"},
+                    body=body, timeout=BESTBUY_SITE_TIMEOUT, silence_is_block=True)
+    stores = [s for s in parse_bestbuy_site(data) if s["distance"] is None or s["distance"] <= radius]
+    stores.sort(key=lambda s: (not s["in_stock"], s["distance"] if s["distance"] is not None else 9e9))
+    return {"retailer": "bestbuy", "product_id": sku, "title": f"SKU {sku}",
+            "link": f"https://www.bestbuy.com/site/{sku}.p?skuId={sku}", "stores": stores,
+            "quantities": any(s["quantity"] is not None for s in stores), "only_in_stock": False,
+            "via_site": True}
+
+
 def check_bestbuy(product, zip_code, radius):
     kind, ident = parse_bestbuy_id(product)
+    if not bestbuy_key():
+        if kind == "upc":
+            raise StockError("Without a Best Buy API key, use the Best Buy link or SKU instead of the UPC.")
+        return check_bestbuy_site(ident, zip_code, radius)
     if kind == "upc":
         found = _bb(f"products(upc={ident})", show=BB_SHOW, format="json").get("products") or []
         if not found:
@@ -397,6 +452,8 @@ def target_info(tcin):
 
 
 def bestbuy_info(sku):
+    if not bestbuy_key():
+        return {"link": f"https://www.bestbuy.com/site/{sku}.p?skuId={sku}"}
     found = _bb(f"products(sku={sku})", show=BB_SHOW, format="json").get("products") or []
     if not found:
         raise StockError("Best Buy doesn't know that SKU.")
@@ -409,6 +466,8 @@ def product_id(retailer, product):
     if retailer == "bestbuy":
         kind, ident = parse_bestbuy_id(product)
         if kind == "upc":
+            if not bestbuy_key():
+                raise StockError("Without a Best Buy API key, save the Best Buy link or SKU instead of the UPC.")
             found = _bb(f"products(upc={ident})", show="sku", format="json").get("products") or []
             if not found:
                 raise StockError("Best Buy has no product with that UPC.")
