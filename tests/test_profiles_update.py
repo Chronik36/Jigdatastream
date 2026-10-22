@@ -53,10 +53,10 @@ def test_profile_pages(tmp_path):
     client = create_app(path).test_client()
     page = client.get("/profiles").get_data(as_text=True)
     assert "Main VCC" in page and "Same as billing" in page and "Amex •••• 8431" in page
-    assert client.get("/profiles/Main VCC/edit").status_code == 200
-    form = {k: "" for k in ("bot", "first_name", "last_name", "phone", "email", "ship_address2", "ship_country")}
-    form.update(name="Main VCC 2", ship_address1="1 New St", ship_city="Austin", ship_state="Texas", ship_zip="78702", same="on")
-    assert client.post("/profiles/Main VCC/edit", data=form).status_code == 302
+    assert "edit=Main" in client.get("/profiles/Main VCC/edit").headers["Location"]
+    form = dict(original="Main VCC", name="Main VCC 2", bill_address1="1 New St", bill_city="Austin",
+                bill_state="Texas", bill_zip="78702", same="on")
+    assert client.post("/profiles/save", data=form).status_code == 302
     r = db.connect(path).execute("SELECT * FROM profiles").fetchone()
     assert (r["name"], r["bill_address1"], r["bill_state"]) == ("Main VCC 2", "1 New St", "Texas")
     resp = client.post("/profiles/export", data={"bot": "Stellar"})

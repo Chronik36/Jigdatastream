@@ -67,6 +67,10 @@ def _state(value, template_value):
     return value
 
 
+def _col(p, key):
+    return p[key] if key in p.keys() else None
+
+
 def _value(p, section, f, template_value, card):
     """The profile's value for canonical field f in a section ('ship', 'bill' or None)."""
     if f == "name":
@@ -115,7 +119,7 @@ def fill(template, p, card=None, section=None, in_card=False):
         if in_card or card_field(k, False):
             field = card_field(k, in_card) or ("holder" if nk in FULL_NAME_KEYS else None)
             if field == "holder":
-                out[k] = card.get("holder") or f"{p['first_name']} {p['last_name']}".strip()
+                out[k] = card.get("holder") or _col(p, "card_holder") or f"{p['first_name']} {p['last_name']}".strip()
             elif field:
                 out[k] = _card_value(field, card, v)
             else:

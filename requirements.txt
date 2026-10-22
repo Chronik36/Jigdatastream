@@ -1,3 +1,4 @@
 flask>=3.0
+cryptography>=42
 pywebview>=5.1,<6; sys_platform == "darwin"
 pytest>=8.0

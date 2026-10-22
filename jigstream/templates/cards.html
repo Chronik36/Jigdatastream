@@ -1,0 +1,96 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.playout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px;align-items:start}
+.gside{position:sticky;top:76px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
+.gside a{display:flex;justify-content:space-between;padding:7px 10px;border-radius:9px;color:var(--text);font-weight:500}
+.gside a span{color:var(--muted);font-weight:400}.gside a:hover{background:var(--surface-2)}
+.gside a.on{background:var(--accent-soft);color:var(--accent)}.gside .lbl{color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.07em;margin:12px 10px 6px}
+.gside form{display:flex;margin:10px 0 0}.gside input{width:100%;margin:0 6px 0 0 !important;padding:6px 10px !important}.gside button{padding:6px 10px}
+.phead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.phead h2{margin:0;flex:1}
+.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--line-2);border-radius:12px;padding:8px 12px;margin-bottom:14px}
+.toolbar select,.toolbar input,.toolbar button{margin:0}.toolbar button{padding:6px 12px}.toolbar .sep{width:1px;height:22px;background:var(--line-2);margin:0 4px}
+td{vertical-align:middle}.prov{font-size:12px;border:1px solid rgba(61,216,239,.35);color:var(--accent);border-radius:7px;padding:2px 8px;white-space:nowrap}
+.num{font-family:ui-monospace,Menlo,monospace;font-size:13px;white-space:nowrap}
+.status-active{color:var(--green);background:var(--green-soft);border-color:rgba(61,220,132,.3)}
+.status-inactive{color:var(--muted)}
+.acts{display:flex;gap:2px}.acts button{background:none;border:0;box-shadow:none;color:var(--muted);padding:6px;border-radius:8px}
+.acts button:hover{background:var(--surface-2);filter:none}.acts svg{width:16px;height:16px}
+.linkform{display:flex;gap:6px;margin:0}.linkform select{margin:0;padding:4px 8px;font-size:12px;max-width:170px}
+dialog{background:var(--surface);color:var(--text);border:1px solid var(--line-2);border-radius:16px;padding:0;width:min(600px,94vw);box-shadow:0 30px 80px rgba(0,0,0,.5)}
+dialog::backdrop{background:rgba(5,10,30,.7);backdrop-filter:blur(3px)}
+dialog .dh{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--line)}
+dialog .dh h3{margin:0;color:var(--text);text-transform:none;letter-spacing:0;font-size:17px}
+dialog .x{background:none;border:0;color:var(--muted);font-size:20px;padding:2px 8px;box-shadow:none}
+dialog .db{padding:18px 22px}dialog .df{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--line)}
+dialog form{display:block;margin:0}.fl{display:block;color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin:12px 0 6px}
+.f3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 12px}dialog input,dialog select{width:100%;margin:0}
+textarea{font:13px/1.6 ui-monospace,Menlo,monospace;width:100%;height:200px;background:var(--surface-2);color:var(--text);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;outline:none;resize:vertical;margin-top:14px}
+textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+@media (max-width:900px){.playout{grid-template-columns:1fr}.gside{position:static}}
+</style>
+<div class="phead"><h2>{{"All cards" if group is none else (group or "No group")}} <span class="muted" style="font-size:15px;font-weight:500">{{cards|length}} card{{"" if cards|length == 1 else "s"}}</span></h2>
+<button type="button" onclick="document.getElementById('adddlg').showModal()">+ Add cards</button></div>
+<div class="playout">
+<aside class="gside">
+  <a href="/cards" class="{{'on' if group is none}}">All cards <span>{{total}}</span></a>
+  <div class="lbl">CARD GROUPS</div>
+  {% for g, n in groups %}<a href="/cards?group={{g|urlencode}}" class="{{'on' if group == g}}">{{g}} <span>{{n}}</span></a>{% endfor %}
+  {% if ungrouped %}<a href="/cards?group=" class="{{'on' if group == ''}}"><i>No group</i> <span>{{ungrouped}}</span></a>{% endif %}
+  <form method="post" action="/cards/groups"><input type="hidden" name="action" value="add"><input name="name" placeholder="New group" required><button>Add</button></form>
+  {% if group %}<form method="post" action="/cards/groups"><input type="hidden" name="action" value="rename"><input type="hidden" name="name" value="{{group}}"><input name="new_name" placeholder="Rename {{group}}" required><button class="ghost">Save</button></form>
+  <form method="post" action="/cards/groups" onsubmit="return confirm('Delete the group {{group}}? Its cards are kept.')"><input type="hidden" name="action" value="delete"><input type="hidden" name="name" value="{{group}}"><button class="danger" style="width:100%">Delete group</button></form>{% endif %}
+</aside>
+<section>
+<form id="bulk" method="post" action="/cards/bulk">
+<div class="toolbar">
+  <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" onclick="document.querySelectorAll('input.pick').forEach(c => c.checked = this.checked)"> All</label><span class="sep"></span>
+  <select name="group_name"><option value="">Move to…</option>{% for g, n in groups %}<option>{{g}}</option>{% endfor %}<option value="">No group</option></select>
+  <input name="new_group" placeholder="or new group" size="12"><button class="ghost" name="action" value="move">Move</button><span class="sep"></span>
+  <button class="ghost" name="action" value="active">Active</button><button class="ghost" name="action" value="inactive">Inactive</button><span class="sep"></span>
+  <button class="danger" name="action" value="delete" onclick="return confirm('Delete the ticked cards? Profiles using them lose their card.')">Delete</button>
+</div></form>
+<table><thead><tr><th></th><th>Provider</th><th>Profile</th><th>Card name</th><th>Card number</th><th>Expiry</th><th>Type</th><th>Spend limit</th><th>Status</th><th></th></tr></thead><tbody>
+{% for k in cards %}<tr>
+<td><input class="pick" type="checkbox" name="ids" value="{{k.id}}" form="bulk"></td>
+<td><span class="prov">{{k.provider or "Other"}}</span></td>
+<td><form class="linkform" method="post" action="/cards/bulk"><input type="hidden" name="action" value="link"><input type="hidden" name="ids" value="{{k.id}}">
+  <select name="profile" onchange="this.form.submit()" title="Link this card to a profile"><option value="">— not linked —</option>{% for p in profiles %}<option {{"selected" if p == k.profile}}>{{p}}</option>{% endfor %}</select></form></td>
+<td style="white-space:nowrap">{{k.name or "Unnamed card"}}</td>
+<td class="num" data-id="{{k.id}}">{{k.brand}} •••• {{k.last4}}</td>
+<td>{{k.exp}}</td><td><span class="pill">{{k.card_type or "Standard"}}</span></td>
+<td>{{k.spend_limit|money if k.spend_limit else "—"}}</td>
+<td><span class="pill status-{{k.status}}">● {{k.status|title}}</span></td>
+<td><div class="acts"><button type="button" title="Show the full number for 20 seconds" onclick="reveal(this, {{k.id}})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+<form method="post" action="/cards/bulk" onsubmit="return confirm('Delete this card?')" style="margin:0"><input type="hidden" name="ids" value="{{k.id}}"><button name="action" value="delete" title="Delete" style="color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></form></div></td>
+</tr>{% else %}<tr><td colspan="10" class="muted">No cards yet. Press "+ Add cards".</td></tr>{% endfor %}
+</tbody></table>
+<p class="muted" style="font-size:12px">Card numbers and CVVs are encrypted on this Mac with a key kept in your Keychain. Only the last 4 digits are shown unless you press the eye.</p>
+</section></div>
+
+<dialog id="adddlg"><form method="post" action="/cards/add">
+<div class="dh"><h3>+ Add cards</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
+<div class="db">
+  <div class="muted">One card per line. Format: <b style="color:var(--accent)">CARDNAME:CARDNUMBER:EXPIRY(MM/YYYY):CVV</b></div>
+  <div class="f3"><div><span class="fl">Provider</span><select name="provider">{% for p in providers %}<option>{{p}}</option>{% endfor %}</select></div>
+  <div><span class="fl">Card type</span><select name="card_type">{% for t in types %}<option>{{t}}</option>{% endfor %}</select></div>
+  <div><span class="fl">Spend limit</span><input type="text" name="spend_limit" placeholder="e.g. 500"></div></div>
+  <span class="fl">Group</span><select name="group_name"><option value="">No group</option>{% for g, n in groups %}<option {{"selected" if g == group}}>{{g}}</option>{% endfor %}</select>
+  <textarea name="lines" id="lines" placeholder="Amazon:4111111111111111:04/2028:123" oninput="countLines()" required></textarea>
+</div>
+<div class="df"><button type="button" class="ghost" onclick="this.closest('dialog').close()">Cancel</button><button id="addbtn">Add 0 cards</button></div>
+</form></dialog>
+<script>
+function countLines() {
+  const n = document.getElementById('lines').value.split('\n').filter(l => l.trim()).length;
+  document.getElementById('addbtn').textContent = 'Add ' + n + ' card' + (n === 1 ? '' : 's');
+}
+function reveal(btn, id) {
+  const cell = document.querySelector('td.num[data-id="' + id + '"]'), masked = cell.textContent;
+  fetch('/cards/' + id + '/reveal').then(r => r.json()).then(c => {
+    if (c.error) return;
+    cell.textContent = c.number.replace(/(\d{4})(?=\d)/g, '$1 ') + '  CVV ' + c.cvv;
+    setTimeout(() => cell.textContent = masked, 20000);
+  });
+}
+</script>
+{% endblock %}
