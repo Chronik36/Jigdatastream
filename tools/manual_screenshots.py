@@ -8,6 +8,7 @@ or addresses), stubs out Gmail, Discord and the AI server, and saves annotated s
 jigstream/static/manual/. Each shot's numbered markers are listed in SHOTS; the Manual's text refers
 to the same numbers, so keep the two in step when a page changes.
 """
+import json
 import os
 import sys
 import tempfile
@@ -29,7 +30,7 @@ os.environ.update({
 })
 sys.path.insert(0, str(ROOT))
 
-from jigstream import app as appmod, db, discord, emailbook, engines, inbox, profilebook, updater, wallet  # noqa: E402
+from jigstream import app as appmod, db, discord, emailbook, engines, finetune, inbox, profilebook, tasks, updater, wallet  # noqa: E402
 from jigstream.mail import Email  # noqa: E402
 from jigstream.orderstore import Store  # noqa: E402
 
@@ -96,6 +97,16 @@ def seed(path):
             right = {"kind": "order", "shipping_status": kind}
             model = dict(right, shipping_status="ordered") if i == 6 else right
             store.add_inbox_example(email, "", model, right, kind)
+    c.execute("INSERT INTO ai_tasks (name, instructions, answer, created_at) VALUES (?,?,?,?)",
+              ("Read Discord checkouts", "Read a bot's checkout message and give the site, product, size and price.",
+               "json", "2026-10-20"))
+    drops = [("Nike", "Air Jordan 1 Retro High OG", "10", 180), ("Target", "Pokemon TCG Elite Trainer Box", "", 49.99),
+             ("Best Buy", "PlayStation 5 Pro", "", 699.99), ("Walmart", "Funko Pop! Exclusive", "", 14.88)] * 3
+    tasks.add_examples(c, 1, [(f"Successful checkout! Site: {site} | Product: {prod} | Size: {size or '-'} | Price: ${price}",
+                               json.dumps({"site": site, "product": prod, "size": size or None, "price": price}))
+                              for site, prod, size, price in drops])
+    tasks.save_adapter(c, "task-1", {"base": "mlx-community/Qwen3-4B-abliterated-4bit", "path": "models/adapters/task-1-demo",
+                                     "examples": 12, "iters": 60, "loss": 0.214})
     checkouts = [("Valor", "success", "", "Nike", "Air Jordan 1 Retro High OG", "10", "Nike Main"),
                  ("Valor", "decline", "Card declined", "Target", "Pokemon TCG Elite Trainer Box", "", "Target 2"),
                  ("Stellar", "success", "", "Best Buy", "PlayStation 5 Pro", "", "Nike Alt"),
@@ -178,6 +189,7 @@ def patch():
     appmod.installed_models = lambda url, timeout=5: list(engines.OLLAMA_CANDIDATES)
     engines.mlx_available = lambda: True
     engines.mlx_choices = lambda: ["mlx-community/Qwen3-8B-abliterated-4bit"]
+    finetune.base_choices = lambda: ["mlx-community/Qwen3-4B-abliterated-4bit", "mlx-community/Qwen3-8B-abliterated-4bit"]
     engines.compare_state.update({"finished_at": "2026-10-21 21:40", "results": [
         {"model": "huihui_ai/qwen3-abliterated:14b", "engine": "ollama", "accuracy": 93, "right": 28, "total": 30,
          "unreadable": 0, "seconds": 6.1},
@@ -387,8 +399,13 @@ shot("setup-ai", "/setup", [("form[action='/setup/training']", 1), ("form[action
                             ("form[action='/setup/model'] button", 3)], scroll="h3@Training mode")
 shot("setup-compare", "/setup", [("form[action='/setup/compare']", 1), ("td@Best", 2),
                                  ("form[action='/setup/engine'] button", 3)], scroll="h3@Compare models")
-shot("training", "/training", [("a[href='/training/export'] button", 1), ("tbody tr td:nth-child(2)", 2),
-                               ("tbody tr td:nth-child(3)", 3), ("tbody tr button.danger", 4)])
+shot("training", "/training", [(".tk-grid a.tk", 1), (".tk-grid a.tk + a.tk", 2), (".tk-new", 3)])
+shot("training-task", "/training/tasks/1", [("form[action$='/try']", 1), ("#examples form[action$='/examples']", 2),
+                                            ("#examples form[action$='/import']", 3), ("#run", 4), ("#train select", 5),
+                                            ("#train table", 6)], full=True)
+shot("training-email", "/training/email", [("a[href='/training/export'] button", 1), ("main > table tbody tr td:nth-child(2)", 2),
+                                           ("main > table tbody tr td:nth-child(3)", 3), ("main > table tbody tr button.danger", 4),
+                                           ("#train", 5)])
 shot("logs", "/logs", [("main > p:nth-of-type(2) a", 1), ("a[href='/logs/download'] button", 2), ("main pre", 3)])
 shot("bank", "/bank", [(".stats", 1), ("form[action='/bank/import']", 2), ("a[href='/bank/plaid']", 3),
                        (".tabs", 4), ("tbody tr td:nth-child(5)", 5), ("tbody tr .acts", 6)],
