@@ -19,6 +19,8 @@ FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
 def secrets():
     words = [pw for _, pw in parse_accounts(os.environ.get("GMAIL_ACCOUNTS", ""))]
+    if os.environ.get("DISCORD_BOT_TOKEN"):
+        words.append(os.environ["DISCORD_BOT_TOKEN"].strip())
     if os.environ.get("GMAIL_APP_PASSWORD"):
         words.append(os.environ["GMAIL_APP_PASSWORD"].replace(" ", ""))
     return [w for w in words if len(w) >= 6]
@@ -26,6 +28,9 @@ def secrets():
 
 def redact(text):
     for word in secrets():
+        if len(word) > 30:  # bot tokens: exact match is enough
+            text = text.replace(word, "********")
+            continue
         # App passwords are often shown in groups of four ("abcd efgh ..."), so match spaced forms too.
         pattern = r"\s?".join(re.escape(ch) for ch in word)
         text = re.sub(pattern, "********", text)

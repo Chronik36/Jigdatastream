@@ -21,6 +21,37 @@ without your real password:</p>
 <button>Check and add</button></form>
 <p class="muted">The password is checked with Gmail, then saved only on this Mac. Your mail never leaves this computer.</p>
 
+<h3 id="discord">Discord bot checkouts</h3>
+<p>Reads the checkout webhooks your bots post in Discord (and JSON pasted or attached there) into the Checkouts
+and Dashboard pages. It uses a free Discord bot that only you control, which can read just the channels you allow.</p>
+{% if discord_error %}<p class="bad">{{discord_error}}</p>{% endif %}
+{% if not bot %}
+<ol>
+<li>Open the <a href="https://discord.com/developers/applications" target="_blank" rel="noopener">Discord Developer Portal</a>, click <b>New Application</b>, name it "Order Tracker".</li>
+<li>Go to <b>Bot</b>. Turn on <b>Message Content Intent</b> and save (without it Discord hides the checkout details from the bot).</li>
+<li>Still on <b>Bot</b>, click <b>Reset Token</b>, copy the token and paste it below.</li>
+</ol>
+<form method="post" action="/setup/discord/token" style="display:block">
+<input type="password" name="token" placeholder="bot token" required size="50" autocomplete="off">
+<button>Connect</button></form>
+<p class="muted">Next you'll get a link to add the bot to your server and a list of channels to pick from.
+The token is saved only on this Mac.</p>
+{% else %}
+<p class="ok">Connected as {{bot}}.
+<a href="https://discord.com/oauth2/authorize?client_id={{bot_id}}&scope=bot&permissions=66560" target="_blank" rel="noopener">Add the bot to a server</a>
+(it only asks to view channels and read message history).</p>
+{% if channels %}
+<p>Tick the channels your bots post checkouts to:</p>
+<form method="post" action="/setup/discord/channels" style="display:block">
+<table><tr><th></th><th>Server</th><th>Channel</th><th>Last read</th></tr>
+{% for cid, server, name in channels %}{% set st = channel_states.get(cid) %}<tr>
+<td><input type="checkbox" name="channel" value="{{cid}}" {{"checked" if cid in chosen}}></td><td>{{server}}</td><td>#{{name}}</td>
+<td class="{{'bad' if st and st.error else 'muted'}}">{% if st and st.error %}{{st.error}}{% elif st and st.last_synced_at %}{{st.last_synced_at[:16]|replace("T", " ")}}{% elif cid in chosen %}not yet{% endif %}</td></tr>{% endfor %}
+</table><button>Save channels</button></form>
+{% else %}<p class="bad">The bot isn't in any server yet. Use "Add the bot to a server" above, then reload this page.</p>{% endif %}
+<form method="post" action="/setup/discord/remove" onsubmit="return confirm('Disconnect Discord?')"><button>Disconnect Discord</button></form>
+{% endif %}
+
 <h3>AI model</h3>
 {% if models is none %}<p class="bad">Ollama isn't running. Open the Ollama app, then reload this page.</p>
 {% else %}
