@@ -1,9 +1,13 @@
 """Minimal client for an OpenAI-compatible chat endpoint (Ollama, LM Studio, llama.cpp)."""
 
 import json
+import logging
 import re
 import urllib.error
 import urllib.request
+
+
+logger = logging.getLogger("jigstream.llm")
 
 
 class LLMError(RuntimeError):
@@ -53,6 +57,7 @@ class LLMClient:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = json.load(resp)
         except urllib.error.URLError as e:
+            logger.error("cannot reach model server at %s: %s", self.base_url, e)
             raise LLMError(
                 f"Could not reach the local model at {self.base_url} ({e}). Is Ollama running?"
             ) from e
@@ -60,4 +65,14 @@ class LLMClient:
             content = body["choices"][0]["message"]["content"]
             return parse_json(content)
         except (KeyError, IndexError, json.JSONDecodeError) as e:
-            raise LLMError(f"Model did not return JSON: {body}") from e
+            logger.warning("model %s returned unusable output: %s", self.model, str(body)[:2000])
+            raise LLMError(f"Model did not return JSON: {str(body)[:300]}") from e
+
+
+def installed_models(base_url, timeout=5):
+    """Model names the local server has, or None if it isn't running."""
+    try:
+        with urllib.request.urlopen(f"{base_url.rstrip('/')}/models", timeout=timeout) as resp:
+            return [m.get("id") for m in json.load(resp).get("data", [])]
+    except (urllib.error.URLError, OSError, ValueError):
+        return None

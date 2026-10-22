@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block body %}
+<h2>Logs</h2>
+<p class="muted">What the app, syncs, the AI model and the installer have been doing, newest at the bottom.
+App passwords are always hidden. If something goes wrong, download the logs and send them to whoever is helping.</p>
+<p>{% for f in files %}<a href="/logs?file={{f}}" {% if f == name %}style="font-weight:bold"{% endif %}>{{f}}</a> &nbsp; {% endfor %}
+<a href="/logs/download"><button>Download all logs (.zip)</button></a></p>
+<pre style="background:#1c1c1c;padding:12px;border-radius:8px;white-space:pre-wrap;font-size:12px;max-height:70vh;overflow:auto">{{text or "Nothing logged yet."}}</pre>
+<script>const pre = document.querySelector('pre'); pre.scrollTop = pre.scrollHeight;</script>
+{% endblock %}

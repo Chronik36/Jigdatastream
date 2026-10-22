@@ -28,6 +28,29 @@ def load_dotenv(path=".env"):
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
+def save_env(updates, path=".env"):
+    """Set KEY=VALUE lines in the .env file (creating it, readable only by you) and in os.environ."""
+    p = Path(path)
+    lines = p.read_text().splitlines() if p.exists() else []
+    remaining = dict(updates)
+    out = []
+    for line in lines:
+        key = line.split("=", 1)[0].strip()
+        if not line.lstrip().startswith("#") and "=" in line and key in remaining:
+            out.append(f"{key}={remaining.pop(key)}")
+        else:
+            out.append(line)
+    out += [f"{k}={v}" for k, v in remaining.items()]
+    p.write_text("\n".join(out) + "\n")
+    p.chmod(0o600)
+    for key, value in updates.items():
+        os.environ[key] = str(value)
+
+
+def format_accounts(accounts):
+    return ", ".join(f"{address}:{password}" for address, password in accounts)
+
+
 def parse_accounts(value):
     """'a@gmail.com:app pass, b@gmail.com:app pass' -> [(address, password), ...]"""
     accounts = []

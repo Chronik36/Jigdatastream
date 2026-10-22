@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block body %}
 <div class="card">Orders <b>{{stats.order_count}}</b></div><div class="card">Spend <b>{{stats.order_total|money}}</b></div>
 <div class="card">On the way <b>{{stats.in_flight}}</b></div><div class="card ok">Delivered <b>{{stats.by_status.get("delivered", 0)}}</b></div>
+{% if not configured %}<div class="flash">No Gmail inbox connected yet. <a href="/setup">Add one on the Setup page</a> to start finding orders.</div>{% endif %}
 {% include "sync.html" %}
 {% if accounts %}<p class="muted">{% for a in accounts %}{{a.address}}: synced {{(a.last_synced_at or "never")[:16]|replace("T", " ")}}{% if a.backfilled_at %}, whole mailbox done{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
 <input id="q" placeholder="Search retailer, item, tracking, address" size="40">

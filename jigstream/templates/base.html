@@ -10,7 +10,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}.muted{color:#999}a{co
 ul.items{margin:0;padding-left:16px}.pill{border:1px solid currentColor;border-radius:999px;padding:1px 8px;font-size:12px;white-space:nowrap}
 .s-delivered{color:#6d6}.s-shipped,.s-in_transit,.s-out_for_delivery{color:#9cf}.s-cancelled,.s-returned,.s-refunded{color:#f66}
 .s-ordered,.s-processing{color:#fb5}.s-unknown{color:#999}
-input,select{background:#1c1c1c;color:#e8e8e8;border:1px solid #333;padding:5px 8px;margin:0 8px 12px 0}
+input[type=text],input[type=email],input[type=password],select{background:#1c1c1c;color:#e8e8e8;border:1px solid #333;padding:5px 8px;margin:0 8px 12px 0}
 </style></head><body>
-<nav><a href="/">Dashboard</a><a href="/checkouts">Checkouts</a><a href="/profiles">Profiles</a><a href="/orders">Orders</a><a href="/expenses">Botting expenses</a></nav>
+<nav><a href="/">Dashboard</a><a href="/checkouts">Checkouts</a><a href="/profiles">Profiles</a><a href="/orders">Orders</a><a href="/expenses">Botting expenses</a><a href="/setup">Setup</a><a href="/logs">Logs</a></nav>
 <main>{% for m in get_flashed_messages() %}<div class="flash">{{m}}</div>{% endfor %}{% block body %}{% endblock %}</main></body></html>
