@@ -3,7 +3,7 @@
 
 <h3 id="updates">Updates</h3>
 <div class="panel">
-<p>Installed version <b>{{(version or "unknown")[:7]}}</b>{% if update.checked_at %} · <span class="muted">last checked {{update.checked_at[:16]|replace("T", " ")}} UTC</span>{% endif %}.
+<p>Installed version <b>{{version|replace("build-", "build ")|replace("-", " · ") if version.startswith("build-") else (version or "unknown")[:7]}}</b>{% if update.checked_at %} · <span class="muted">last checked {{update.checked_at[:16]|replace("T", " ")}} UTC</span>{% endif %}.
 It checks for a new version by itself every few hours.</p>
 {% if update.error %}<p class="bad">{{update.error}}</p>{% elif update.available %}<p style="color:var(--accent)">A new version is ready: {{update.message}}</p>{% elif update.checked_at %}<p class="ok">You're on the latest version.</p>{% endif %}
 <form class="ghost" method="post" action="/update/check"><button>Check for update</button></form>
@@ -11,11 +11,9 @@ It checks for a new version by itself every few hours.</p>
 {% if backups %}<form class="ghost" method="post" action="/update/rollback" onsubmit="return confirm('Go back to the version before the last update?')"><button>Undo last update</button></form>{% endif %}
 {% else %}<p class="muted">This copy runs from a developer checkout, so it doesn't update itself.</p>{% endif %}
 <p class="muted">Updating replaces only the app's code. Your inboxes, settings, orders and logs stay as they are, and the previous version is kept so you can undo.</p>
-<details{{" open" if update.error and not update_settings.token}}><summary class="muted" style="cursor:pointer">GitHub access (needed while the code's repository is private)</summary>
-<p style="margin-top:10px">Create a free <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>:
-pick only the <b>{{update_settings.repo}}</b> repository, give it <b>Contents: Read-only</b>, and paste it here. It's saved only on this Mac.</p>
-<form method="post" action="/setup/github"><input type="password" name="token" placeholder="{{'saved (paste to replace)' if update_settings.token else 'github_pat_...'}}" size="40" autocomplete="off"><button>Save token</button></form>
-</details>
+{% if update_settings.source == "branch" %}<details><summary class="muted" style="cursor:pointer">Developer updates from {{update_settings.repo}} ({{update_settings.branch}})</summary>
+<form method="post" action="/setup/github" style="margin-top:10px"><input type="password" name="token" placeholder="{{'saved (paste to replace)' if update_settings.token else 'github_pat_...'}}" size="40" autocomplete="off"><button>Save token</button></form>
+</details>{% endif %}
 </div>
 
 <h3>Gmail inboxes</h3>
