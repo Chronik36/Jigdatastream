@@ -1,33 +1,30 @@
-Order Tracker
-=============
+BotTrack
+========
 
 Install
-1. Double-click "Install Order Tracker.command".
-   If macOS says it can't be opened because it's from an unidentified developer:
-   open System Settings > Privacy & Security, scroll down, click "Open Anyway",
-   then double-click the installer again.
-   (Or open Terminal, type "bash " and drag the installer into the window, then press Return.)
-2. The installer sets everything up, downloads the AI model through Ollama (about 5 GB
-   the first time), and opens BotTrack (the new name for Order Tracker) in its own window. It's in your Applications
-   folder and Spotlight; drag it to the Dock to keep it there.
-3. On the Setup page, add each Gmail inbox with an app password (the page explains how).
+1. Drag BotTrack into the Applications folder.
+2. Open BotTrack. The first time, macOS may say it can't check the app for malware, because it
+   isn't sold through Apple. Open System Settings > Privacy & Security, scroll down, click
+   "Open Anyway", and confirm. You only do this once.
+3. The first launch gets the AI model ready (about 9 GB, downloaded once; if you already had it
+   in Ollama, it's reused). The top of the window shows progress.
+4. On the Setup page, add each Gmail inbox with an app password, and optionally connect Discord.
+   The page explains both.
 
-4. Optional: on the same Setup page, connect Discord so your bots' checkout webhooks
-   (and JSON posted in those channels) are read in. The page walks you through making a
-   free Discord bot and picking the channels.
+How it runs
+Everything BotTrack uses is inside the app, including its own AI engine; nothing else needs
+installing. While BotTrack is open it checks your inboxes (including Spam) and Discord channels
+every 4 hours, and checks for app updates. Closing the window stops it.
 
-After that it runs by itself: it starts when you log in and checks your inboxes (including Spam)
-and Discord channels every 4 hours. Open it from Spotlight by typing "BotTrack".
+Your data, settings, logs and the AI model are kept in one folder:
+~/Library/Application Support/BotTrack
+Your email is read only on this Mac. Nothing is sent anywhere except the connections to Gmail,
+Discord and GitHub (for updates).
 
-Troubleshooting: the dashboard's Logs page shows what the app, each sync, the AI model and the
-installer did, and "Download all logs" makes a zip you can send for help (app passwords are hidden).
-The files are in ~/Library/Application Support/OrderTracker/logs.
+Updates: Setup > Updates has "Check for update" and "Update now", plus "Undo last update".
 
-Your email is read only on this Mac. Nothing is sent anywhere except the connection to Gmail.
+Remove: drag BotTrack from Applications to the Trash. To also delete your data and the AI model,
+delete the folder above.
 
-Updates: Setup > Updates has "Check for update" and "Update now" buttons, and the app checks by
-itself every 6 hours and shows a banner when a new version is ready. Updating keeps your inboxes,
-settings and orders, and "Undo last update" puts the previous version back. While the code's
-GitHub repository is private, the app needs a read-only GitHub token for this (Setup explains how).
-Running a newer installer also works and keeps your data.
-To remove it, double-click "Uninstall Order Tracker.command".
+Moving from the old Order Tracker: just open BotTrack. It brings your inboxes, settings and order
+history over and removes the old background service and shortcut by itself.

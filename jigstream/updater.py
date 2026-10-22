@@ -20,7 +20,11 @@ from pathlib import Path
 
 logger = logging.getLogger("jigstream.update")
 
-APP_DIR = Path(__file__).resolve().parent.parent  # holds jigstream/, run.py, VERSION
+RUNNING_DIR = Path(__file__).resolve().parent.parent  # the code running now: jigstream/, run.py, VERSION
+# Where updates go. Inside BotTrack.app that's the data folder, so the app bundle itself is never changed
+# and the code shipped in the bundle stays as the fallback.
+APP_DIR = Path(os.environ["BOTTRACK_CODE_DIR"]) if os.environ.get("BOTTRACK_CODE_DIR") else RUNNING_DIR
+relaunch = None  # set by the Mac app: how to start again after an update
 API = "https://api.github.com"
 KEEP_BACKUPS = 3
 
@@ -34,10 +38,12 @@ def settings():
 
 
 def installed_version(app_dir=APP_DIR):
-    try:
-        return (app_dir / "VERSION").read_text().strip()
-    except OSError:
-        return ""
+    for d in (app_dir, RUNNING_DIR):
+        try:
+            return (d / "VERSION").read_text().strip()
+        except OSError:
+            continue
+    return ""
 
 
 def can_self_update(app_dir=APP_DIR):
@@ -118,12 +124,13 @@ def unpack(blob, dest):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(z.read(n))
     if not (dest / "jigstream" / "app.py").exists() or not (dest / "run.py").exists():
-        raise RuntimeError("The download doesn't look like Order Tracker; nothing was changed.")
+        raise RuntimeError("The download doesn't look like BotTrack; nothing was changed.")
 
 
 def backups(app_dir=APP_DIR):
     d = app_dir.parent / "backups"
-    return sorted((p for p in d.glob("app-*") if p.is_dir()), reverse=True) if d.exists() else []
+    return sorted((p for p in d.glob("app-*") if p.is_dir() and not p.name.endswith("-undone")),
+                  reverse=True) if d.exists() else []
 
 
 def install(app_dir=APP_DIR, sha=None, blob=None, pip=True):
@@ -139,8 +146,10 @@ def install(app_dir=APP_DIR, sha=None, blob=None, pip=True):
     new.mkdir(parents=True)
     unpack(blob, new)
     (new / "VERSION").write_text(sha + "\n")
-    if pip and (new / "requirements.txt").exists():
+    if pip and _needs_packages(new / "requirements.txt"):
+        target = os.environ.get("BOTTRACK_PIP_TARGET")
         r = subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check",
+                            *(["--upgrade", "--target", target] if target else []),
                             "-r", str(new / "requirements.txt")], capture_output=True, text=True)
         if r.returncode:
             shutil.rmtree(new, ignore_errors=True)
@@ -149,7 +158,8 @@ def install(app_dir=APP_DIR, sha=None, blob=None, pip=True):
     bdir = app_dir.parent / "backups"
     bdir.mkdir(exist_ok=True)
     backup = bdir / f"app-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{(installed_version(app_dir) or 'unknown')[:7]}"
-    app_dir.rename(backup)
+    if app_dir.exists():
+        app_dir.rename(backup)
     new.rename(app_dir)
     for old in backups(app_dir)[KEEP_BACKUPS:]:
         shutil.rmtree(old, ignore_errors=True)
@@ -158,24 +168,41 @@ def install(app_dir=APP_DIR, sha=None, blob=None, pip=True):
     return backup
 
 
+def _needs_packages(requirements):
+    """Only run pip when the new version's package list differs from the running one."""
+    try:
+        return requirements.read_text() != (RUNNING_DIR / "requirements.txt").read_text()
+    except OSError:
+        return requirements.exists()
+
+
 def rollback(app_dir=APP_DIR):
-    """Put the most recent backup back. The current code becomes a backup itself."""
+    """Put the most recent backup back. The current code becomes a backup itself.
+    In the Mac app, undoing the first update simply goes back to the code inside the app."""
     found = backups(app_dir)
-    if not found:
+    bundled = bool(os.environ.get("BOTTRACK_CODE_DIR")) and app_dir.exists()
+    if not found and not bundled:
         raise RuntimeError("There's no earlier version to go back to.")
-    target = found[0]
     keep = app_dir.parent / "backups" / f"app-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{(installed_version(app_dir) or 'unknown')[:7]}-undone"
+    keep.parent.mkdir(exist_ok=True)
     app_dir.rename(keep)
+    if not found:
+        logger.info("rolled back to the version inside the app")
+        return keep
+    target = found[0]
     target.rename(app_dir)
     logger.info("rolled back to %s", target.name)
     return target
 
 
 def restart_soon(delay=1.5):
-    """Exit after the response is sent; launchd (KeepAlive) starts the new code."""
+    """Exit after the response is sent, then start again with the new code (the Mac app relaunches
+    itself; the older installer's launchd job restarts it)."""
     def go():
         time.sleep(delay)
         logger.info("restarting to load the new version")
+        if relaunch:
+            relaunch()
         logging.shutdown()
         os._exit(0)
     threading.Thread(target=go, daemon=True).start()

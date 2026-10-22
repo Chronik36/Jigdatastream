@@ -80,7 +80,8 @@ so it learns how your retailers word things. Example emails are stored on this M
 <button>Save</button></form>
 
 <h3>AI model</h3>
-{% if models is none %}<p class="bad">Ollama isn't running. Open the Ollama app, then reload this page.</p>
+{% if ai and not ai.ready %}<p class="muted">BotTrack's built-in AI engine is getting ready (see the bar at the top).</p>
+{% elif models is none %}<p class="bad">{% if ai %}The built-in AI engine isn't answering. Quit and reopen BotTrack; if it keeps happening, send the logs.{% else %}Ollama isn't running. Open the Ollama app, then reload this page.{% endif %}</p>
 {% else %}
 <p>Ollama is running. {% if config.llm_model in models or (config.llm_model ~ ":latest") in models %}<span class="ok">Using {{config.llm_model}}.</span>{% else %}<span class="bad">{{config.llm_model}} isn't downloaded yet; run the installer again, or pick another model.</span>{% endif %}</p>
 {% if models %}<form method="post" action="/setup/model"><select name="model">{% for m in models %}<option {{"selected" if m == config.llm_model}}>{{m}}</option>{% endfor %}</select><button>Use this model</button></form>{% endif %}

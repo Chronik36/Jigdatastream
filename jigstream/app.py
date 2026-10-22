@@ -41,7 +41,8 @@ def create_app(db_path=None):
 
     @app.context_processor
     def nav_flags():
-        return {"config_training": Config.from_env().training_mode, "update": updater.state}
+        return {"config_training": Config.from_env().training_mode, "update": updater.state,
+                "ai": app.config.get("AI_STATE")}
 
     def con():
         return db.connect(db_path)
@@ -273,7 +274,8 @@ def create_app(db_path=None):
         """Start a background sync unless one is running. run.py also calls this on a timer."""
         config = Config.from_env()
         has_discord = bool(config.discord_bot_token and config.discord_channel_ids)
-        if sync_state["running"] or not (config.accounts or has_discord):
+        ai = app.config.get("AI_STATE")
+        if sync_state["running"] or not (config.accounts or has_discord) or (ai and not ai["ready"]):
             return False
         sync_state["running"] = True
         sync_state["last"] = "Starting Gmail sync..."
@@ -281,6 +283,10 @@ def create_app(db_path=None):
         return True
 
     app.start_sync = start_sync
+
+    @app.get("/api/ai")
+    def ai_status():
+        return jsonify(app.config.get("AI_STATE") or {"ready": True})
 
     @app.post("/sync/gmail")
     def sync():
@@ -293,6 +299,8 @@ def create_app(db_path=None):
             flash("Whole-mailbox backfill started. It can take hours; already processed mail is skipped, "
                   "so it is safe to stop and run again." if full else
                   "Gmail sync started. Refresh to see progress.")
+        elif app.config.get("AI_STATE") and not app.config["AI_STATE"]["ready"]:
+            flash("The AI model is still getting ready; syncing starts by itself when it is.")
         return redirect(url_for("orders"))
 
     @app.get("/setup")
