@@ -64,3 +64,20 @@ def test_fill_missing_amounts_reads_totals_and_drops_reminders(tmp_path, monkeyp
     monkeypatch.setattr(inbox, "open_email", lambda *a: paid)
     assert inbox.fill_missing_amounts(object(), store) == (1, 1)
     assert [(e["message_id"], e["amount"]) for e in store.expenses()] == [("<p@x>", 43.2)]
+
+
+def test_ai_skipped_filter_lists_skipped_emails_not_yet_labelled(tmp_path, monkeypatch):
+    monkeypatch.setenv("GMAIL_ACCOUNTS", "me@gmail.com:pw")
+    monkeypatch.setattr(inbox, "search", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no Gmail search")))
+    path = str(tmp_path / "s.db")
+    store = Store(db.connect(path))
+    for mid, kind, subject in (("<a@x>", "other", "Your Nike receipt"), ("<b@x>", "skipped", "Newsletter"),
+                               ("<c@x>", "order", "Shipped"), ("<d@x>", "other", "Already fixed")):
+        store.db.execute("INSERT INTO emails (message_id, account, sender, subject, date, kind) VALUES (?,?,?,?,?,?)",
+                         (mid, "me@gmail.com", "S <s@x.com>", subject, "2026-10-2" + mid[1], kind))
+    store.db.commit()
+    store.set_inbox_label({"account": "me@gmail.com", "message_id": "<d@x>", "sender": "", "subject": "", "date": ""},
+                          "ordered", "saved")
+    html = appmod.create_app(path).test_client().get("/inbox/rows?f=AI+skipped").get_data(as_text=True)
+    assert "Your Nike receipt" in html and "Newsletter" in html and "AI: not relevant" in html
+    assert "Shipped" not in html and "Already fixed" not in html
