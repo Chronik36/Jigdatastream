@@ -31,7 +31,9 @@ def test_analyze_finds_keywords_and_negatives():
     top = {w: c for w, c, *_ in r["words"]}
     assert top["panda"] >= 4 and "ignore" not in top and "the" not in top and "color" not in top
     assert any(p == "air jordan" for p, *_ in r["phrases"])
-    assert r["positives"] == ["air", "jordan", "1", "low", "panda"]
+    pos = {w: reason for w, reason, _ in r["positives"]}
+    assert list(pos) == ["air", "jordan", "1", "low", "panda", "553558-040"]
+    assert pos["1"] == "model number" and pos["jordan"] == "brand" and "style code" in pos["553558-040"]
     negs = [w for w, _ in r["negatives"]]
     for w in ("gs", "ps", "mid", "socks", "toddler"):
         assert w in negs
@@ -42,7 +44,9 @@ def test_analyze_finds_keywords_and_negatives():
 
 
 def test_catch_alls_skip_target_words():
-    _, negs = keywords.negative_keywords("Air Jordan 1 Low GS", [], [])
+    negs = keywords.negative_keywords("Air Jordan 1 Low GS", [], [])
+    pos = {w: r for w, r, _ in keywords.positive_keywords("Air Jordan 1 Low GS Shoes", [])}
+    assert "gs" in pos and "shoes" not in pos  # the GS version must require GS; generic words add nothing
     assert "gs" not in [w for w, _ in negs] and "ps" in [w for w, _ in negs]
 
 
@@ -76,7 +80,8 @@ def test_ai_negatives_merged(tmp_path, monkeypatch):
     monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
     monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, system, user: {
         "summary": "A sneaker product page.", "main_keywords": ["air jordan 1 low panda"],
+        "positive_keywords": [{"word": "panda", "reason": "colourway"}],
         "negative_keywords": [{"word": "reimagined", "reason": "different release"}, {"word": "panda", "reason": "x"}]})
     html = client.post("/keywords", data={"url": "https://kicks.example/p/0", "ai": "1"}).get_data(as_text=True)
-    assert "A sneaker product page." in html and "-reimagined" in html
+    assert "A sneaker product page." in html and "-reimagined" in html and "+panda" in html
     assert "-panda" not in html  # the model may not exclude the product's own words
