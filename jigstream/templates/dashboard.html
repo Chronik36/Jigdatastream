@@ -1,9 +1,9 @@
 {% extends "base.html" %}{% block body %}
-<div class="card">Checkouts <b>{{tot.n}}</b></div><div class="card ok">Success <b>{{tot.s or 0}}</b></div><div class="card bad">Not successful <b>{{tot.f or 0}}</b></div>
-<h3>Import</h3>
+<h2>Dashboard</h2><div class="stats"><div class="card">Checkouts <b>{{tot.n}}</b></div><div class="card ok">Success <b>{{tot.s or 0}}</b></div><div class="card bad">Not successful <b>{{tot.f or 0}}</b></div></div>
+<h3>Import</h3><div class="panel">
 <form method="post" action="/upload/webhooks" enctype="multipart/form-data">Webhook JSON <input type="file" name="files" multiple><button>Import</button></form>
-<form method="post" action="/upload/profiles" enctype="multipart/form-data">Profiles (.json/.csv) <select name="bot"><option>Valor</option><option>Stellar</option><option>Hayha</option><option>Polar</option></select><input type="file" name="files" multiple><button>Import</button></form>
-<form method="post" action="/sync/gmail"><button>Sync Gmail</button></form>
+<form method="post" action="/upload/profiles" enctype="multipart/form-data">Profiles (.json/.csv) <input name="bot" list="botnames" placeholder="Bot name" size="12" required><datalist id="botnames"><option>Valor</option><option>Stellar</option><option>Hayha</option><option>Polar</option><option>AYCD</option><option>Cybersole</option><option>Wrath</option></datalist><input type="file" name="files" multiple><button>Import</button></form>
+</div>
 <h3>Failing profiles &amp; suggested address fixes</h3>
 <table><tr><th>Profile</th><th>OK</th><th>Declined</th><th>Failed</th><th>Rate</th><th>Issues</th><th>Suggested</th></tr>
 {% for r in report %}<tr><td>{{r.profile}}</td><td>{{r.success}}</td><td>{{r.decline}}</td><td>{{r.failure}}</td><td>{{r.rate}}%</td>

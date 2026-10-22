@@ -1,0 +1,154 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.st-form{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 18px}
+.st-form input,.st-form select{margin:0}
+.st-form input[name=product]{flex:1;min-width:280px}
+.st-form input[name=zip]{width:110px}
+.st-form label{color:var(--muted);display:flex;align-items:center;gap:6px}
+.st-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
+.st-head h3{margin:0;flex:1}
+.st-table{margin:0}
+.st-table td,.st-table th{padding:9px 14px}
+tr.out td{color:var(--muted)}
+.qty{font-variant-numeric:tabular-nums;font-weight:600}
+.s-in{color:var(--green);background:var(--green-soft);border-color:rgba(61,220,132,.3)}
+.s-out{color:var(--muted)}
+.s-new{color:var(--orange);background:rgba(255,138,61,.1);border-color:rgba(255,138,61,.3)}
+.st-recent a{display:block;padding:6px 0;border-bottom:1px solid var(--line)}
+.st-recent a:last-child{border-bottom:0}
+.saved-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin:0 0 18px}
+.sp{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;position:relative;transition:border-color .15s}
+.sp:hover{border-color:var(--accent)}
+.sp.on{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.sp-img{width:56px;height:56px;flex:none;border-radius:10px;background:#fff;object-fit:contain;display:flex;align-items:center;justify-content:center;color:#7a8299;font-size:11px;font-weight:600}
+.sp-body{flex:1;min-width:0}
+.sp-name{display:block;color:var(--text);font-weight:600;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.sp-name:after{content:"";position:absolute;inset:0}
+.sp-meta{font-size:12px;color:var(--muted);margin-top:2px}
+.sp-price{color:var(--green);font-weight:600;font-variant-numeric:tabular-nums}
+.sp-tools{display:flex;flex-direction:column;gap:4px;position:relative;z-index:1}
+.sp-tools button{padding:2px 8px;font-size:12px;line-height:1.4}
+.st-prod{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
+.st-prod img{width:48px;height:48px;border-radius:8px;background:#fff;object-fit:contain}
+</style>
+<h2>In-store stock</h2>
+<p class="muted">Paste a product link or ID and your ZIP to see which nearby stores show it in stock. BotTrack asks the same store lookup the
+retailer's own site uses, only when you click, and spaces requests out. If a retailer refuses, that's shown here and BotTrack backs off; it never
+tries to get around a block.</p>
+
+<div id="saved">
+{% if saved %}<div class="saved-grid">
+  {% for p in saved %}<div class="sp{{' on' if result and result.retailer == p.retailer and result.product_id == p.id}}">
+    {% if p.image %}<img class="sp-img" src="{{p.image}}" alt="" loading="lazy">{% else %}<span class="sp-img">{{retailers[p.retailer]}}</span>{% endif %}
+    <div class="sp-body">
+      <a class="sp-name" href="/stock?{{ {'retailer': p.retailer, 'product': p.id, 'zip': form.zip, 'radius': form.radius, 'run': 1}|urlencode }}" title="Check stores near {{form.zip or 'your ZIP'}}">{{p.name or (retailers[p.retailer] ~ ' ' ~ p.id)}}</a>
+      <div class="sp-meta">{% if p.price %}<span class="sp-price">{{p.price}}</span>{% if p.price_when %} <span title="Price when last loaded">({{p.price_when}})</span>{% endif %} · {% endif %}{{retailers[p.retailer]}} {{'TCIN' if p.retailer == 'target' else 'SKU'}} {{p.id}}</div>
+    </div>
+    <div class="sp-tools">
+      <form method="post" action="/stock/saved/{{p.retailer}}/{{p.id}}/refresh"><button class="ghost" title="Reload the picture, name and price">↻</button></form>
+      <form method="post" action="/stock/saved/{{p.retailer}}/{{p.id}}/remove"><button class="ghost" title="Remove from saved">✕</button></form>
+    </div>
+  </div>{% endfor %}
+</div>{% endif %}
+</div>
+
+<form class="st-form" method="post" action="/stock" id="stform">
+  <input name="product" value="{{form.product}}" placeholder="Target or Best Buy link, TCIN, SKU or UPC" autofocus required>
+  <select name="retailer" title="Retailer">
+    <option value="auto">Retailer from link</option>
+    {% for key, name in retailers.items() %}<option value="{{key}}" {{'selected' if form.retailer == key}}>{{name}}</option>{% endfor %}
+  </select>
+  <input name="zip" value="{{form.zip}}" placeholder="ZIP" inputmode="numeric" maxlength="10" required>
+  <select name="radius" title="How far to look">
+    {% for r in (10, 25, 50, 100) %}<option value="{{r}}" {{'selected' if form.radius == r}}>{{r}} mi</option>{% endfor %}
+  </select>
+  <input type="hidden" name="recheck" value="{{form.recheck}}">
+  <input type="hidden" name="auto" value="0">
+  <button>Check stores</button>
+  <button class="ghost" formaction="/stock/save" formnovalidate title="Save this product so you can pick it again">Save product</button>
+</form>
+
+{% if unsupported %}<div class="banner" style="border-color:rgba(255,138,61,.45);background:rgba(255,138,61,.08)">
+<span><b>{{unsupported[0]}}:</b> {{unsupported[2]}} <a href="{{form.product if form.product.startswith('http') else unsupported[1]}}" target="_blank" rel="noopener">Open {{unsupported[0]}}</a></span></div>
+{% elif error %}<div class="banner" style="border-color:rgba(255,107,122,.45);background:rgba(255,107,122,.08)"><span>{% if blocked %}<b>Blocked:</b> {% endif %}{{error}}</span></div>{% endif %}
+
+{% if result %}
+<div class="panel">
+  <div class="st-head">
+    <div class="st-prod">{% if current and current.image %}<img src="{{current.image}}" alt="">{% endif %}
+      <h3 style="margin:0"><a href="{{(current and current.link) or result.link}}" target="_blank" rel="noopener">{{(current and current.name) or result.title}}</a> · {{retailers[result.retailer]}}{% if current and current.price %} · <span class="sp-price" style="text-transform:none">{{current.price}}</span>{% endif %}</h3></div>
+    {% if current %}<span class="pill">Saved</span>{% else %}<form method="post" action="/stock/save" style="margin:0">
+      <input type="hidden" name="retailer" value="{{result.retailer}}"><input type="hidden" name="product" value="{{result.product_id}}">
+      <input type="hidden" name="zip" value="{{result.zip}}"><input type="hidden" name="radius" value="{{result.radius}}">
+      <button class="ghost" style="padding:4px 12px;font-size:12px">Save product</button></form>{% endif %}
+    <span class="pill {{'s-in' if result.in_stock else 's-out'}}">{{result.in_stock}} store{{'' if result.in_stock == 1 else 's'}} in stock</span>
+    <label class="muted" style="display:flex;align-items:center;gap:6px">Recheck
+      <select id="recheck" style="margin:0">{% for m in recheck_choices %}<option value="{{m}}" {{'selected' if form.recheck == m}}>{{'Off' if m == 0 else 'every ' ~ m ~ ' min'}}</option>{% endfor %}</select></label>
+  </div>
+  <p class="muted" style="margin:0 0 12px">Within {{result.radius}} miles of {{result.zip}}, checked at {{result.checked}}.
+  {% if result.via_site %}From bestbuy.com's pickup lookup.{% endif %}
+  {% if result.only_in_stock %}Best Buy only lists stores that have it, and gives a low-stock flag rather than a count.{% endif %}
+  <span id="nextcheck"></span></p>
+  {% if result.stores %}
+  <table class="st-table"><thead><tr><th>Store</th><th>Address</th><th class="num">Miles</th><th>Stock</th>{% if result.quantities %}<th class="num">Qty</th>{% endif %}</tr></thead><tbody>
+  {% for s in result.stores %}<tr class="{{'' if s.in_stock else 'out'}}">
+    <td>{{s.name}}{% if s.store_id %} <span class="muted" style="font-size:12px">#{{s.store_id}}</span>{% endif %}</td>
+    <td>{{s.address}}</td>
+    <td class="num">{{'%.1f'|format(s.distance) if s.distance is not none else '-'}}</td>
+    <td><span class="pill {{'s-in' if s.in_stock else 's-out'}}">{{'In stock' if s.in_stock else 'Out of stock'}}</span>
+      {% if s.new %}<span class="pill s-new">New</span>{% endif %}
+      {% if s.note %}<span class="muted" style="font-size:12px">{{s.note}}</span>{% endif %}</td>
+    {% if result.quantities %}<td class="num qty">{{s.quantity if s.quantity is not none else '-'}}</td>{% endif %}
+  </tr>{% endfor %}</tbody></table>
+  {% else %}<p class="muted">No store within {{result.radius}} miles has it right now.</p>{% endif %}
+  {% if result.quantities %}<p class="muted" style="font-size:12px;margin:10px 0 0">Quantities are what Target's system expects to have on the shelf; they can be off by a few.</p>{% endif %}
+</div>
+{% endif %}
+
+{% if form.retailer == "bestbuy" %}
+<div class="panel">
+  <div class="st-head"><h3>Best Buy API key <span style="text-transform:none;letter-spacing:0">(optional)</span></h3>{% if has_bb_key %}<span class="pill s-in">Saved</span>{% endif %}</div>
+  <p class="muted">{% if has_bb_key %}Best Buy checks use your API key, which also fills in product names, pictures and prices.
+  {% else %}Without a key, BotTrack asks the same pickup lookup bestbuy.com's own page uses. Best Buy's site often holds back requests that
+  don't come from a browser; when it does, that's reported here and BotTrack waits instead of retrying.
+  A key from <a href="https://developer.bestbuy.com/" target="_blank" rel="noopener">developer.bestbuy.com</a> (they currently want a work email) makes checks reliable and adds names, pictures and prices.{% endif %}
+  It's stored only on this Mac.</p>
+  {% if request.args.get('keyerror') %}<p class="bad">That doesn't look like a Best Buy key.</p>{% endif %}
+  <form method="post" action="/stock/bestbuy-key" class="st-form" style="margin:0">
+    <input type="password" name="key" placeholder="{{'Paste a new key to replace it' if has_bb_key else 'Best Buy API key'}}" autocomplete="off">
+    <button class="ghost">Save key</button>
+  </form>
+</div>
+{% endif %}
+
+{% if recent %}
+<div class="panel st-recent">
+  <div class="st-head"><h3>Recent checks</h3></div>
+  {% for r in recent %}<a href="/stock?{{ {'retailer': r.retailer, 'product': r.product, 'zip': r.zip, 'radius': r.radius, 'run': 1}|urlencode }}">
+    <b style="color:var(--text)">{{r.title or r.product[:80]}}</b> <span class="muted">· {{r.name}} · {{r.zip}} · {{r.when}} ·</span>
+    {% if r.error %}<span class="bad">failed</span>{% else %}<span class="{{'ok' if r.in_stock else 'muted'}}">{{r.in_stock}} in stock</span>{% endif %}</a>{% endfor %}
+</div>
+{% endif %}
+
+<script>
+(() => {
+  const form = document.getElementById('stform'), pick = document.getElementById('recheck');
+  if (!pick) return;
+  let timer;
+  const start = mins => {
+    clearTimeout(timer);
+    const label = document.getElementById('nextcheck');
+    if (!mins) { if (label) label.textContent = ''; return; }
+    // Gentle optional recheck: only while this page stays open, never more often than every 15 minutes.
+    const due = Date.now() + Math.max(15, mins) * 60000;
+    const tick = () => {
+      if (label) label.textContent = `Next check in about ${Math.max(Math.round((due - Date.now()) / 60000), 0)} min.`;
+      if (Date.now() >= due) { form.auto.value = '1'; form.submit(); } else timer = setTimeout(tick, 30000);
+    };
+    tick();
+  };
+  pick.addEventListener('change', () => { form.recheck.value = pick.value; start(parseInt(pick.value, 10)); });
+  start(parseInt(form.recheck.value, 10));
+})();
+</script>
+{% endblock %}

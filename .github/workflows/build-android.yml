@@ -1,0 +1,40 @@
+name: Build BotTrack for Android
+on:
+  push:
+    branches: [main, claude/order-tracker-llm, claude/phone-companion]
+    paths: ["android/**", ".github/workflows/build-android.yml"]
+  workflow_dispatch:
+concurrency:
+  group: build-android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest  # has the Android SDK preinstalled
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: "8.14.3"}
+      - name: Signing key from repository secrets (optional; keeps updates installable over older versions)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/beta.keystore"
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/beta.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No ANDROID_KEYSTORE_B64 secret, so this APK uses a throwaway debug key and can't update an older install."
+          fi
+      - name: Build APK
+        working-directory: android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: gradle --no-daemon assembleRelease && cp app/build/outputs/apk/release/app-release.apk ../BotTrack.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BotTrack-apk
+          path: BotTrack.apk
+          retention-days: 30

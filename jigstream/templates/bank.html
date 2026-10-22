@@ -1,0 +1,122 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.phead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.phead h2{margin:0;flex:1}
+.cols{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:20px}
+.panel h3{margin:0 0 10px}.panel form{margin:0}.panel p{font-size:13px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs a{padding:5px 12px;border-radius:999px;border:1px solid var(--line-2);color:var(--muted)}
+.tabs a.on{color:var(--accent);background:var(--accent-soft);border-color:rgba(61,216,239,.35)}
+.acct{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}.acct:last-child{border:0}
+.acct .grow{flex:1}.acct form{margin:0}.acct button{padding:3px 10px;font-size:12px}
+td{vertical-align:middle}.m{font-size:13px}.acts{display:flex;gap:4px;flex-wrap:wrap}.acts form{margin:0}.acts button{padding:4px 10px;font-size:12px}
+.refund{color:var(--green)}
+dialog{background:var(--surface);color:var(--text);border:1px solid var(--line-2);border-radius:16px;padding:0;width:min(640px,94vw);box-shadow:0 30px 80px rgba(0,0,0,.5)}
+dialog::backdrop{background:rgba(5,10,30,.7);backdrop-filter:blur(3px)}
+dialog .dh{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--line)}
+dialog .dh h3{margin:0;color:var(--text);text-transform:none;letter-spacing:0;font-size:17px}
+dialog .x{background:none;border:0;color:var(--muted);font-size:20px;padding:2px 8px;box-shadow:none}
+dialog .db{padding:16px 22px;max-height:60vh;overflow:auto}dialog form{display:block;margin:0}
+.opt{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
+.opt .grow{flex:1}.opt button{padding:4px 12px;font-size:12px}
+@media (max-width:900px){.cols{grid-template-columns:1fr}}
+</style>
+<div class="phead"><h2>Bank &amp; card charges</h2><a href="/expenses" class="muted">← Expenses</a></div>
+<div class="stats">
+<div class="card">Charges <b>{{stats.charges}}</b></div>
+<div class="card ok">Matched to orders <b>{{stats.orders}}</b></div>
+<div class="card ok">Matched to receipts <b>{{stats.expenses}}</b></div>
+<div class="card{{' bad' if stats.unmatched}}">Not matched <b>{{stats.unmatched}}</b></div>
+<div class="card">Total spent <b>{{stats.spent|money}}</b></div></div>
+
+<div class="cols">
+<div class="panel"><h3>Import statement files</h3>
+<p class="muted">On your bank or card website, open the account's activity, choose Download (or Export), and pick
+<b>CSV</b>, or <b>Quicken / QFX</b> or <b>OFX</b> if offered. Add as many files as you like; charges already imported are skipped.</p>
+<form method="post" action="/bank/import" enctype="multipart/form-data">
+<input type="file" name="files" multiple accept=".csv,.ofx,.qfx,.qbo,.txt" required><br>
+<input name="account" placeholder="Account name, e.g. Chase Sapphire 1234" size="34">
+<select name="charges" title="Only matters for CSV files with a single Amount column">
+<option value="auto">Charges: detect automatically</option><option value="negative">Charges show as negative (-12.00)</option>
+<option value="positive">Charges show as positive (12.00)</option></select>
+<button>Import</button></form>
+{% if accounts %}<h3 style="margin-top:16px">Accounts</h3>{% for a in accounts %}<div class="acct">
+<a href="/bank?account={{a.id}}" class="grow{{' on' if account == a.id}}">{{a.name}}</a>
+<span class="muted">{{a.count}} · {{a.first or ""}} to {{a.last or ""}}{% if a.source == "plaid" %} · Plaid{% endif %}</span>
+{% if a.source != "plaid" %}<form method="post" action="/bank/accounts/{{a.id}}/delete" onsubmit="return confirm('Remove {{a.name|e}} and its imported transactions?')"><button class="danger">Remove</button></form>{% endif %}
+</div>{% endfor %}{% endif %}</div>
+
+<div class="panel"><h3>Live bank sync <span class="muted" style="text-transform:none;letter-spacing:0">optional</span></h3>
+{% if plaid.configured %}
+{% for i in items %}<div class="acct"><span class="grow">{{i.institution}}</span>
+<span class="muted">{{("synced " ~ i.last_synced_at[:16]|replace("T", " ")) if i.last_synced_at else "not synced yet"}}</span></div>
+{% if i.error %}<p class="bad">{{i.error}}</p>{% endif %}{% endfor %}
+<p class="muted">{{plaid_state.last or ("Syncs every few hours on its own." if items else "No bank linked yet.")}}</p>
+{% if items %}<form method="post" action="/bank/plaid/sync" style="display:inline-block"><button {{"disabled" if plaid_state.running}}>Sync banks now</button></form>{% endif %}
+<a href="/bank/plaid" style="margin-left:10px">{{"Link or manage banks" if items else "Link a bank"}}</a>
+{% else %}
+<p class="muted">With your own free Plaid developer keys, BotTrack can pull card and bank charges by itself every few hours,
+instead of you downloading files. It takes about 10 minutes to set up.</p>
+<a href="/bank/plaid">Set up live sync →</a>{% endif %}</div>
+</div>
+
+<div class="phead" style="margin-top:8px"><div class="tabs">{% for s in shows %}
+<a href="/bank?show={{s}}{{('&account=' ~ account) if account}}" class="{{'on' if show == s}}">{{s|title}}</a>{% endfor %}
+{% if account %}<a href="/bank?show={{show}}">All accounts ✕</a>{% endif %}</div>
+<input id="q" placeholder="Search description or store" size="30" style="margin:0">
+<form method="post" action="/bank/rematch" class="ghost" style="margin:0"><button>Match again</button></form></div>
+<table><thead><tr><th>Date</th><th>Description</th><th>Account</th><th>Amount</th><th>Paid for</th><th></th></tr></thead><tbody>
+{% for t in rows %}<tr data-f="">
+<td>{{t.date}}{% if t.pending %} <span class="pill">pending</span>{% endif %}</td>
+<td><b>{{t.description}}</b>{% if t.category %}<div class="muted m">{{t.category}}</div>{% endif %}</td>
+<td class="muted m">{{t.account_name or ""}}</td>
+<td class="num{{' refund' if t.amount < 0}}">{{(-t.amount)|money(t.currency) if t.amount < 0 else t.amount|money(t.currency)}}{% if t.amount < 0 %}<div class="muted m">refund / payment</div>{% endif %}</td>
+<td class="m">{% if t.match_kind == "order" %}<a href="/orders#order-{{t.match_id}}">{{t.order_retailer}} {{t.order_number or ""}}</a>
+{% if t.order_status %}<span class="pill s-{{t.order_status}}">{{t.order_status|status_label}}</span>{% endif %}
+{% elif t.match_kind == "expense" %}<a href="/expenses">{{t.expense_vendor}}</a> <span class="muted">{{(t.expense_category or "")|replace("_", " ")}}</span>
+{% elif t.match_how == "ignored" %}<span class="muted">Ignored</span>{% elif t.amount > 0 %}<span class="muted">Not matched</span>{% endif %}
+{% if t.match_how == "auto" %}<div class="muted m">matched automatically</div>{% endif %}</td>
+<td><div class="acts">
+{% if t.amount > 0 %}<button type="button" class="ghost" onclick="openMatch({{t.id}})">{{"Change" if t.match_kind else "Match"}}</button>{% endif %}
+{% if t.match_kind %}<form method="post" action="/bank/{{t.id}}/match"><input type="hidden" name="action" value="unmatch"><button class="ghost">Unmatch</button></form>
+{% elif t.match_how == "ignored" or t.match_how == "manual" %}<form method="post" action="/bank/{{t.id}}/match"><input type="hidden" name="action" value="auto"><button class="ghost">Auto-match</button></form>
+{% elif t.amount > 0 %}<form method="post" action="/bank/{{t.id}}/match"><input type="hidden" name="action" value="ignore"><button class="ghost" title="Not a purchase you track (groceries, rent...)">Ignore</button></form>{% endif %}
+</div></td></tr>
+{% else %}<tr><td colspan="6" class="muted">{{"No charges here." if stats.n else "No charges yet. Import a statement file above, or set up live sync."}}</td></tr>{% endfor %}
+</tbody></table>
+{% if rows|length >= 2000 %}<p class="muted">Showing the newest 2,000. Pick an account or a tab to narrow it down.</p>{% endif %}
+
+<dialog id="matchdlg"><div class="dh"><h3 id="mtitle">Match charge</h3><button class="x" onclick="matchdlg.close()">×</button></div>
+<div class="db"><p class="muted" id="msub"></p>
+<input id="msearch" placeholder="Search another store, order number or amount" style="width:100%;margin:0 0 12px">
+<div id="mopts"></div>
+<h3 style="margin-top:16px">Or add it as a botting expense</h3>
+<p class="muted">For a proxy, bot or server charge that never sent an email receipt.</p>
+<form method="post" id="mexp"><input type="hidden" name="action" value="expense">
+<input name="vendor" id="mvendor" placeholder="Vendor" size="22"><select name="category">{% for c in categories %}<option value="{{c}}">{{c|replace("_", " ")}}</option>{% endfor %}</select>
+<button>Add expense</button></form></div></dialog>
+<script>
+const matchdlg = document.getElementById('matchdlg');
+let current = null, timer = null;
+function money(n) { return '$' + Number(n || 0).toFixed(2); }
+function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+function load(q) {
+  fetch('/bank/' + current + '/candidates' + (q ? '?q=' + encodeURIComponent(q) : '')).then(r => r.json()).then(d => {
+    document.getElementById('mtitle').textContent = d.description;
+    document.getElementById('msub').textContent = d.date + ' · ' + money(d.amount) + (q ? '' : ' · orders and receipts of this amount near this date:');
+    if (!document.getElementById('mvendor').value) document.getElementById('mvendor').value = d.description;
+    document.getElementById('mopts').innerHTML = d.options.length ? d.options.map(o =>
+      `<form method="post" action="/bank/${current}/match" class="opt"><input type="hidden" name="action" value="match">
+       <input type="hidden" name="target" value="${o.kind}:${o.id}"><span class="grow"><b>${esc(o.name)}</b> <span class="muted">${esc(o.ref || '')}</span><br>
+       <span class="muted">${o.kind === 'order' ? 'Order' : 'Botting receipt'} · ${esc(o.day || '')} · ${money(o.amount)}${o.named ? ' · name matches' : ''}</span></span>
+       <button>Match</button></form>`).join('') : '<p class="muted">Nothing found. Try searching by store name or amount.</p>';
+  });
+}
+function openMatch(id) {
+  current = id; document.getElementById('msearch').value = ''; document.getElementById('mvendor').value = '';
+  document.getElementById('mexp').action = '/bank/' + id + '/match'; load(''); matchdlg.showModal();
+}
+document.getElementById('msearch').addEventListener('input', e => { clearTimeout(timer); timer = setTimeout(() => load(e.target.value.trim()), 250); });
+const q = document.getElementById('q');
+q.addEventListener('input', () => { const t = q.value.toLowerCase();
+  document.querySelectorAll('tbody tr[data-f]').forEach(tr => tr.style.display = tr.textContent.toLowerCase().includes(t) ? '' : 'none'); });
+</script>
+{% endblock %}

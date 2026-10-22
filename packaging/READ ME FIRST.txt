@@ -1,0 +1,30 @@
+BotTrack
+========
+
+Install
+1. Drag BotTrack into the Applications folder.
+2. Open BotTrack. The first time, macOS may say it can't check the app for malware, because it
+   isn't sold through Apple. Open System Settings > Privacy & Security, scroll down, click
+   "Open Anyway", and confirm. You only do this once.
+3. The first launch gets the AI model ready (about 9 GB, downloaded once; if you already had it
+   in Ollama, it's reused). The top of the window shows progress.
+4. On the Setup page, add each Gmail inbox with an app password, and optionally connect Discord.
+   The page explains both.
+
+How it runs
+Everything BotTrack uses is inside the app, including its own AI engine; nothing else needs
+installing. While BotTrack is open it checks your inboxes (including Spam) and Discord channels
+every 4 hours, and checks for app updates. Closing the window stops it.
+
+Your data, settings, logs and the AI model are kept in one folder:
+~/Library/Application Support/BotTrack
+Your email is read only on this Mac. Nothing is sent anywhere except the connections to Gmail,
+Discord and GitHub (for updates).
+
+Updates: Setup > Updates has "Check for update" and "Update now", plus "Undo last update".
+
+Remove: drag BotTrack from Applications to the Trash. To also delete your data and the AI model,
+delete the folder above.
+
+Moving from the old Order Tracker: just open BotTrack. It brings your inboxes, settings and order
+history over and removes the old background service and shortcut by itself.

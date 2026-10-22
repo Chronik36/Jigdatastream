@@ -1,0 +1,21 @@
+<h3 id="phone">Phone access</h3>
+<p>See and edit your orders, expenses and profiles from your iPhone or Android phone. Your phone talks straight to this Mac,
+so nothing goes through anyone's server, and it only works while BotTrack is open here.</p>
+<ol class="muted">
+<li>Install the free <a href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a> app on this Mac and on your phone, and sign in to both with the same account. It connects them privately and works away from home.</li>
+<li>Turn phone access on below, choose the email and password you'll sign in with, then restart BotTrack. macOS may ask whether BotTrack can accept incoming connections: choose Allow.</li>
+<li>On your phone, open the address shown below in Safari or Chrome, sign in, and use Add to Home Screen.</li></ol>
+<form method="post" action="{{url_for('mobile.save_setup')}}" style="display:block" class="panel">
+<input type="hidden" name="csrf" value="{{csrf_token()}}">
+<label><input type="checkbox" name="on" {{"checked" if phone.on}}> Let my phones connect</label><br>
+<input type="email" name="email" value="{{phone.email}}" placeholder="Email to sign in with" size="30" autocomplete="off">
+<input type="password" name="password" placeholder="{{'New password (leave blank to keep)' if phone.password_hash else 'Password, 10+ characters'}}" size="30" autocomplete="new-password"><br>
+<label><input type="checkbox" name="allow_lan" {{"checked" if phone.allow_lan}}> Also allow phones on the same Wi-Fi without Tailscale <span class="muted">(less private: traffic on your Wi-Fi isn't encrypted)</span></label><br>
+<button>Save</button></form>
+{% if phone_needs_restart %}<form method="post" action="{{url_for('mobile.restart')}}" class="banner" style="display:flex"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+<span>Restart BotTrack to turn phone access {{"on" if phone.on else "off"}}.</span><span style="flex:1"></span><button>Restart now</button></form>
+{% elif phone.on %}<div class="panel"><b>Open this on your phone:</b>
+{% for u in phone_tailscale %}<div style="font:600 17px ui-monospace,Menlo,monospace;margin:8px 0;user-select:all">{{u}}</div>{% else %}
+<p class="bad">Tailscale isn't connected on this Mac yet. Open Tailscale and sign in, then reload this page.</p>{% endfor %}
+{% if phone.allow_lan %}{% for u in phone_lan %}<div class="muted" style="font-family:ui-monospace,Menlo,monospace">On the same Wi-Fi: <span style="user-select:all">{{u}}</span></div>{% endfor %}{% endif %}
+<p class="muted" style="margin:10px 0 0">Signed-in phones stay signed in for 30 days. Changing the password signs every phone out. Setup, Logs and updates can only be opened on this Mac.</p></div>{% endif %}
