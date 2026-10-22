@@ -123,6 +123,14 @@ def seed(path):
     emailbook.add(c, "Gmail dots", [f"alex.rivera+{n}@example.com" for n in range(1, 7)])
     emailbook.add(c, "Catchall", [f"drop{n}@demo-catchall.com" for n in range(1, 5)])
     c.commit()
+    if has_module("bank"):  # the Bank page, once it's in the app
+        from jigstream import bank
+        rows = ["Transaction Date,Description,Amount", "10/18/2026,NIKE.COM ORDER,-360.00",
+                "10/19/2026,OCULUS PROXIES,-75.00", "10/15/2026,FOOT LOCKER 0412,-149.99",
+                "10/12/2026,BEST BUY 00012345,-699.99", "10/20/2026,TARGET.COM,-219.96",
+                "10/02/2026,VULTR HOLDINGS,-24.00", "10/14/2026,HEB GROCERY,-86.41", "10/16/2026,DIGITALOCEAN,-12.00"]
+        bank.import_file(c, "activity.csv", "\n".join(rows).encode(), "Chase Sapphire 1234")
+        bank.auto_match(c)
     logs = WORK / "logs"
     logs.mkdir(exist_ok=True)
     (logs / "app.log").write_text(
@@ -265,9 +273,17 @@ def update_reset(app):
     updater.state.update({"available": False, "message": ""})
 
 
-def has_phone():
+def has_module(name):
     import importlib.util
-    return importlib.util.find_spec("jigstream.mobile") is not None
+    return importlib.util.find_spec(f"jigstream.{name}") is not None
+
+
+def has_phone():
+    return has_module("mobile")
+
+
+def has_bank():
+    return has_module("bank")
 
 
 def phone_login(page):
@@ -288,10 +304,10 @@ def phone_login(page):
 
 TOP = {"x": 0, "y": 0, "width": 1360, "height": 150}
 shot("nav", "/orders", [(".side a.it[href='/']", 1), (".side a[href='/orders']", 2), (".side a[href='/inbox']", 3),
-                        (".side a[href='/expenses']", 4), (".side a[href='/training']", 5), (".side a[href='/checkouts']", 6),
-                        (".side a[href='/profiles']", 7), (".side a[href='/cards']", 8), (".side a[href='/emails']", 9),
-                        (".aicard", 10), (".side a[href='/manual']", 11), (".side a[href='/logs']", 12),
-                        (".side a[href='/setup']", 13), (".collapse", 14), (".crumb", 15)],
+                        (".side a[href='/expenses']", 4), (".side a[href='/bank']", 5), (".side a[href='/training']", 6),
+                        (".side a[href='/checkouts']", 7), (".side a[href='/profiles']", 8), (".side a[href='/cards']", 9),
+                        (".side a[href='/emails']", 10), (".aicard", 11), (".side a[href='/manual']", 12),
+                        (".side a[href='/logs']", 13), (".side a[href='/setup']", 14), (".collapse", 15), (".crumb", 16)],
      tight=True, clip={"x": 0, "y": 0, "width": 560, "height": 860})
 shot("ai-banner", "/orders", [("#aibar", 1)], server=ai_loading, reset=lambda app: app.config.pop("AI_STATE", None), clip=TOP)
 shot("update-banner", "/orders", [(".top .chip.upd", 1), (".banner button", 2)], server=update_ready, reset=update_reset, clip=TOP)
@@ -345,6 +361,10 @@ shot("setup-compare", "/setup", [("form[action='/setup/compare']", 1), ("td@Best
 shot("training", "/training", [("a[href='/training/export'] button", 1), ("tbody tr td:nth-child(2)", 2),
                                ("tbody tr td:nth-child(3)", 3), ("tbody tr button.danger", 4)])
 shot("logs", "/logs", [("main > p:nth-of-type(2) a", 1), ("a[href='/logs/download'] button", 2), ("main pre", 3)])
+shot("bank", "/bank", [(".stats", 1), ("form[action='/bank/import']", 2), ("a[href='/bank/plaid']", 3),
+                       (".tabs", 4), ("tbody tr td:nth-child(5)", 5), ("tbody tr .acts", 6)],
+     viewport={"width": 1360, "height": 1200}, needs=has_bank)
+shot("bank-plaid", "/bank/plaid", [(".panel:has(select[name=env])", 1), ("select[name=env]", 2)], needs=has_bank)
 shot("setup-phone", "/setup", [("input[name=on]", 1), ("input[name=email][type=email]", 2),
                                ("input[name=allow_lan]", 3)], scroll="h3@Phone access", needs=has_phone)
 shot("phone-login", "/m/login", phone=True, needs=has_phone)

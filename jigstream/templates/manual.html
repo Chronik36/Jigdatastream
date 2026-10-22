@@ -97,12 +97,12 @@ You can look around and set things up while it downloads; syncing starts by itse
 <h2>Finding your way around</h2>
 <p>Every page is one click away in the sidebar on the left. The page you're on is highlighted, and its name is shown at the top
 of the page. On a narrow window the sidebar hides behind the <b>☰</b> menu button at the top left.</p>
-<p>The sidebar also has a <b>Bank</b> page for importing bank and card transactions; it gets its own chapter here once it's finished.</p>
 {{ fig("nav", "The sidebar.", [
   "Dashboard: checkout totals, imports, and profiles that keep failing.",
   "Orders: every order found in your email, with tracking and status.",
   "Inbox: read your Gmail inside BotTrack and teach the AI.",
   "Expenses: what you spend on botting (proxies, bots, groups, servers).",
+  "Bank: which order or receipt each card charge paid for.",
   "Training: emails the AI learned from. Only shown while Training mode is on.",
   "Checkouts: every checkout your bots reported.",
   "Profiles: your bot profiles, groups, Mass Distribute and export.",
@@ -200,6 +200,51 @@ PayPal or whop.com, it names the actual seller.</p>
 <p>Expenses are found by the same <span class="ui">Sync now</span> as orders, and the Sync buttons are on this page too.
 If a receipt is missing, find it on <a href="#inbox">Inbox</a> and label it <b>Botting expense</b>.</p>
 </section>
+
+{% if "bank.bank_page" in pages %}<section id="bank" data-title="Bank & card charges">
+<h2>Bank &amp; card charges</h2>
+<div class="where">Sidebar → Tracking → <b>Bank</b>, or the link on Expenses</div>
+<p>Shows which order or botting receipt each charge on your cards paid for, so you can see at a glance what you've been charged for and
+spot anything that doesn't belong. Bringing charges in is free, either from statement files or straight from your bank.</p>
+{{ fig("bank", "The Bank & card charges page.", [
+  "Totals: how many charges there are, how many matched an order or a receipt, how many didn't, and the total spent.",
+  "Import statement files: pick the files you downloaded from your bank, give the account a name, and press Import.",
+  "Live bank sync: optional, pulls charges by itself every few hours. See below.",
+  "Tabs: show all charges, only matched ones, only unmatched ones, and so on.",
+  "Paid for: the order or receipt this charge belongs to. 'matched automatically' means BotTrack found it.",
+  "Match, Unmatch, Ignore or Auto-match a charge by hand."]) }}
+<h4 id="bank-import">Importing a statement</h4>
+<ol class="steps">
+<li>On your bank or card website, open the account's activity and choose <b>Download</b> or <b>Export</b>.</li>
+<li>Pick <b>CSV</b>, or <b>Quicken / QFX</b> or <b>OFX</b> if it's offered. Chase, Amex, Capital One, Citi, Discover and most other banks work.</li>
+<li>In BotTrack, choose the file (or several), type a name for the account, and press <span class="ui">Import</span>.</li>
+</ol>
+<p>Importing the same file twice adds nothing, so it's safe to download overlapping months. If the amounts come out the wrong way round,
+import again with <b>Charges show as negative</b> or <b>positive</b> chosen instead of <i>detect automatically</i>.</p>
+<h4 id="bank-matching">How charges are matched</h4>
+<p>A charge is matched when it's the same amount, to the cent, as an order or receipt dated from a week before to two days after it,
+and the store's name is in the bank's description (or it's the only one that fits). When it isn't sure, it leaves the charge for you.</p>
+<ul>
+<li><span class="ui">Match</span> opens a search of your orders and receipts so you can pick the right one.</li>
+<li><span class="ui">Ignore</span> is for charges that have nothing to do with botting, like groceries or rent.</li>
+<li><b>Or add it as a botting expense</b> (in the Match window) is for a proxy, bot or server charge that never sent an email receipt.</li>
+<li><span class="ui">Match again</span> re-checks every charge you haven't decided yourself.</li>
+</ul>
+<div class="tip">A choice you make by hand is never undone by a later import or sync.</div>
+<h4 id="bank-plaid">Live bank sync with Plaid (optional)</h4>
+<p>Instead of downloading files, BotTrack can read charges from your bank by itself through Plaid, the service most finance apps use.
+You make your own free Plaid account, and you sign in to your bank in Plaid's window, so BotTrack never sees your bank password.
+Setting it up takes about 10 minutes.</p>
+<ol class="steps">
+<li>On the Bank page press <span class="ui">Set up live sync →</span>.</li>
+<li>Create a free account at <b>dashboard.plaid.com</b>, open <b>Developers → Keys</b>, and copy the <b>client_id</b> and the <b>Sandbox</b> secret.</li>
+<li>Paste them in, keep <b>Sandbox</b> chosen and press <span class="ui">Save</span>. Try it with Plaid's test bank: username <b>user_good</b>, password <b>pass_good</b>.</li>
+<li>For your real bank, ask for <b>Production</b> access in the Plaid dashboard. Once it's approved, paste the Production secret with Production chosen, then press <span class="ui">Link a bank</span>.</li>
+</ol>
+{{ fig("bank-plaid", "The Plaid setup page.", ["Step 1: the instructions for getting your free keys, and where to paste them.", "Sandbox for the test bank, Production for your real bank."]) }}
+<p>The first pull brings in the last two years of charges, then new ones every few hours. Pending charges wait until they post.
+Your Plaid keys and bank link are stored encrypted on this Mac.</p>
+</section>{% endif %}
 
 <section id="checkouts" data-title="Checkouts">
 <h2>Checkouts</h2>
@@ -355,15 +400,15 @@ each one agreed with you and how many seconds each email took. You need at least
   "Make default: use that model from now on."]) }}
 <div class="warn">Models you haven't downloaded are fetched first (4B about 2.5 GB, 8B about 5 GB, 14B about 9 GB). Ones you don't keep are removed the next time BotTrack opens.</div>
 
-<h4 id="setup-phone">Phone access</h4>
+{% if "mobile.orders" in pages %}<h4 id="setup-phone">Phone access</h4>
 <p>Lets your iPhone or Android phone see and edit orders, expenses and profiles. See <a href="#phone">Using BotTrack on your phone</a>.</p>
 {{ fig("setup-phone", "Setup → Phone access.", [
   "Let my phones connect: turn phone access on or off.",
   "The email and password your phone signs in with (10 or more characters).",
-  "Also allow phones on the same Wi-Fi without Tailscale. Less private, because Wi-Fi traffic isn't encrypted."]) }}
+  "Also allow phones on the same Wi-Fi without Tailscale. Less private, because Wi-Fi traffic isn't encrypted."]) }}{% endif %}
 </section>
 
-<section id="phone" data-title="Using BotTrack on your phone">
+{% if "mobile.orders" in pages %}<section id="phone" data-title="Using BotTrack on your phone">
 <h2>Using BotTrack on your phone <span class="tag">iPhone &amp; Android</span></h2>
 <p>Your phone talks straight to BotTrack on your Mac, so nothing goes through anyone's server and it's free. It only works while BotTrack
 is open on the Mac.</p>
@@ -378,7 +423,7 @@ is open on the Mac.</p>
 {{ fig("phone-expenses", "Expenses on the phone.", phone=True) }}
 {{ fig("phone-profiles", "Profiles on the phone.", phone=True) }}
 <div class="warn">Phones stay signed in for 30 days. Changing the password signs every phone out. Setup, Logs and updates can only be opened on the Mac.</div>
-</section>
+</section>{% endif %}
 
 <section id="training" data-title="Training">
 <h2>Training</h2>
