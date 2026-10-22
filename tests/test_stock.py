@@ -37,7 +37,8 @@ class FakeResp(io.BytesIO):
 
 
 @pytest.fixture(autouse=True)
-def fresh(monkeypatch):
+def fresh(monkeypatch, tmp_path):
+    monkeypatch.setenv("STOCK_SAVED_FILE", str(tmp_path / "saved.json"))
     stock._last_request.clear()
     stock._paused_until.clear()
     stock._results.clear()
@@ -150,3 +151,55 @@ def test_page(monkeypatch, tmp_path):
     assert "St Paul Midway" in page and "1 store in stock" in page and ">7<" in page
     page = client.post("/stock", data={"product": "https://www.walmart.com/ip/123", "zip": "55401"}).data.decode()
     assert "bot protection" in page and "Open Walmart" in page
+
+
+TARGET_PRODUCT = {"data": {"product": {"tcin": "91619929", "price": {"formatted_current_price": "$49.99",
+                                                                     "current_retail": 49.99},
+                                       "item": {"product_description": {"title": "Pok&#233;mon Prismatic Evolutions ETB"},
+                                                "enrichment": {"images": {"primary_image_url": "https://target.scene7.com/x.jpg"}}}}}}
+
+
+def test_save_target_product_with_details(monkeypatch):
+    calls = serve(monkeypatch, lambda url: TARGET_PRODUCT if "pdp_client_v1" in url else TARGET_NEARBY)
+    entry = stock.save_product("target", "https://www.target.com/p/x/-/A-91619929")
+    assert entry["name"] == "Pokémon Prismatic Evolutions ETB" and entry["price"] == "$49.99"
+    assert entry["image"] == "https://target.scene7.com/x.jpg" and entry["id"] == "91619929"
+    assert "pdp_client_v1" in calls[0] and "tcin=91619929" in calls[0]
+    stock.save_product("target", "91619929")  # saving again refreshes, doesn't duplicate
+    assert len(stock.load_saved()) == 1
+    r = stock.check("target", "91619929", "55401", 25)
+    assert r["title"] == "Pokémon Prismatic Evolutions ETB"
+    stock.remove_saved("target", "91619929")
+    assert stock.load_saved() == []
+
+
+def test_save_keeps_product_when_details_fail(monkeypatch):
+    serve(monkeypatch, lambda url: urllib.error.HTTPError(url, 500, "Oops", {}, io.BytesIO(b"")))
+    entry = stock.save_product("target", "91619929")
+    assert entry["id"] == "91619929" and "name" not in entry
+
+
+def test_bestbuy_check_updates_saved_price(monkeypatch):
+    monkeypatch.setenv("BESTBUY_API_KEY", "abcdef123456")
+    price = {"v": 699.99}
+    serve(monkeypatch, lambda url: BB_STORES if "/stores.json" in url else
+          {"products": [{"sku": 6566040, "name": "PlayStation 5 Pro", "salePrice": price["v"],
+                         "image": "https://pisces.bbystatic.com/x.jpg", "url": "https://bestbuy.com/x"}]})
+    assert stock.save_product("bestbuy", "6566040")["price"] == "$699.99"
+    price["v"] = 649.99
+    stock.check("bestbuy", "6566040", "55401", 25)
+    assert stock.find_saved("bestbuy", "6566040")["price"] == "$649.99"
+
+
+def test_saved_products_on_page(monkeypatch, tmp_path):
+    serve(monkeypatch, lambda url: TARGET_PRODUCT if "pdp_client_v1" in url else TARGET_NEARBY)
+    client = create_app(str(tmp_path / "t.db")).test_client()
+    r = client.post("/stock/save", data={"product": "https://www.target.com/p/x/-/A-91619929", "zip": "55401"})
+    assert r.status_code == 302 and "#saved" in r.location
+    page = client.get("/stock").data.decode()
+    assert "Prismatic Evolutions ETB" in page and "$49.99" in page and "x.jpg" in page
+    assert "product=91619929" in page and "run=1" in page
+    client.post("/stock/saved/target/91619929/remove")
+    assert "Prismatic" not in client.get("/stock").data.decode()
+    r = client.post("/stock/save", data={"product": "https://www.walmart.com/ip/1"})
+    assert "error=" in r.location
