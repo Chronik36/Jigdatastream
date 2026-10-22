@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
-from . import analysis, db, discord, logs, parsers, profiles, training
+from . import analysis, db, discord, export, logs, parsers, profiles, training, updater
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES
 from .llm import LLMClient, installed_models
@@ -24,13 +24,18 @@ TRACK_URLS = {
 }
 
 
+PROFILE_FIELDS = ("name", "bot", "first_name", "last_name", "phone", "email",
+                  "ship_address1", "ship_address2", "ship_city", "ship_state", "ship_zip", "ship_country",
+                  "bill_address1", "bill_address2", "bill_city", "bill_state", "bill_zip", "bill_country")
+
+
 def create_app(db_path=None):
     app = Flask(__name__)
     app.secret_key = "local-only"
 
     @app.context_processor
     def nav_flags():
-        return {"config_training": Config.from_env().training_mode}
+        return {"config_training": Config.from_env().training_mode, "update": updater.state}
 
     def con():
         return db.connect(db_path)
@@ -172,8 +177,55 @@ def create_app(db_path=None):
     @app.get("/profiles")
     def profile_list():
         c = con()
-        rows = [(p, analysis.profile_issues(p)) for p in c.execute("SELECT * FROM profiles")]
-        return render_template("profiles.html", rows=rows)
+        rows = [(p, analysis.profile_issues(p), export.same_address(p))
+                for p in c.execute("SELECT * FROM profiles ORDER BY name")]
+        bots = sorted(export.templates(c))
+        return render_template("profiles.html", rows=rows, bots=bots)
+
+    @app.route("/profiles/<path:name>/edit", methods=["GET", "POST"])
+    def profile_edit(name):
+        c = con()
+        p = c.execute("SELECT * FROM profiles WHERE name=?", (name,)).fetchone()
+        if not p:
+            return "Profile not found", 404
+        if request.method == "GET":
+            return render_template("profile_edit.html", p=p, same=export.same_address(p))
+        f = {k: request.form.get(k, "").strip() for k in PROFILE_FIELDS}
+        f["name"] = f["name"] or name
+        if request.form.get("same"):
+            for k in ("address1", "address2", "city", "state", "zip", "country"):
+                f["bill_" + k] = f["ship_" + k]
+        if f["name"] != name and c.execute("SELECT 1 FROM profiles WHERE name=?", (f["name"],)).fetchone():
+            flash(f"There's already a profile called {f['name']}.")
+            return redirect(url_for("profile_edit", name=name))
+        c.execute(f"UPDATE profiles SET {', '.join(k + '=?' for k in PROFILE_FIELDS)} WHERE name=?",
+                  [f[k] for k in PROFILE_FIELDS] + [name])
+        c.commit()
+        logger.info("profile %s edited", f["name"])
+        flash(f"Saved {f['name']}.")
+        return redirect(url_for("profile_list"))
+
+    @app.post("/profiles/<path:name>/delete")
+    def profile_delete(name):
+        c = con()
+        c.execute("DELETE FROM profiles WHERE name=?", (name,))
+        c.commit()
+        flash(f"Deleted {name}.")
+        return redirect(url_for("profile_list"))
+
+    @app.post("/profiles/export")
+    def profile_export():
+        c = con()
+        bot = request.form.get("bot", "")
+        names = request.form.getlist("names")
+        rows = c.execute("SELECT * FROM profiles ORDER BY name").fetchall()
+        rows = [r for r in rows if not names or r["name"] in names]
+        fmt, template = export.templates(c).get(bot, ("json", export.GENERIC))
+        texts = [f.read().decode("utf-8", "replace") for f in request.files.getlist("cards") if f.filename]
+        ext, text = export.export(rows, fmt, template, export.cards_from(texts))
+        logger.info("exported %d profiles for %s (%d card files used)", len(rows), bot or "generic", len(texts))
+        return Response(text, mimetype="text/csv" if ext == "csv" else "application/json",
+                        headers={"Content-Disposition": f"attachment; filename={export.slug(bot or 'generic')}-profiles.{ext}"})
 
     @app.post("/upload/<kind>")
     def upload(kind):
@@ -234,7 +286,9 @@ def create_app(db_path=None):
         return render_template("setup.html", accounts=[a for a, _ in config.accounts], config=config,
                                models=models, synced={a["address"]: a for a in Store(con()).accounts()},
                                bot=bot, bot_id=bot_id, channels=channels, discord_error=discord_error,
-                               chosen=set(config.discord_channel_ids), channel_states=discord.channel_states(con()))
+                               chosen=set(config.discord_channel_ids), channel_states=discord.channel_states(con()),
+                               version=updater.installed_version(), update_settings=updater.settings(),
+                               can_update=updater.can_self_update(), backups=updater.backups())
 
     @app.post("/setup/discord/token")
     def set_discord_token():
@@ -318,5 +372,50 @@ def create_app(db_path=None):
     def download_logs():
         return Response(logs.zip_logs(), mimetype="application/zip",
                         headers={"Content-Disposition": "attachment; filename=order-tracker-logs.zip"})
+
+    @app.post("/update/check")
+    def update_check():
+        s = updater.check()
+        if s["error"]:
+            flash(f"Couldn't check for updates: {s['error']}")
+        elif s["available"]:
+            flash("An update is available. Press Update now to install it.")
+        else:
+            flash("You're on the latest version.")
+        return redirect(request.referrer or url_for("setup"))
+
+    @app.post("/update/install")
+    def update_install():
+        if not updater.can_self_update():
+            flash("This copy runs from a git checkout, so it doesn't update itself. Use git pull.")
+            return redirect(url_for("setup"))
+        if sync_state["running"]:
+            flash("A sync is running. Try the update again when it finishes.")
+            return redirect(request.referrer or url_for("setup"))
+        try:
+            updater.install()
+        except Exception as e:
+            logger.exception("update failed")
+            flash(f"Update failed, nothing was changed: {e}")
+            return redirect(url_for("setup"))
+        updater.restart_soon()
+        return render_template("restarting.html", what="Updated")
+
+    @app.post("/update/rollback")
+    def update_rollback():
+        try:
+            updater.rollback()
+        except Exception as e:
+            flash(f"Couldn't go back: {e}")
+            return redirect(url_for("setup"))
+        updater.restart_soon()
+        return render_template("restarting.html", what="Restored the previous version")
+
+    @app.post("/setup/github")
+    def set_github_token():
+        save_env({"GITHUB_TOKEN": request.form.get("token", "").strip()})
+        updater.check()
+        flash("GitHub token saved." if not updater.state["error"] else f"Saved, but the check failed: {updater.state['error']}")
+        return redirect(url_for("setup") + "#updates")
 
     return app

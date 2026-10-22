@@ -21,6 +21,8 @@ def secrets():
     words = [pw for _, pw in parse_accounts(os.environ.get("GMAIL_ACCOUNTS", ""))]
     if os.environ.get("DISCORD_BOT_TOKEN"):
         words.append(os.environ["DISCORD_BOT_TOKEN"].strip())
+    if os.environ.get("GITHUB_TOKEN"):
+        words.append(os.environ["GITHUB_TOKEN"].strip())
     if os.environ.get("GMAIL_APP_PASSWORD"):
         words.append(os.environ["GMAIL_APP_PASSWORD"].replace(" ", ""))
     return [w for w in words if len(w) >= 6]

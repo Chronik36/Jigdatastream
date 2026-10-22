@@ -1,16 +1,81 @@
-<!doctype html><html><head><meta charset="utf-8"><title>Jigdatastream</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order Tracker</title><link rel="icon" href="{{url_for('static', filename='icon.png')}}">
 <style>
-body{font:14px system-ui;margin:0;background:#111;color:#e8e8e8}
-nav{background:#1c1c1c;padding:10px 20px}nav a{color:#9cf;margin-right:16px;text-decoration:none}
-main{padding:20px;max-width:1200px;margin:auto}
-table{border-collapse:collapse;width:100%;margin-bottom:24px}td,th{border-bottom:1px solid #333;padding:6px 8px;text-align:left}
-.ok{color:#6d6}.bad{color:#f66}.card{background:#1c1c1c;padding:12px 16px;border-radius:8px;display:inline-block;margin-right:12px}
-form{display:inline-block;margin-right:20px}.flash{background:#243;padding:8px;margin-bottom:12px}
-td.num{text-align:right;font-variant-numeric:tabular-nums}.muted{color:#999}a{color:#9cf}
-ul.items{margin:0;padding-left:16px}.pill{border:1px solid currentColor;border-radius:999px;padding:1px 8px;font-size:12px;white-space:nowrap}
-.s-delivered{color:#6d6}.s-shipped,.s-in_transit,.s-out_for_delivery{color:#9cf}.s-cancelled,.s-returned,.s-refunded{color:#f66}
-.s-ordered,.s-processing{color:#fb5}.s-unknown{color:#999}
-input[type=text],input[type=email],input[type=password],select{background:#1c1c1c;color:#e8e8e8;border:1px solid #333;padding:5px 8px;margin:0 8px 12px 0}
+@font-face{font-family:Inter;font-weight:400;font-display:swap;src:url("{{url_for('static', filename='fonts/inter-400.woff2')}}") format("woff2")}
+@font-face{font-family:Inter;font-weight:500;font-display:swap;src:url("{{url_for('static', filename='fonts/inter-500.woff2')}}") format("woff2")}
+@font-face{font-family:Inter;font-weight:600;font-display:swap;src:url("{{url_for('static', filename='fonts/inter-600.woff2')}}") format("woff2")}
+@font-face{font-family:Inter;font-weight:700;font-display:swap;src:url("{{url_for('static', filename='fonts/inter-700.woff2')}}") format("woff2")}
+:root{
+  --bg:#09090b;--surface:#121214;--surface-2:#18181b;--line:#232327;--line-2:#2e2e34;
+  --text:#ececee;--muted:#8b8b94;--gold:#d4af37;--gold-2:#f0cf65;--gold-soft:rgba(212,175,55,.12);
+  --green:#4ade80;--red:#f87171;--sky:#7dd3fc;--amber:#fbbf24;--radius:14px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;font-feature-settings:"cv11","ss01"}
+a{color:var(--gold);text-decoration:none}a:hover{color:var(--gold-2)}
+nav{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:4px;padding:12px 28px;
+  background:rgba(9,9,11,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+nav .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em;color:var(--text);margin-right:20px;font-size:15px}
+nav a.nl{color:var(--muted);padding:6px 12px;border-radius:999px;font-weight:500;transition:color .15s,background .15s}
+nav a.nl:hover{color:var(--text);background:var(--surface-2)}
+nav a.nl.on{color:var(--gold);background:var(--gold-soft)}
+nav .grow{flex:1}
+main{padding:28px;max-width:1280px;margin:auto}
+h2{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:4px 0 18px}
+h3{font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:32px 0 12px}
+p{margin:0 0 12px}ol{padding-left:20px}li{margin-bottom:4px}
+.muted{color:var(--muted)}.ok{color:var(--green)}.bad{color:var(--red)}
+/* stat tiles */
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;color:var(--muted);font-size:12px;
+  font-weight:500;letter-spacing:.04em;text-transform:uppercase;display:inline-block;margin:0 10px 10px 0;min-width:170px}
+.stats .card{margin:0;display:block}
+.card b{display:block;color:var(--text);font-size:26px;font-weight:700;letter-spacing:-.02em;text-transform:none;margin-top:4px;font-variant-numeric:tabular-nums}
+.card.ok b{color:var(--green)}.card.bad b{color:var(--red)}
+/* panels and tables */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:20px}
+table{border-collapse:separate;border-spacing:0;width:100%;margin-bottom:24px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+th{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);background:var(--surface-2);text-align:left;padding:11px 14px;border-bottom:1px solid var(--line)}
+td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}tbody tr:hover td{background:rgba(255,255,255,.015)}
+td.num{text-align:right;font-variant-numeric:tabular-nums}td:first-child{white-space:nowrap}
+ul.items{margin:0;padding-left:16px}
+.pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:500;white-space:nowrap;background:var(--surface-2);border:1px solid var(--line-2)}
+.s-delivered{color:var(--green);background:rgba(74,222,128,.08);border-color:rgba(74,222,128,.25)}
+.s-shipped,.s-in_transit,.s-out_for_delivery{color:var(--sky);background:rgba(125,211,252,.08);border-color:rgba(125,211,252,.25)}
+.s-cancelled,.s-returned,.s-refunded,.s-exception{color:var(--red);background:rgba(248,113,113,.08);border-color:rgba(248,113,113,.25)}
+.s-ordered,.s-processing{color:var(--gold);background:var(--gold-soft);border-color:rgba(212,175,55,.3)}
+.s-unknown{color:var(--muted)}
+/* forms */
+form{display:inline-block;margin:0 12px 12px 0}
+input[type=text],input[type=email],input[type=password],input:not([type]),select{font:inherit;background:var(--surface-2);color:var(--text);
+  border:1px solid var(--line-2);border-radius:10px;padding:8px 12px;margin:0 8px 10px 0;outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft)}
+input[type=file]{font:inherit;color:var(--muted);margin:0 8px 10px 0}
+input[type=file]::file-selector-button{font:inherit;background:var(--surface-2);color:var(--text);border:1px solid var(--line-2);border-radius:10px;padding:6px 12px;margin-right:10px;cursor:pointer}
+input[type=checkbox]{accent-color:var(--gold)}
+button{font:inherit;font-weight:600;cursor:pointer;border-radius:10px;padding:8px 16px;border:1px solid var(--gold);
+  background:linear-gradient(180deg,var(--gold-2),var(--gold));color:#141006;transition:filter .15s,transform .05s}
+button:hover{filter:brightness(1.08)}button:active{transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:default;filter:none}
+button.ghost,form.ghost button{background:transparent;color:var(--text);border-color:var(--line-2)}
+button.ghost:hover,form.ghost button:hover{border-color:var(--gold);color:var(--gold)}
+button.danger{background:transparent;color:var(--red);border-color:rgba(248,113,113,.4)}
+.flash{background:var(--gold-soft);border:1px solid rgba(212,175,55,.35);color:var(--gold-2);border-radius:12px;padding:10px 14px;margin-bottom:16px}
+.banner{display:flex;align-items:center;gap:12px;background:linear-gradient(90deg,rgba(212,175,55,.16),rgba(212,175,55,.04));
+  border:1px solid rgba(212,175,55,.35);border-radius:12px;padding:10px 14px;margin-bottom:16px}
+.banner form{margin:0}
+pre{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
 </style></head><body>
-<nav><a href="/">Dashboard</a><a href="/checkouts">Checkouts</a><a href="/profiles">Profiles</a><a href="/orders">Orders</a><a href="/expenses">Botting expenses</a><a href="/setup">Setup</a>{% if config_training %}<a href="/training">Training</a>{% endif %}<a href="/logs">Logs</a></nav>
-<main>{% for m in get_flashed_messages() %}<div class="flash">{{m}}</div>{% endfor %}{% block body %}{% endblock %}</main></body></html>
+{% set path = request.path %}
+<nav><span class="brand"><img src="{{url_for('static', filename='icon.png')}}" alt="" width="26" height="26" style="margin:-4px">Order Tracker</span>
+{% for href, label in [("/", "Dashboard"), ("/orders", "Orders"), ("/expenses", "Expenses"), ("/checkouts", "Checkouts"), ("/profiles", "Profiles")] + ([("/training", "Training")] if config_training else []) %}
+<a class="nl{{' on' if (path == href if href == '/' else path.startswith(href))}}" href="{{href}}">{{label}}</a>{% endfor %}
+<span class="grow"></span>
+<a class="nl{{' on' if path.startswith('/logs')}}" href="/logs">Logs</a>
+<a class="nl{{' on' if path.startswith('/setup')}}" href="/setup">Setup{% if update and update.available %} <span style="color:var(--gold)">●</span>{% endif %}</a></nav>
+<main>
+{% if update and update.available and not path.startswith('/setup') %}<div class="banner"><span>A new version of Order Tracker is ready{% if update.message %}: <span class="muted">{{update.message}}</span>{% endif %}</span><span class="grow" style="flex:1"></span>
+<form method="post" action="/update/install"><button>Update now</button></form></div>{% endif %}
+{% for m in get_flashed_messages() %}<div class="flash">{{m}}</div>{% endfor %}{% block body %}{% endblock %}</main></body></html>

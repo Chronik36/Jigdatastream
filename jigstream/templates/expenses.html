@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
-<div class="card">Total botting spend <b>{{stats.expense_total|money}}</b></div>
-{% for c, v in stats.expense_by_category.items() %}<div class="card">{{c|replace("_", " ")|title}} <b>{{v|money}}</b></div>{% endfor %}
+<h2>Botting expenses</h2><div class="stats"><div class="card">Total botting spend <b>{{stats.expense_total|money}}</b></div>
+{% for c, v in stats.expense_by_category.items() %}<div class="card">{{c|replace("_", " ")|title}} <b>{{v|money}}</b></div>{% endfor %}</div>
 {% if stats.expense_by_month %}<p class="muted">By month: {% for m, v in stats.expense_by_month.items() %}{% if loop.index <= 6 %}{{m}}: {{v|money}}{% if not loop.last and loop.index < 6 %} · {% endif %}{% endif %}{% endfor %}</p>{% endif %}
 {% if stats.expense_by_vendor %}<p class="muted">Top vendors: {% for v, amt in stats.expense_by_vendor.items() %}{% if loop.index <= 8 %}{{v}} {{amt|money}}{% if loop.index < 8 and not loop.last %} · {% endif %}{% endif %}{% endfor %}</p>{% endif %}
 {% include "sync.html" %}

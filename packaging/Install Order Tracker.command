@@ -45,7 +45,8 @@ say "Setting up Python packages"
 if [ ! -x "$HOME_DIR/venv/bin/python" ]; then
   "$PY" -m venv "$HOME_DIR/venv"
 fi
-"$HOME_DIR/venv/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade "flask>=3.0"
+"$HOME_DIR/venv/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade -r "$HOME_DIR/app/requirements.txt" \
+  || "$HOME_DIR/venv/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade "flask>=3.0"
 
 say "Checking Ollama"
 OLLAMA="$(command -v ollama || true)"
@@ -111,11 +112,46 @@ for _ in $(seq 1 30); do
 done
 curl -fs "$URL/orders" >/dev/null || fail "$APP_NAME didn't start. Details are in $HOME_DIR/logs (server.log and app.log)"
 
-# A small app in ~/Applications that opens the dashboard (shows up in Spotlight and Launchpad).
-mkdir -p "$HOME/Applications"
-osacompile -o "$HOME/Applications/$APP_NAME.app" -e "open location \"$URL/orders\"" >/dev/null 2>&1 || true
+say "Adding $APP_NAME to Applications"
+# Its own app with a Dock icon: the dashboard in a native window, not a browser tab.
+BUNDLE="$HOME/Applications/$APP_NAME.app"
+rm -rf "$BUNDLE"
+mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
+cat > "$BUNDLE/Contents/MacOS/OrderTracker" <<LAUNCH
+#!/bin/bash
+cd "$HOME_DIR"
+export PYTHONPATH="$HOME_DIR/app"
+"$HOME_DIR/venv/bin/python" -m jigstream.window >> "$HOME_DIR/logs/window.log" 2>&1 || open "$URL/orders"
+LAUNCH
+chmod +x "$BUNDLE/Contents/MacOS/OrderTracker"
+cat > "$BUNDLE/Contents/Info.plist" <<INFO
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>$APP_NAME</string>
+  <key>CFBundleDisplayName</key><string>$APP_NAME</string>
+  <key>CFBundleIdentifier</key><string>$LABEL.app</string>
+  <key>CFBundleExecutable</key><string>OrderTracker</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict></plist>
+INFO
+ICON_PNG="$HOME_DIR/app/jigstream/static/icon.png"
+if [ -f "$ICON_PNG" ]; then
+  ICONSET="$(mktemp -d)/AppIcon.iconset"; mkdir -p "$ICONSET"
+  for s in 16 32 128 256 512; do
+    sips -z $s $s "$ICON_PNG" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null 2>&1 || true
+    sips -z $((s*2)) $((s*2)) "$ICON_PNG" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null 2>&1 || true
+  done
+  iconutil -c icns "$ICONSET" -o "$BUNDLE/Contents/Resources/AppIcon.icns" >/dev/null 2>&1 || true
+fi
+# The old browser shortcut from earlier versions, if any, is replaced by the bundle above.
+touch "$BUNDLE"
 
-if grep -q '^GMAIL_ACCOUNTS=.\+' "$ENV_FILE"; then open "$URL/orders"; else open "$URL/setup"; fi
+open "$BUNDLE" || open "$URL/orders"
 
 say "Done. $APP_NAME is running at $URL"
 echo "Open it any time from Spotlight: type \"$APP_NAME\"."

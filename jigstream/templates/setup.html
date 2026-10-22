@@ -1,11 +1,28 @@
 {% extends "base.html" %}{% block body %}
 <h2>Setup</h2>
 
+<h3 id="updates">Updates</h3>
+<div class="panel">
+<p>Installed version <b>{{(version or "unknown")[:7]}}</b>{% if update.checked_at %} · <span class="muted">last checked {{update.checked_at[:16]|replace("T", " ")}} UTC</span>{% endif %}.
+It checks for a new version by itself every few hours.</p>
+{% if update.error %}<p class="bad">{{update.error}}</p>{% elif update.available %}<p style="color:var(--gold)">A new version is ready: {{update.message}}</p>{% elif update.checked_at %}<p class="ok">You're on the latest version.</p>{% endif %}
+<form class="ghost" method="post" action="/update/check"><button>Check for update</button></form>
+{% if can_update %}<form method="post" action="/update/install" onsubmit="this.querySelector('button').textContent='Updating...'"><button {{"disabled" if not update.available}}>Update now</button></form>
+{% if backups %}<form class="ghost" method="post" action="/update/rollback" onsubmit="return confirm('Go back to the version before the last update?')"><button>Undo last update</button></form>{% endif %}
+{% else %}<p class="muted">This copy runs from a developer checkout, so it doesn't update itself.</p>{% endif %}
+<p class="muted">Updating replaces only the app's code. Your inboxes, settings, orders and logs stay as they are, and the previous version is kept so you can undo.</p>
+<details{{" open" if update.error and not update_settings.token}}><summary class="muted" style="cursor:pointer">GitHub access (needed while the code's repository is private)</summary>
+<p style="margin-top:10px">Create a free <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>:
+pick only the <b>{{update_settings.repo}}</b> repository, give it <b>Contents: Read-only</b>, and paste it here. It's saved only on this Mac.</p>
+<form method="post" action="/setup/github"><input type="password" name="token" placeholder="{{'saved (paste to replace)' if update_settings.token else 'github_pat_...'}}" size="40" autocomplete="off"><button>Save token</button></form>
+</details>
+</div>
+
 <h3>Gmail inboxes</h3>
 {% if accounts %}<table><tr><th>Inbox</th><th>Last sync</th><th></th></tr>
 {% for a in accounts %}{% set s = synced.get(a) %}<tr><td>{{a}}</td>
 <td class="muted">{{(s.last_synced_at[:16]|replace("T", " ")) if s and s.last_synced_at else "not yet"}}{% if s and s.backfilled_at %}, whole mailbox done{% endif %}</td>
-<td><form method="post" action="/setup/inbox/remove" onsubmit="return confirm('Stop syncing {{a}}?')"><input type="hidden" name="address" value="{{a}}"><button>Remove</button></form></td></tr>{% endfor %}</table>
+<td><form method="post" action="/setup/inbox/remove" onsubmit="return confirm('Stop syncing {{a}}?')"><input type="hidden" name="address" value="{{a}}"><button class="danger">Remove</button></form></td></tr>{% endfor %}</table>
 {% else %}<p class="muted">No inboxes yet.</p>{% endif %}
 
 <p>To add an inbox, Gmail needs an <b>app password</b>, a 16-letter code that lets this app read mail (read-only)
@@ -49,7 +66,7 @@ The token is saved only on this Mac.</p>
 <td class="{{'bad' if st and st.error else 'muted'}}">{% if st and st.error %}{{st.error}}{% elif st and st.last_synced_at %}{{st.last_synced_at[:16]|replace("T", " ")}}{% elif cid in chosen %}not yet{% endif %}</td></tr>{% endfor %}
 </table><button>Save channels</button></form>
 {% else %}<p class="bad">The bot isn't in any server yet. Use "Add the bot to a server" above, then reload this page.</p>{% endif %}
-<form method="post" action="/setup/discord/remove" onsubmit="return confirm('Disconnect Discord?')"><button>Disconnect Discord</button></form>
+<form method="post" action="/setup/discord/remove" onsubmit="return confirm('Disconnect Discord?')"><button class="danger">Disconnect Discord</button></form>
 {% endif %}
 
 <h3 id="training">Training mode</h3>
