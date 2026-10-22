@@ -141,6 +141,20 @@ def seed(path):
         "2026-10-22 08:33:15 INFO    jigstream.sync: Sync finished: 6 orders, 2 expenses, 15 skipped\n")
 
 
+SAMPLE_PAGE = """<html><head><title>Air Jordan 1 Retro High OG 'Chicago' Men's Shoes | Demo Sneaker Store</title>
+<meta name="description" content="The Air Jordan 1 Retro High OG Chicago brings back the classic red, white and black colorway.">
+<script type="application/ld+json">{"@type": "Product", "name": "Air Jordan 1 Retro High OG 'Chicago'", "brand": "Jordan",
+"color": "Varsity Red/White/Black", "sku": "DZ5485-612"}</script></head><body>
+<h1>Air Jordan 1 Retro High OG 'Chicago'</h1><h2>Men's Shoes</h2>
+<p>The Air Jordan 1 Retro High OG Chicago returns in its original red, white and black colorway. Premium leather, an
+Air sole unit and the classic Wings logo. Style: DZ5485-612. The Air Jordan 1 Retro High OG is a Jordan classic.</p>
+<p>Air Jordan 1 Retro High OG Chicago, men's sizing. Leather upper. Jordan Wings logo on the collar.</p>
+<h2>You might also like</h2><ul>
+<li><a href="/p/1">Air Jordan 1 Low 'Chicago'</a></li><li><a href="/p/2">Air Jordan 1 Mid 'Chicago' Big Kids' Shoes</a></li>
+<li><a href="/p/3">Air Jordan 1 Retro High OG 'Chicago' Toddler</a></li><li><a href="/p/4">Air Jordan 1 Retro High OG GS</a></li>
+</ul></body></html>"""
+
+
 class FakeDiscord:
     def __init__(self, token):
         pass
@@ -172,6 +186,9 @@ def patch():
         {"model": "mlx-community/Qwen3-8B-abliterated-4bit", "engine": "mlx", "accuracy": 87, "right": 26,
          "total": 30, "unreadable": 1, "seconds": 2.2}]})
     discord.DiscordClient = FakeDiscord
+    if has_module("keywords"):
+        from jigstream import keywords
+        keywords.fetch = lambda url: (url, SAMPLE_PAGE)
     updater.installed_version = lambda app_dir=None: "build-42-ed618bf"
     updater.can_self_update = lambda app_dir=None: True
     updater.backups = lambda app_dir=None: ["previous"]
@@ -244,6 +261,7 @@ def capture(app):
                 if o.get("js"):
                     page.evaluate(o["js"])
                     page.wait_for_timeout(600)
+                    page.wait_for_load_state("networkidle")
                 page.evaluate(MARK_JS, [[list(m) for m in marks], o.get("scroll"), o.get("tight", False)])
                 page.wait_for_timeout(100)
                 clip = o.get("clip")
@@ -365,6 +383,11 @@ shot("bank", "/bank", [(".stats", 1), ("form[action='/bank/import']", 2), ("a[hr
                        (".tabs", 4), ("tbody tr td:nth-child(5)", 5), ("tbody tr .acts", 6)],
      viewport={"width": 1360, "height": 1200}, needs=has_bank)
 shot("bank-plaid", "/bank/plaid", [(".panel:has(select[name=env])", 1), ("select[name=env]", 2)], needs=has_bank)
+shot("keywords", "/keywords", [("input[name=url]", 1), ("label:has(> input[name=ai])", 2), ("#kwline", 3),
+                               ("table.kw-table", 4), (".kw-grid .panel", 5), (".kw-grid .panel + .panel", 6),
+                               (".kw-grid .panel + .panel + .panel", 7)],
+     js="document.querySelector('input[name=url]').value = 'https://demo-sneakers.example/air-jordan-1-chicago';"
+        "document.querySelector('form.kw-form').submit()", viewport={"width": 1360, "height": 1250}, needs=lambda: has_module("keywords"))
 shot("setup-phone", "/setup", [("input[name=on]", 1), ("input[name=email][type=email]", 2),
                                ("input[name=allow_lan]", 3)], scroll="h3@Phone access", needs=has_phone)
 shot("phone-login", "/m/login", phone=True, needs=has_phone)
