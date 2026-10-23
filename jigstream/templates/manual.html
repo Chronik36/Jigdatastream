@@ -351,8 +351,8 @@ good checkout can still turn red.</li>
 <li><b>Declined</b>: the site declined it at checkout (red Hayha webhooks, or any webhook with a Cancel Reason).</li>
 </ul>
 <p><b>Bot follow-ups:</b> some bots (Valor) post a second webhook after the checkout saying whether the order stuck or got
-cancelled, such as "Order Cancelled" or "Order Stuck". BotTrack links it to its checkout by order number (or the same bot, site
-and profile), and doesn't count it as another checkout. A cancel from the bot always counts; the bot saying good counts unless an
+cancelled. Valor sends "Order Still Good ✅" (green) or "Order Canceled! (reason)" (red). BotTrack links it to its checkout by order number (or the same bot and
+account email), and doesn't count it as another checkout. A cancel from the bot always counts; the bot saying good counts unless an
 email or refund cancelled it.</p>
 <p>If a result is wrong, use the <b>Correct it</b> menu next to it: Good or Cancelled. Your choice sticks across syncs, and
 "Back to auto" undoes it. When the checkout has an order email that said otherwise, the order is corrected too and its emails

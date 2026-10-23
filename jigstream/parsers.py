@@ -122,9 +122,16 @@ def update_verdict(embed):
         return None
     if not UPDATE_TITLE.search(title):
         return None
-    text = f"{title} {_clean(embed.get('description', ''))} {' '.join(flatten_embed(embed).values())}"
-    status = flatten_embed(embed).get("status", "") or flatten_embed(embed).get("order status", "")
-    return "cancelled" if UPDATE_CANCELLED.search(status or text) else "good"
+    # Valor: "Order Canceled! (Policy - Item Demand)" in red, "Order Still Good ✅" in green.
+    if UPDATE_CANCELLED.search(title):
+        return "cancelled"
+    if re.search(r"good|stuck|shipped|delivered", title, re.I):
+        return "good"
+    fields = flatten_embed(embed)
+    status = fields.get("status", "") or fields.get("order status", "")
+    if status:
+        return "cancelled" if UPDATE_CANCELLED.search(status) else "good"
+    return "cancelled" if color_status(embed.get("color")) == "decline" else "good"
 
 
 def _pick(fields, key):
