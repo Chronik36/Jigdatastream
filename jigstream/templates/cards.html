@@ -1,32 +1,22 @@
 {% extends "base.html" %}{% block body %}
 <style>
 .playout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px;align-items:start}
-.gside{position:sticky;top:76px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
-.gside a{display:flex;justify-content:space-between;padding:7px 10px;border-radius:9px;color:var(--text);font-weight:500}
-.gside a span{color:var(--muted);font-weight:400}.gside a:hover{background:var(--surface-2)}
-.gside a.on{background:var(--accent-soft);color:var(--accent)}.gside .lbl{color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.07em;margin:12px 10px 6px}
 .gside form{display:flex;margin:10px 0 0}.gside input{width:100%;margin:0 6px 0 0 !important;padding:6px 10px !important}.gside button{padding:6px 10px}
 .phead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.phead h2{margin:0;flex:1}
-.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--line-2);border-radius:12px;padding:8px 12px;margin-bottom:14px}
 .toolbar select,.toolbar input,.toolbar button{margin:0}.toolbar button{padding:6px 12px}.toolbar .sep{width:1px;height:22px;background:var(--line-2);margin:0 4px}
-td{vertical-align:middle}.prov{font-size:12px;border:1px solid rgba(61,216,239,.35);color:var(--accent);border-radius:7px;padding:2px 8px;white-space:nowrap}
+td{vertical-align:middle}
 .num{font-family:ui-monospace,Menlo,monospace;font-size:13px;white-space:nowrap}
 .status-active{color:var(--green);background:var(--green-soft);border-color:rgba(61,220,132,.3)}
 .status-inactive{color:var(--muted)}
-.acts{display:flex;gap:2px}.acts button{background:none;border:0;box-shadow:none;color:var(--muted);padding:6px;border-radius:8px}
-.acts button:hover{background:var(--surface-2);filter:none}.acts svg{width:16px;height:16px}
+.acts{display:flex;gap:2px}.acts svg{width:16px;height:16px}
 .linkform{display:flex;gap:6px;margin:0}.linkform select{margin:0;padding:4px 8px;font-size:12px;max-width:170px}
-dialog{background:var(--surface);color:var(--text);border:1px solid var(--line-2);border-radius:16px;padding:0;width:min(600px,94vw);box-shadow:0 30px 80px rgba(0,0,0,.5)}
-dialog::backdrop{background:rgba(5,10,30,.7);backdrop-filter:blur(3px)}
-dialog .dh{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--line)}
-dialog .dh h3{margin:0;color:var(--text);text-transform:none;letter-spacing:0;font-size:17px}
-dialog .x{background:none;border:0;color:var(--muted);font-size:20px;padding:2px 8px;box-shadow:none}
+dialog{width:min(600px,94vw)}
 dialog .db{padding:18px 22px}dialog .df{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--line)}
-dialog form{display:block;margin:0}.fl{display:block;color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin:12px 0 6px}
+dialog form{display:block;margin:0}.fl{display:block;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin:12px 0 6px}
 .f3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 12px}dialog input,dialog select{width:100%;margin:0}
 textarea{font:13px/1.6 ui-monospace,Menlo,monospace;width:100%;height:200px;background:var(--surface-2);color:var(--text);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;outline:none;resize:vertical;margin-top:14px}
 textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-@media (max-width:900px){.playout{grid-template-columns:1fr}.gside{position:static}}
+@media (max-width:900px){.playout{grid-template-columns:1fr}}
 </style>
 <div class="phead"><h2>{{"All cards" if group is none else (group or "No group")}} <span class="muted" style="font-size:15px;font-weight:500">{{cards|length}} card{{"" if cards|length == 1 else "s"}}</span></h2>
 <button type="button" onclick="document.getElementById('adddlg').showModal()">+ Add cards</button></div>
