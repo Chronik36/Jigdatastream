@@ -147,6 +147,7 @@ def fill_missing_amounts(config, store, limit=200, recheck=False):
                         r["id"], r["vendor"], len(email.body))
         store.db.execute("UPDATE expenses SET amount = COALESCE(?, amount), amount_checked = 1 WHERE id = ?",
                          (amount, r["id"]))
+        store.db.commit()  # before opening the next email from Gmail
         store.db.commit()
         filled += amount is not None
     store.db.commit()
