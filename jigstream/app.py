@@ -9,9 +9,9 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import (analysis, bankpages, carriers, db, discord, emailbook, engines, expensepages, export, inbox, keywords,
-               logs, manual, mobile, parsers, products, profilebook, profilematch, profiles, recurring, stock, stuck, tasks,
-               training, updater, wallet)
+from . import (analysis, bankpages, browsertrack, carriers, db, discord, emailbook, engines, expensepages, export, inbox,
+               keywords, logs, manual, mobile, parsers, products, profilebook, profilematch, profiles, recurring, stock,
+               stuck, tasks, training, updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
@@ -657,7 +657,9 @@ def create_app(db_path=None):
                                labelled=len(Store(con()).examples()),
                                carrier_keys={c: bool(os.environ.get(k) and os.environ.get(v))
                                              for c, (k, v) in carriers.KEYS.items()},
-                               tracking=carriers.state,
+                               tracking=carriers.state, page_reader=browsertrack._reader is not None,
+                               page_tracking=os.environ.get("BROWSER_TRACKING", "1") != "0",
+                               can_track=bool(carriers.available(os.environ)),
                                **mobile.setup_context())
 
     @app.post("/setup/discord/token")
@@ -758,10 +760,18 @@ def create_app(db_path=None):
         threading.Thread(target=carriers.run, args=(con(), dict(os.environ)), daemon=True).start()
         return redirect(url_for("setup") + "#tracking")
 
+    @app.post("/setup/page-tracking")
+    def set_page_tracking():
+        on = request.form.get("on") == "1"
+        save_env({"BROWSER_TRACKING": "1" if on else "0"})
+        logger.info("key-free tracking turned %s", "on" if on else "off")
+        flash("Key-free tracking is on." if on else "Key-free tracking is off.")
+        return redirect(url_for("setup") + "#tracking")
+
     @app.post("/tracking/check")
     def check_tracking():
-        if not carriers.configured(os.environ):
-            flash("Add a USPS, UPS or FedEx key on the Setup page first.")
+        if not carriers.available(os.environ):
+            flash("Turn on key-free tracking or add a USPS, UPS or FedEx key on the Setup page first.")
             return redirect(url_for("setup") + "#tracking")
         threading.Thread(target=carriers.run, args=(con(), dict(os.environ)), daemon=True).start()
         flash("Checking every open package with its carrier. Refresh in a minute.")

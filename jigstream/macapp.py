@@ -308,11 +308,9 @@ def main():
                 except Exception:
                     logger.exception("scheduled sync failed to start")
                 last_sync = now
-            if track_every > 0 and now - last_track >= track_every and carriers.configured(os.environ):
-                try:
-                    carriers.run(db.connect(), dict(os.environ))
-                except Exception:
-                    logger.exception("scheduled carrier tracking failed")
+            if track_every > 0 and now - last_track >= track_every and carriers.available(os.environ):
+                # its own thread: reading tracking pages one at a time can take several minutes
+                threading.Thread(target=carriers.run, args=(db.connect(), dict(os.environ)), daemon=True).start()
                 last_track = now
             if check_every > 0 and now - last_check >= check_every:
                 updater.check()

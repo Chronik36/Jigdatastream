@@ -1,13 +1,15 @@
-"""Live package status from the carriers' own free tracking APIs (USPS, UPS, FedEx).
+"""Live package status from USPS, UPS and FedEx.
 
-Each carrier gives a free developer key; you paste it on the Setup page. Every few hours BotTrack
-asks the carrier about each open order that has a tracking number and moves its status forward
-(In transit, Out for delivery, Delivered, problems). Nothing is scraped and nothing costs money.
-Keys and tokens are never written to the logs.
+Every few hours BotTrack asks the carrier about each open order that has a tracking number and moves
+its status forward (In transit, Out for delivery, Delivered, problems). With no keys, it reads the
+carrier's normal tracking page in a hidden window on this Mac (browsertrack.py). A free developer key
+pasted on the Setup page is optional; that carrier is then asked through its API instead, which is
+faster. Nothing costs money. Keys and tokens are never written to the logs.
 """
 import base64
 import json
 import logging
+import random
 import re
 import time
 import urllib.error
@@ -16,6 +18,7 @@ import urllib.request
 import uuid
 from datetime import datetime, timezone
 
+from . import browsertrack
 from .extract import carrier_for, status_advances
 from .orderstore import Store
 
@@ -36,6 +39,14 @@ class CarrierError(RuntimeError):
 def configured(env):
     """Carriers whose key and secret are both filled in."""
     return [c for c, (k, s) in KEYS.items() if env.get(k) and env.get(s)]
+
+
+def available(env):
+    """Carriers BotTrack can check now: those with keys, plus all three when key-free checks are on."""
+    keyed = configured(env)
+    if browsertrack.ready(env):
+        return keyed + [c for c in browsertrack.PAGES if c not in keyed]
+    return keyed
 
 
 def _call(req, timeout=20):
@@ -155,9 +166,11 @@ def carrier_of(order):
 
 def refresh(con, env, only_id=None):
     """Ask the carriers about every open order with a tracking number. Returns (checked, changed)."""
-    ready = set(configured(env))
+    keyed, ready = set(configured(env)), set(available(env))
     if not ready:
         return 0, 0
+    page_limit = int(env.get("BROWSER_TRACK_MAX") or 40)  # tracking pages opened per round, at most
+    pages, blocked = 0, set()
     Store(con)  # makes sure the carrier columns exist on older databases
     q = ("SELECT * FROM tracked_orders WHERE tracking_number IS NOT NULL AND tracking_number != ''"
          " AND COALESCE(shipping_status, '') NOT IN (%s)" % ",".join("?" * len(OPEN)))
@@ -168,12 +181,27 @@ def refresh(con, env, only_id=None):
     checked = changed = 0
     for order in con.execute(q, args).fetchall():
         carrier = carrier_of(order)
-        if carrier not in ready:
+        if carrier not in ready or carrier in blocked:
             continue
+        by_page = carrier not in keyed
+        if by_page:
+            if pages >= page_limit:
+                continue
+            if pages:
+                time.sleep(random.uniform(6, 12))  # one page at a time, at a person's pace
+            pages += 1
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         try:
-            status, text = TRACKERS[carrier](order["tracking_number"], env)
-        except CarrierError as e:
+            if by_page:
+                text = browsertrack.read_status(carrier, order["tracking_number"])
+                status = status_from_text(text)
+            else:
+                status, text = TRACKERS[carrier](order["tracking_number"], env)
+        except browsertrack.Blocked as e:
+            logger.warning("%s tracking page: %s; skipping %s until the next round", carrier, e, carrier)
+            blocked.add(carrier)
+            continue
+        except (CarrierError, browsertrack.NoInfo) as e:
             logger.warning("%s tracking for order %s: %s", carrier, order["id"], e)
             con.execute("UPDATE tracked_orders SET carrier_status=?, carrier_checked_at=? WHERE id=?",
                         (f"Couldn't check: {e}"[:300], now, order["id"]))
@@ -186,7 +214,8 @@ def refresh(con, env, only_id=None):
             changed += 1
             logger.info("order %s: %s says %r, status %s -> %s", order["id"], carrier, text,
                         order["shipping_status"], status)
-        time.sleep(0.3)  # stay well inside the carriers' free rate limits
+        if not by_page:
+            time.sleep(0.3)  # stay well inside the carriers' free rate limits
     con.commit()
     logger.info("carrier tracking: checked %d order(s), %d changed", checked, changed)
     return checked, changed
