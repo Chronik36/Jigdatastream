@@ -18,6 +18,7 @@ from . import cardcheck, parsers, stuck
 GROUP_FIELDS = ["proxy group", "proxy list", "proxylist", "proxy profile", "proxy set"]
 PROXY_FIELDS = ["proxy", "proxies", "proxy used", "ip"]
 NO_PROXY = {"", "-", "none", "n/a", "na", "null", "local", "localhost", "no proxy", "no proxies", "off", "false"}
+EMBEDDED = re.compile(r"(\d{1,3}(?:\.\d{1,3}){3}|[a-z0-9-]+(?:\.[a-z0-9-]+)+):(\d{2,5})(?!\d)", re.I)
 HOST = re.compile(r"^(\[[0-9a-f:]+\]|[a-z0-9.\-]+)(?::(\d{1,5}))?$", re.I)
 
 
@@ -26,6 +27,11 @@ def proxy_host(value):
     s = (value or "").strip().strip("<>").strip()
     if s.lower() in NO_PROXY:
         return ""
+    if ":" not in s and "@" not in s:  # a proxy list's name, not a proxy: nothing secret in it
+        return s[:60]
+    if re.search(r"\s", s):  # "Leaf ISP - host:port:user:pass": keep just the host and port
+        m = EMBEDDED.search(s)
+        return f"{m.group(1).lower()}:{m.group(2)}" if m else "(hidden)"
     s = re.sub(r"^[a-z0-9+]+://", "", s, flags=re.I).split("/")[0]
     if "@" in s:  # user:pass@host:port
         s = s.rsplit("@", 1)[1]
@@ -99,6 +105,7 @@ def rows(con, matched=None, links=None):
         c["proxy_group"], c["proxy"] = proxy_of(r["raw"])
         c.pop("raw", None)
         c["day"], c["outcome"] = day_of(c["ts"]), outcome(c)
+        c["product"] = parsers.tidy(c["product"])  # for showing; the stored row is untouched
         out.append(c)
     return out
 

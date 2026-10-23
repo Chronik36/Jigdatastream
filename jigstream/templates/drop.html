@@ -8,8 +8,9 @@
 <td>{{t.rate}}%</td><td class="{{'bad' if t.cancelled}}">{{t.cancelled}}</td><td class="{{'bad' if t.declines}}">{{t.declines}}</td><td class="muted">{{t.tries}}</td></tr>
 {% else %}<tr><td colspan="7" class="muted">Nothing yet.</td></tr>{% endfor %}</tbody></table></div>{% endmacro %}
 {% macro counts(t) %}<span class="ok" title="Good">{{t.confirmed}} good</span> · <span style="color:var(--orange)">{{t.no_email}} unsure</span>{% if t.cancelled %} · <span class="bad">{{t.cancelled}} cancelled</span>{% endif %}{% if t.declines %} · <span class="bad">{{t.declines}} declined</span>{% endif %}{% endmacro %}
+<style>.droprow{cursor:pointer}.droprow:hover td{background:rgba(61,216,239,.06)}</style>
 {% set tab = "drops" %}{% include "_drop_tabs.html" %}
-<p class="muted">Every checkout webhook by retail site and drop date. Click a date to see its checkouts with the proxy and profile each ran on, then click a proxy group, proxy or profile to see just those:
+<p class="muted">Every checkout webhook by retail site and drop date. Click a drop to open every checkout in it with the proxy and profile each ran on, then click a proxy group, proxy or profile to see just those:
 <span class="ok">Good</span> (an order email or the bot's follow-up confirmed it), <span style="color:var(--orange)">Unsure</span> (checked out and nothing cancelled it, but no order email matched yet), <span class="bad">Cancelled</span> (a cancel email, bank refund or the bot's follow-up said so) or Declined.
 If one is wrong, pick Good or Cancelled next to it: it sticks, and when the checkout has an order email the AI learns from it. Good and unsure count as real checkouts. Sync your inboxes first. Proxy logins and passwords are never shown, only the host.</p>
 <div class="stats"><div class="card">Webhooks <b>{{r.tally.tries}}</b></div><div class="card ok">Good <b>{{r.tally.confirmed}}</b></div>
@@ -23,7 +24,7 @@ If one is wrong, pick Good or Cancelled next to it: it sticks, and when the chec
 <a class="pill{{' s-shipped' if by == kind and name == t.name}}" href="{{ link(by=kind, name=t.name) }}" title="{{t.confirmed}} good, {{t.no_email}} unsure, {{t.cancelled}} cancelled, {{t.declines}} declined">{{t.name}} <b class="{{'ok' if t.real}}">{{t.real}}/{{t.tries}}</b></a>{% endfor %}</div>{% endfor %}
 <div class="muted" style="font-size:12px;margin-top:6px">Click a group to see only its checkouts. The numbers are real checkouts out of tries.</div></div>
 {% for s in r.drops %}{% for d in s.days %}<section class="panel" style="margin:14px 0;overflow-x:auto">
-<h3 style="margin-top:0">{{s.site}} · {{d.day or "No date"}}{% if d.products %} <span class="muted" style="font-weight:400;font-size:14px">· {{d.products|join(", ")}}</span>{% endif %}</h3>
+<h3 style="margin-top:0">{{s.site}} · {{d.day or "No date"}}{% if d.products %} <span class="muted" style="font-weight:400;font-size:14px">· {{d.products|join(", ")|truncate(160)}}</span>{% endif %}</h3>
 <p style="margin:6px 0">{{ counts(d.tally) }}</p>
 {% if d.card %}<p style="margin:6px 0" title="From your card charges and refunds (Card check tab)">Cards say <b class="ok">{{d.card.went_through}} went through</b>: {{d.card.charged}} charged{% if d.card.refunded %}, <span class="bad">{{d.card.refunded}} refunded</span>{% endif %}, for {{d.card.bot}} bot checkout{{'s' if d.card.bot != 1}}{% if d.card.never_charged %}, <span style="color:var(--orange)">{{d.card.never_charged}} never charged</span>{% endif %}. <a href="/drop/cards">Card check</a></p>{% endif %}
 <table><thead><tr><th>Result</th><th>Correct it</th><th>Proxy group</th><th>Proxy</th><th>Profile</th><th>Time</th><th>Bot</th><th>Product / order #</th></tr></thead><tbody>
@@ -44,12 +45,13 @@ If one is wrong, pick Good or Cancelled next to it: it sticks, and when the chec
 <div class="toolbar"><a class="pill{{' s-shipped' if not site}}" href="/drop">All sites</a>{% for s in r.sites %}<a class="pill{{' s-shipped' if site == s}}" href="/drop?site={{s|urlencode}}">{{s}}</a>{% endfor %}</div>
 {% for s in r.drops %}<section class="panel" style="margin:14px 0;overflow-x:auto">
 <h3 style="margin-top:0">{{s.site}} <span class="muted" style="font-weight:400;font-size:14px">· {{s.tally.real}} real of {{s.tally.tries}} · {{s.days|length}} drop{{'s' if s.days|length != 1}}</span></h3>
-<table><thead><tr><th>Date</th><th>Product</th><th>Good</th><th>Unsure</th><th>Cancelled</th><th>Declined</th><th>Tries</th><th>Best proxy</th></tr></thead><tbody>
-{% for d in s.days %}{% set best = d.proxies[0] if d.proxies and d.proxies[0].real else None %}<tr>
-<td style="white-space:nowrap"><a href="{{ link(day=d.day, site=s.site) }}"><b>{{d.day or "No date"}}</b></a></td><td class="muted">{{d.products|join(", ") or "-"}}</td>
+<table><thead><tr><th>Date</th><th>Product</th><th>Good</th><th>Unsure</th><th>Cancelled</th><th>Declined</th><th>Tries</th><th>Best proxy</th><th></th></tr></thead><tbody>
+{% for d in s.days %}{% set best = d.proxies[0] if d.proxies and d.proxies[0].real else None %}<tr class="droprow" onclick="if(!event.target.closest('a'))location.href=this.dataset.href" data-href="{{ link(day=d.day, site=s.site) }}" title="Open this drop to see and correct each checkout">
+<td style="white-space:nowrap"><a href="{{ link(day=d.day, site=s.site) }}"><b>{{d.day or "No date"}}</b></a></td><td class="muted">{% for p in d.products %}<div>{{p|truncate(90)}}</div>{% else %}-{% endfor %}</td>
 <td class="ok"><b>{{d.tally.confirmed}}</b></td><td style="color:var(--orange)">{{d.tally.no_email}}</td><td class="{{'bad' if d.tally.cancelled}}">{{d.tally.cancelled}}</td>
 <td class="{{'bad' if d.tally.declines}}">{{d.tally.declines}}</td><td class="muted">{{d.tally.tries}}</td>
-<td>{% if best %}{{best.name}} <span class="muted">{{best.real}}/{{best.tries}}</span>{% else %}<span class="muted">-</span>{% endif %}</td></tr>{% endfor %}
+<td>{% if best %}{{best.name}} <span class="muted">{{best.real}}/{{best.tries}}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+<td style="white-space:nowrap"><a class="pill s-shipped" href="{{ link(day=d.day, site=s.site) }}">Open ›</a></td></tr>{% endfor %}
 </tbody></table></section>
 {% else %}<p class="muted">No checkouts yet. Import your bot webhooks on the <a href="/">Dashboard</a> or connect Discord on Setup.</p>{% endfor %}
 <h3>Best proxies and profiles{% if site %} on {{site}}{% endif %}</h3>
