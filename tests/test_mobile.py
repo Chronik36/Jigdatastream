@@ -76,6 +76,19 @@ def test_sign_in_locks_after_repeated_failures(app):
     for _ in range(mobile.LOCK_AFTER):
         assert sign_in(c, "nope").status_code == 401
     assert sign_in(c).status_code == 429
+    os.environ["PHONE_LOCKOUT"] = "0"  # the Setup switch for testing
+    assert sign_in(c).status_code == 302
+
+
+def test_saving_setup_lifts_a_lockout_and_can_switch_it_off(app):
+    for _ in range(mobile.LOCK_AFTER):
+        sign_in(phone(app), "nope")
+    mac = app.test_client()
+    mac.post("/m/setup", data={"csrf": csrf(mac, "/setup"), "on": "1", "email": "me@example.com", "no_lockout": "1"})
+    assert os.environ["PHONE_LOCKOUT"] == "0" and not mobile.failures
+    for _ in range(mobile.LOCK_AFTER + 2):
+        assert sign_in(phone(app), "nope").status_code == 401
+    assert sign_in(phone(app)).status_code == 302
 
 
 def test_changing_the_password_signs_phones_out(app):
