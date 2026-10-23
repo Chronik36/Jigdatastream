@@ -171,3 +171,32 @@ def test_click_into_a_group(tmp_path):
     page = client.get(f"/drop?day={day}&by=profile&name=Ana").get_data(as_text=True)
     assert "Profile: Ana" in page and "gw.resi.io" not in page.split("Click a group")[1].split("<h3>Best")[0]
     assert "by=group" in client.get("/drop").get_data(as_text=True)
+
+
+def real_valor(c, title, color, number, email, ts, extra=()):
+    """Valor 3.0's webhooks as jacob's screenshots show them (2026-10-23)."""
+    fields = [*extra, {"name": "Order Number", "value": number}, {"name": "Email", "value": email}]
+    embed = {"title": title, "color": color, "timestamp": ts, "fields": fields, "footer": {"text": "Valor 3.0"}}
+    return parsers.ingest(c, json.dumps([{"username": "Valor", "embeds": [embed]}]))
+
+
+def test_real_valor_follow_ups(tmp_path):
+    c, store = setup(tmp_path)
+    item = [{"name": "Item", "value": "Pok&#233;mon Trading Card Game: Destined Rivals Three-Booster Blister"},
+            {"name": "Qty", "value": "1"}]
+    checkout = [{"name": "Site", "value": "Target"}, {"name": "Mode", "value": "Default"},
+                {"name": "Product", "value": "(94300082) Pok&#233;mon Trading Card Game: Destined Rivals"},
+                {"name": "Price", "value": "14.99"}, {"name": "Quantity", "value": "1"},
+                {"name": "Profile", "value": "Ana"}, {"name": "Proxy", "value": "isp.example.net:8000:u:p"}]
+    for n, mail_ in (("102000000000101", "theo.demo@example.com"), ("102000000000202", "lucy.demo@example.com"),
+                     ("102000000000303", "mari.demo@example.com")):
+        real_valor(c, "Checked Out! \U0001F389", 0x3DDC84, n, mail_, "2026-10-23T09:10:00Z", checkout)
+    real_valor(c, "Order Canceled! (Policy - Item Demand)", 0xED4245, "102000000000101", "theo.demo@example.com",
+               "2026-10-23T09:12:00Z", item)
+    real_valor(c, "Order Still Good ✅", 0x3DDC84, "102000000000202", "lucy.demo@example.com", "2026-10-23T09:12:00Z", item)
+    real_valor(c, "Order Still Good ✅", 0x3DDC84, "", "mari.demo@example.com", "2026-10-23T09:13:00Z", item)
+    rows = drop.rows(Store(c).db)
+    assert len(rows) == 3 and all(r["bot"] == "Valor" and r["status"] == "success" for r in rows)
+    assert {r["order_number"]: r["outcome"] for r in rows} == {
+        "102000000000101": "cancelled", "102000000000202": "confirmed", "102000000000303": "confirmed"}
+    assert {r["proxy"] for r in rows} == {"isp.example.net:8000"}
