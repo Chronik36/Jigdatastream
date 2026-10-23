@@ -1,12 +1,12 @@
-{% extends "base.html" %}{% block body %}
-{% set tabs = [("stuck", "Stuck", counts.stuck), ("emailed", "Order email, no cancel", counts.emailed), ("no_email", "No email found", counts.no_email), ("cancelled", "Cancelled", counts.cancelled), ("all", "All successful", counts.all)] %}
+{% extends "base.html" %}{% from "_verdict.html" import verdict %}{% block body %}
+{% set tabs = [("stuck", "Stuck", counts.stuck), ("emailed", "Order email, no cancel", counts.emailed), ("no_email", "No email found", counts.no_email), ("cancelled", "Cancelled", counts.cancelled), ("all", "All successful", counts.all)] + ([("not_order", "Not an order", counts.not_order)] if counts.not_order else []) %}
 {% set tab = "stuck" %}{% include "_drop_tabs.html" %}
-<p class="muted">Every successful checkout from your bot webhooks, checked against your order emails. A checkout stuck when no cancel email and no bank refund came after it. It's matched to an email by order number, or by the same site and profile within a few days when the webhook has no order number.</p>
+<p class="muted">Every successful checkout from your bot webhooks, checked against your order emails. If one is wrong, pick Good, Bad or Not an order on it: it sticks, and the AI learns from it. A checkout stuck when no cancel email and no bank refund came after it. It's matched to an email by order number, or by the same site and profile within a few days when the webhook has no order number.</p>
 <div class="stats"><div class="card">Successful checkouts <b>{{counts.all}}</b></div><div class="card ok">Stuck <b>{{counts.stuck}}</b></div>
 <div class="card bad">Cancelled <b>{{counts.cancelled}}</b></div><div class="card">No email found <b>{{counts.no_email}}</b></div></div>
 <div class="toolbar">{% for key, label, n in tabs %}<a class="pill{{' s-shipped' if show == key}}" href="/stuck?show={{key}}">{{label}} <b>{{n}}</b></a>{% endfor %}</div>
 {% if show in ("stuck", "no_email") and counts.no_email %}<p class="muted">"No email found" means no order email matched yet. Sync your inboxes on <a href="/orders">Orders</a> first; a checkout whose emails went to an inbox you haven't added will show here too.</p>{% endif %}
-<table><thead><tr><th>Checked out</th><th>Bot</th><th>Site / order #</th><th>Product</th><th>Profile</th><th>Email status</th><th>Bank refund</th><th>Matched on</th></tr></thead><tbody>
+<table><thead><tr><th>Checked out</th><th>Bot</th><th>Site / order #</th><th>Product</th><th>Profile</th><th>Email status</th><th>Bank refund</th><th>Matched on</th><th>Correct it</th></tr></thead><tbody>
 {% for r in rows %}{% set o = r.order %}<tr>
 <td style="white-space:nowrap">{{(r.ts or "-")[:16]|replace("T", " ")}}</td><td>{{r.bot or "-"}}</td>
 <td><b>{{r.site or "-"}}</b><div class="muted">{{r.order_number or (o.order_number if o else "") or ""}}</div></td>
@@ -16,6 +16,6 @@
 {% if r.state == "cancelled" %}<div class="muted" style="font-size:12px;margin-top:4px">{{(o.last_email_date or "")[:10]}}</div>{% endif %}
 {% else %}<span class="pill s-unknown">No email found</span>{% endif %}</td>
 <td>{% if r.refund %}<a href="/bank?show=refunds"><span class="pill s-refunded">{{(-r.refund.amount)|money}}</span></a><div class="muted" style="font-size:12px;margin-top:4px">{{r.refund.date}}</div>{% else %}<span class="muted">-</span>{% endif %}</td>
-<td class="muted">{{r.matched_on or ""}}{% if r.bot_update %}<div>{{r.bot_update.bot or "Bot"}} says {{r.bot_update.verdict}}</div>{% endif %}</td></tr>
-{% else %}<tr><td colspan="8" class="muted">{% if not counts.all %}No successful checkouts yet. Import your bot webhooks on the <a href="/">Dashboard</a> or connect Discord on Setup.{% else %}Nothing here.{% endif %}</td></tr>{% endfor %}</tbody></table>
+<td class="muted">{{r.matched_on or ""}}{% if r.bot_update %}<div>{{r.bot_update.bot or "Bot"}} says {{r.bot_update.verdict}}</div>{% endif %}</td><td>{{ verdict(r) }}</td></tr>
+{% else %}<tr><td colspan="9" class="muted">{% if not counts.all %}No successful checkouts yet. Import your bot webhooks on the <a href="/">Dashboard</a> or connect Discord on Setup.{% else %}Nothing here.{% endif %}</td></tr>{% endfor %}</tbody></table>
 {% endblock %}

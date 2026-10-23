@@ -68,7 +68,7 @@ def proxy_of(raw):
 
 
 def set_verdict(con, checkout_id, verdict):
-    """Mark a checkout good or cancelled by hand; "auto" goes back to what the emails and bank say."""
+    """Mark a checkout good, cancelled or not an order by hand; "auto" goes back to what the emails and bank say."""
     if verdict == "auto":
         con.execute("DELETE FROM checkout_verdicts WHERE checkout_id = ?", (checkout_id,))
     else:
@@ -85,7 +85,8 @@ def day_of(ts):
 def outcome(c):
     """'confirmed' (Good: an order email and no cancel, a card charge tied to it that wasn't refunded, or marked good
     by hand), 'no_email' (Unsure: bot success, nothing either way yet), 'cancelled' (a cancel email or bank refund
-    after the success, or marked cancelled), 'decline' or 'failure'."""
+    after the success, or marked cancelled), 'not_order' (marked not an order: counted nowhere), 'decline' or
+    'failure'."""
     if c["status"] == "success":
         card = c.get("card")
         if card and c["state"] == "no_email" and not c.get("verdict"):
@@ -146,7 +147,7 @@ def full_addresses(items):
     """Every full address used under the checkouts shown (one base address once it's picked), most used first."""
     used = {}
     for c in items:
-        if c.get("address_full"):
+        if c.get("address_full") and c["outcome"] != "not_order":
             u = used.setdefault(c["address_full"].upper(), {"full": c["address_full"], "tries": 0, "real": 0,
                                                              "profiles": set()})
             u["tries"] += 1
@@ -179,7 +180,8 @@ def rows(con, matched=None, links=None):
 
 def tally(items):
     n = Counter(c["outcome"] for c in items)
-    t = {"tries": len(items), "success": n["confirmed"] + n["no_email"] + n["cancelled"], "confirmed": n["confirmed"],
+    t = {"tries": len(items) - n["not_order"], "not_order": n["not_order"],
+         "success": n["confirmed"] + n["no_email"] + n["cancelled"], "confirmed": n["confirmed"],
          "no_email": n["no_email"], "cancelled": n["cancelled"], "declines": n["decline"], "failures": n["failure"]}
     t["real"] = t["confirmed"] + t["no_email"]
     t["rate"] = round(100 * t["real"] / t["tries"]) if t["tries"] else 0
