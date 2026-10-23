@@ -1,0 +1,21 @@
+<script>
+// Live updates: refresh this list when a phone (or a sync) changes orders, expenses or profiles,
+// unless you're in the middle of typing or choosing something here.
+(function () {
+  var last = null, touched = false;
+  document.addEventListener('input', function () { touched = true; });
+  function busy() {
+    var a = document.activeElement;
+    return touched || (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) || document.querySelector('.loader.on, dialog[open]');
+  }
+  function poll() {
+    if (document.hidden) return setTimeout(poll, 5000);
+    fetch('/m/api/changes', {cache: 'no-store'}).then(function (r) { return r.json(); }).then(function (d) {
+      if (last !== null && d.n !== last && !busy()) return location.reload();
+      if (!busy()) last = d.n;
+      setTimeout(poll, 5000);
+    }).catch(function () { setTimeout(poll, 10000); });
+  }
+  poll();
+})();
+</script>

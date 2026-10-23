@@ -31,6 +31,8 @@
 @keyframes ld-run{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
 @keyframes ld-breathe{50%{scale:1.025}}
 @keyframes ld-dot{0%,100%{opacity:.25;translate:0 0}50%{opacity:1;translate:0 -4px}}
+/* hidden on every page until a form needs it: keep its animations (glow filters, blending) from running unseen */
+.loader:not(.on),.loader:not(.on) *{animation-play-state:paused}
 @media (prefers-reduced-motion:reduce){.loader .beam{animation-duration:6s}.loader .tile,.loader .dots i{animation:none}}
 </style>
 <div class="loader{{' on' if shown}}" id="loader" role="status" aria-live="polite" style="--lines:url('{{lines}}')">

@@ -1,12 +1,25 @@
 <script>
 const q = document.getElementById('q'), f = document.getElementById('f'), pf = document.getElementById('pf');
+const rows = Array.from(document.querySelectorAll('tbody tr[data-f]'));
+// What search matches in each row: its text without the options of the dropdowns in it. Read once.
+let texts = null;
+function rowText(tr) {
+  const walk = document.createTreeWalker(tr, NodeFilter.SHOW_TEXT, {acceptNode: n => n.parentElement.closest('select') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT});
+  let out = '';
+  while (walk.nextNode()) out += walk.currentNode.nodeValue + ' ';
+  return out.toLowerCase();
+}
 function apply() {
   const text = q.value.toLowerCase(), want = f.value, prof = pf ? pf.value : '';
-  document.querySelectorAll('tbody tr[data-f]').forEach(tr => {
-    tr.style.display = tr.textContent.toLowerCase().includes(text) && (!want || tr.dataset.f === want)
-      && (!prof || tr.dataset.p === (prof === '__none__' ? '' : prof)) ? '' : 'none';
+  if (text && !texts) texts = rows.map(rowText);
+  rows.forEach((tr, i) => {
+    const show = (!text || texts[i].includes(text)) && (!want || tr.dataset.f === want)
+      && (!prof || tr.dataset.p === (prof === '__none__' ? '' : prof));
+    const display = show ? '' : 'none';
+    if (tr.style.display !== display) tr.style.display = display;
   });
 }
-q.addEventListener('input', apply); f.addEventListener('change', apply);
+let typing;
+q.addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(apply, 120); }); f.addEventListener('change', apply);
 if (pf) { pf.addEventListener('change', apply); if (pf.value) apply(); }
 </script>

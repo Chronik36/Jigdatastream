@@ -1,7 +1,7 @@
 name: Build BotTrack for Android
 on:
   push:
-    branches: [main, claude/order-tracker-llm, claude/phone-companion]
+    branches: [main, "claude/**"]
     paths: ["android/**", ".github/workflows/build-android.yml"]
   workflow_dispatch:
 concurrency:

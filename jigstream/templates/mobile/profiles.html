@@ -6,6 +6,4 @@
 <div class="muted small">{{p.first_name or ""}} {{p.last_name or ""}}{% if p.ship_city %} · {{p.ship_city}}, {{p.ship_state or ""}}{% endif %}</div>
 {% if p.card_last4 %}<div class="small" style="margin-top:3px">{{p.card_brand or "Card"}} •••• {{p.card_last4}}</div>{% endif %}
 </a></li>{% else %}<li class="muted">No profiles yet. Import them from a bot on your Mac, or add one here.</li>{% endfor %}</ul>
-<form method="post" action="{{url_for('mobile.logout')}}" style="margin-top:24px;text-align:center"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button class="ghost">Sign out of this phone</button></form>
-{% if "BotTrackApp" in request.user_agent.string %}<p style="text-align:center"><a href="bottrack://setup" class="small">Change Mac address</a></p>{% endif %}
 {% endblock %}

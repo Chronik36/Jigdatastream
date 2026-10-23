@@ -5,6 +5,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
+from . import sales
 from .extract import extract, looks_like_purchase
 from .llm import LLMError, from_config as llm_for
 from .mail import fetch_emails
@@ -26,7 +27,7 @@ def search_days(config, state):
     return config.first_sync_days
 
 
-def process(email, store, llm, config, counts, log, examples=()):
+def process(email, store, llm, config, counts, log, examples=(), platforms=()):
     if not looks_like_purchase(email):
         store.record_email(email, "skipped")
         counts["skipped"] += 1
@@ -34,7 +35,7 @@ def process(email, store, llm, config, counts, log, examples=()):
         return
     started = time.monotonic()
     try:
-        result = extract(llm, email, config.max_body_chars, examples)
+        result = extract(llm, email, config.max_body_chars, examples, platforms)
     except LLMError as e:
         if "Could not reach" in str(e):
             raise
@@ -43,11 +44,11 @@ def process(email, store, llm, config, counts, log, examples=()):
         log(f"  ! {email.subject[:70]}: {e}", file=sys.stderr)
         return
     store.save(email, result)
-    counts[result["kind"]] += 1
+    counts[result["kind"]] = counts.get(result["kind"], 0) + 1
     logger.info("%s in %.1fs: %s | %s -> %s", result["kind"], time.monotonic() - started, email.sender,
                 email.subject[:80], {k: v for k, v in result.items() if k not in ("kind", "items")})
     if result["kind"] != "other":
-        label = result.get("retailer") or result.get("vendor")
+        label = result.get("retailer") or result.get("vendor") or result.get("platform")
         log(f"  {result['kind']:<16} {label or '?'}: {email.subject[:60]}")
 
 
@@ -66,6 +67,8 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
     logger.info("sync started: %d inbox(es), model %s, %s", len(config.accounts), config.llm_model,
                 "whole mailbox" if config.full_history else f"days={config.days_back or 'auto'}")
     counts = {"order": 0, "botting_expense": 0, "other": 0, "skipped": 0, "error": 0, "failed_inboxes": []}
+    platforms = sales.platforms(store.db)
+    config.search_query = sales.with_terms(config.search_query, sales.custom_platforms(store.db))
     seen = store.seen_ids()
     examples = few_shot(store) if config.use_examples else []
     if examples:
@@ -74,7 +77,7 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
     if emails is not None:
         for email in emails:
             if email.message_id not in seen:
-                process(email, store, llm, config, counts, log, examples)
+                process(email, store, llm, config, counts, log, examples, platforms)
         return counts
 
     if not config.accounts:
@@ -96,7 +99,7 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
                 progress(f"Inbox {n} of {len(config.accounts)} ({address}): email {i} of {total['n']}")
                 if email.message_id in seen:
                     continue
-                process(email, store, llm, config, counts, log, examples)
+                process(email, store, llm, config, counts, log, examples, platforms)
                 seen.add(email.message_id)
         except LLMError:
             raise
@@ -114,6 +117,7 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
 def summary(counts):
     """One line for the dashboard and the log."""
     text = (f"{counts['order']} order emails, {counts['botting_expense']} botting receipts, "
+            + (f"{counts['sale']} sales, " if counts.get("sale") else "") +
             f"{counts['other']} not relevant, {counts['skipped']} skipped without the model, "
             f"{counts['error']} errors")
     if counts["failed_inboxes"]:
