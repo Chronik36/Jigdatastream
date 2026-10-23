@@ -105,7 +105,7 @@ of the page. On a narrow window the sidebar hides behind the <b>☰</b> menu but
   "Expenses: what you spend on botting (proxies, bots, groups, servers).",
   "Bank: which order or receipt each card charge paid for.",
   "Training: teach the AI any task, including how it reads your emails.",
-  "Checkouts: every checkout your bots reported.",
+  "Drops: every checkout your bots reported, by site and drop date, with which proxies and profiles check out.",
   "Profiles: your bot profiles, groups, Mass Distribute and export.",
   "Cards: your payment cards, stored encrypted.",
   "Emails: lists of email addresses to hand out to profiles.",
@@ -299,7 +299,7 @@ Your Plaid keys and bank link are stored encrypted on this Mac.</p>
 
 <section id="checkouts" data-title="Checkouts">
 <h2>Checkouts</h2>
-<div class="where">Sidebar → Bot tools → <b>Checkouts</b></div>
+<div class="where">Sidebar → Bot tools → Drops → <b>Every webhook</b></div>
 <p>Every checkout your bots reported, newest first, from Discord (see <a href="#setup-discord">Setup → Discord</a>) or from webhook JSON
 imported on the Dashboard.</p>
 {{ fig("checkouts", "The Checkouts page.", [
@@ -316,7 +316,7 @@ a success, red a decline), and a <b>Cancel Reason</b> field always counts as a d
 
 <section id="stuck" data-title="Stuck">
 <h2>Stuck</h2>
-<div class="where">Sidebar → Bot tools → <b>Stuck</b></div>
+<div class="where">Sidebar → Bot tools → Drops → <b>Stuck &amp; cancelled</b></div>
 <p>A bot says "success" as soon as the site takes the order, but many orders get cancelled later. This page checks every successful
 checkout against your order emails and bank refunds, and lists the ones that stuck: no cancel email or refund came after them.</p>
 <ul>
@@ -328,28 +328,33 @@ that, an order matched to the same profile.</li>
 to an inbox you haven't added, or the webhook's site or profile doesn't match the email.</li>
 <li><b>Cancelled</b>: the ones a cancel or refund email caught, or a refund on your bank or card. Click the status to open the order.</li>
 <li><b>Bank refund</b>: when you import statements or link a bank on the <a href="#bank">Bank</a> page, a refund from the same store
-for the order total (or the price the bot reported, plus up to 15% for tax and shipping), within 10 days of the checkout, marks it
+for the order total (or the price the bot reported, plus up to 15% for tax and shipping), within 60 days of the checkout (Pokemon Center can cancel weeks later), marks it
 cancelled. If the profile's card and the bank account both show their last 4 digits, they have to match.</li>
 </ul>
 </section>
 
-<section id="drop" data-title="Drop">
-<h2>Drop</h2>
-<div class="where">Sidebar → Bot tools → <b>Drop</b></div>
-<p>Shows which proxies and profiles really check out, so you can tune your setup. Every checkout webhook is grouped by
-<b>retail site</b>, then by the <b>day of the drop</b>, and that drop's checkouts are listed under it, sorted by proxy group,
-proxy and profile (or by profile first, with the Sort buttons). The proxy group and proxy come from the webhook's
-<b>Proxy Group</b> and <b>Proxy</b> fields.</p>
+<section id="drop" data-title="Drops">
+<h2>Drops</h2>
+<div class="where">Sidebar → Bot tools → <b>Drops</b></div>
+<p>Everything about your checkouts is on this page, in three tabs: <b>By date</b>, <b>Stuck &amp; cancelled</b> (see <a href="#stuck">Stuck</a>)
+and <b>Every webhook</b> (see <a href="#checkouts">Checkouts</a>).</p>
+<p><b>By date</b> lists each retail site with its drop dates. Click a date to see that drop's checkouts, sorted by proxy group, proxy
+and profile (or by profile first, with the Sort buttons). The proxy group and proxy come from the webhook's <b>Proxy Group</b> and
+<b>Proxy</b> fields. Each checkout is marked:</p>
 <ul>
-<li><b>Real</b> checkouts are successes that no cancel email or bank refund followed (the same check as <a href="#stuck">Stuck</a>).
-Declines never count, including red Hayha webhooks and any webhook with a Cancel Reason.</li>
-<li><b>Rate</b> is real checkouts out of every webhook on that proxy or profile, declines and failures included.</li>
-<li>The tables at the top rank proxy groups, proxies, profiles and the best proxy + profile pairs, most real checkouts first.
-Pick a site to see only its drops.</li>
-<li>Results are only as good as the cancel detection: a cancel email that went to an inbox you haven't synced still counts
-as real. Sync your inboxes first.</li>
-<li>Proxy logins and passwords are never shown. Only the proxy's host and port appear.</li>
+<li><b>Good</b> (green): an order email confirmed it and nothing cancelled it.</li>
+<li><b>Unsure</b> (orange): the bot checked out and nothing cancelled it, but no order email has matched yet.</li>
+<li><b>Cancelled</b> (red): a cancel email or a bank refund came after it. Pokemon Center can cancel a month or more later, so a
+good checkout can still turn red.</li>
+<li><b>Declined</b>: the site declined it at checkout (red Hayha webhooks, or any webhook with a Cancel Reason).</li>
 </ul>
+<p>If a result is wrong, use the <b>Correct it</b> menu next to it: Good or Cancelled. Your choice sticks across syncs, and
+"Back to auto" undoes it. When the checkout has an order email that said otherwise, the order is corrected too and its emails
+become training examples, the same as correcting an order on the Orders page. A cancel email or refund that arrives after you
+marked a checkout good still turns it red.</p>
+<p>The tables under the dates rank proxy groups, proxies, profiles and the best proxy + profile pairs by <b>real</b> checkouts
+(good + unsure). <b>Rate</b> is real checkouts out of every webhook, declines included. Proxy logins and passwords are never shown,
+only the host and port.</p>
 </section>
 
 <section id="profiles" data-title="Profiles">

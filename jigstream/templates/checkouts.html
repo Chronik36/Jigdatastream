@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block body %}
-<h2>Checkouts</h2><p><a href="?status=success">success</a> · <a href="?status=decline">decline</a> · <a href="?status=failure">failure</a> · <a href="/checkouts">all</a> · <a href="/stuck">stuck</a></p>
+{% set tab = "checkouts" %}{% include "_drop_tabs.html" %}<p><a href="?status=success">success</a> · <a href="?status=decline">decline</a> · <a href="?status=failure">failure</a> · <a href="/checkouts">all</a></p>
 <table><tr><th>Time</th><th>Bot</th><th>Status</th><th>Site</th><th>Product</th><th>Size</th><th>Profile</th><th>Order</th><th title="Successful checkouts: what the order emails say. Declines: what happened earlier on that profile or email">Email / history</th><th>Reason</th></tr>
 {% for r in rows %}{% set e = emails.get(r.id) %}<tr><td>{{r.ts}}</td><td>{{r.bot}}</td><td class="{{'ok' if r.status=='success' else 'bad'}}">{{r.status}}</td><td>{{r.site}}</td><td>{{r.product}}</td><td>{{r.size}}</td><td>{{r.profile}}</td><td>{{r.order_number}}</td>
 <td>{% if e and e.order %}<a href="/orders#order-{{e.order.id}}"><span class="pill s-{{e.order.shipping_status or 'unknown'}}">{{e.order.shipping_status|status_label}}</span></a>{% elif e %}<span class="muted">No email</span>{% endif %}{% if e and e.refund %} <span class="pill s-refunded">Refunded {{(-e.refund.amount)|money}}</span>{% endif %}

@@ -11,6 +11,7 @@ display; the user name and password are dropped here, before anything reaches a 
 import json
 import re
 from collections import Counter
+from datetime import datetime, timezone
 
 from . import parsers, stuck
 
@@ -59,14 +60,25 @@ def proxy_of(raw):
     return group[:80], proxy_host(proxy)
 
 
+def set_verdict(con, checkout_id, verdict):
+    """Mark a checkout good or cancelled by hand; "auto" goes back to what the emails and bank say."""
+    if verdict == "auto":
+        con.execute("DELETE FROM checkout_verdicts WHERE checkout_id = ?", (checkout_id,))
+    else:
+        con.execute("INSERT OR REPLACE INTO checkout_verdicts VALUES (?, ?, ?)",
+                    (checkout_id, verdict, datetime.now(timezone.utc).isoformat()))
+    con.commit()
+
+
 def day_of(ts):
     t = stuck.when(ts)
     return t.astimezone().date().isoformat() if t else ""
 
 
 def outcome(c):
-    """'confirmed' (order email, no cancel), 'no_email' (bot success, nothing either way yet), 'cancelled' (a cancel
-    email or bank refund after the success), 'decline' or 'failure'."""
+    """'confirmed' (Good: an order email and no cancel, or marked good by hand), 'no_email' (Unsure: bot success,
+    nothing either way yet), 'cancelled' (a cancel email or bank refund after the success, or marked cancelled),
+    'decline' or 'failure'."""
     if c["status"] == "success":
         return {"emailed": "confirmed"}.get(c["state"], c["state"])
     return "decline" if c["status"] == "decline" else "failure"
@@ -132,11 +144,14 @@ def drops(items, sort="proxy"):
     return sorted(out, key=lambda s: s["latest"], reverse=True)
 
 
-def report(con, site=None, sort="proxy"):
+def report(con, site=None, sort="proxy", day=None):
+    """Totals, leaderboards and drops for every checkout, or one site's, or one drop day's."""
     items = rows(con)
     sites = sorted({c["site"] for c in items if c["site"]}, key=str.lower)
     if site:
         items = [c for c in items if stuck.same_site(c["site"], site)]
+    if day:
+        items = [c for c in items if c["day"] == day]
     return {
         "sites": sites,
         "tally": tally(items),
