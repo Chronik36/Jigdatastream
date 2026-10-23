@@ -54,7 +54,8 @@ def create_app(db_path=None):
     @app.context_processor
     def nav_flags():
         return {"update": updater.state,
-                "ai": app.config.get("AI_STATE"), "syncing": app.config["SYNC_STATE"]}
+                "ai": app.config.get("AI_STATE"), "syncing": app.config["SYNC_STATE"],
+                "whats_new": updater.whats_new_pending() is not None}
 
     def con():
         return db.connect(db_path)
@@ -1018,6 +1019,24 @@ def create_app(db_path=None):
             return redirect(url_for("setup"))
         updater.restart_soon()
         return render_template("restarting.html", what="Updated")
+
+    @app.get("/whats-new")
+    def whats_new():
+        """Patch notes for every build since the one BotTrack was updated from."""
+        old = updater.whats_new_pending()
+        if old is None:
+            return jsonify(releases=[])
+        try:
+            rels = updater.release_notes(updater.build_number(old), updater.build_number(updater.installed_version()))
+        except Exception as e:
+            logger.warning("couldn't read the patch notes: %s", e)
+            return jsonify(releases=[], error="Couldn't load the patch notes right now.")
+        return jsonify(releases=rels)
+
+    @app.post("/whats-new/seen")
+    def whats_new_seen():
+        updater.seen_whats_new()
+        return ("", 204)
 
     @app.post("/update/rollback")
     def update_rollback():
