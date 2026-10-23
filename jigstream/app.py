@@ -8,8 +8,8 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import (analysis, bankpages, carriers, db, discord, emailbook, engines, export, inbox, keywords, logs, manual,
-               mobile, parsers, profilebook, profilematch, profiles, stock, tasks, training, updater, wallet)
+from . import (analysis, bankpages, carriers, db, discord, emailbook, engines, expensepages, export, inbox, keywords,
+               logs, manual, mobile, parsers, profilebook, profilematch, profiles, stock, tasks, training, updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
@@ -54,6 +54,7 @@ def create_app(db_path=None):
 
     # Email sync calls the local model once per email, so it runs in the background.
     sync_state = {"running": False, "last": None}
+    app.config["SYNC_STATE"] = sync_state
 
     def progress(text):
         sync_state["last"] = text
@@ -237,11 +238,6 @@ def create_app(db_path=None):
                   "USE_TRAINING_EXAMPLES": "1" if request.form.get("use_examples") else "0"})
         flash("Training settings saved.")
         return redirect(url_for("setup") + "#training")
-
-    @app.get("/expenses")
-    def expenses():
-        store = Store(con())
-        return render_template("expenses.html", rows=store.expenses(), stats=store.stats(), sync=sync_state)
 
     @app.get("/api/orders")
     def api_orders():
@@ -854,4 +850,5 @@ def create_app(db_path=None):
 
     tasks.register(app, db_path)  # Training page: custom tasks, examples and local fine-tuning
     bankpages.register(app, db_path)  # Bank page: statement imports, Plaid, matching charges
+    app.register_blueprint(expensepages.pages)  # Expenses: overview, ledger
     return app
