@@ -171,8 +171,10 @@ def _ld_products(blobs):
                     brand = brand.get("name")
                 if isinstance(brand, str) and brand.strip():
                     found.setdefault("brand", brand.strip())
-                if isinstance(node.get("name"), str) and node["name"].strip() != found.get("name"):
-                    others.append(node["name"].strip())
+                other = node.get("name").strip() if isinstance(node.get("name"), str) else ""
+                # Variants of the same product ("Pig - Default Title", "Pig - Red") are options, not look-alikes.
+                if other and not other.startswith(found.get("name") or "\0"):
+                    others.append(other)
             for v in node.values():
                 if isinstance(v, (list, dict)):
                     walk(v)
@@ -380,16 +382,27 @@ def ai_summary(result, config):
               'or replica) and NOT in the target item name", "reason": "short reason"}]}. '
               "Negative keywords are for a restock monitor that must match the target item and skip look-alikes.")
     answer = client.chat_json(system, json.dumps(page, ensure_ascii=False))
-    kws = answer.get("main_keywords") or []
+    if not isinstance(answer, dict):
+        raise LLMError("The model's answer wasn't in the expected format.")
+
+    def listed(key):
+        value = answer.get(key)
+        return value if isinstance(value, list) else []
+
+    def pairs(key):
+        # Models sometimes give plain strings instead of {"word", "reason"} objects; take either.
+        out = []
+        for n in listed(key):
+            word, reason = (n.get("word"), n.get("reason")) if isinstance(n, dict) else (n, "")
+            if isinstance(word, (str, int, float)) and str(word).strip():
+                out.append((str(word).strip(), str(reason or "").strip()))
+        return out
+
     target = set(words(result["name"]))
-    negs = [(str(n.get("word", "")).strip(), str(n.get("reason", "")).strip()) for n in answer.get("negative_keywords") or []
-            if isinstance(n, dict)]
-    negs = [(w, r) for w, r in negs if w and w.lower() not in target][:15]  # never exclude the item's own words
-    poss = [(str(n.get("word", "")).strip(), str(n.get("reason", "")).strip()) for n in answer.get("positive_keywords") or []
-            if isinstance(n, dict)]
+    negs = [(w, r) for w, r in pairs("negative_keywords") if w.lower() not in target][:15]  # never exclude the item's own words
     return {"summary": str(answer.get("summary") or ""), "product": str(answer.get("product") or ""), "negatives": negs,
-            "positives": [(w, r) for w, r in poss if w][:10],
-            "main_keywords": [str(k) for k in kws if str(k).strip()][:15] if isinstance(kws, list) else []}
+            "positives": pairs("positive_keywords")[:10],
+            "main_keywords": [str(k) for k in listed("main_keywords") if str(k).strip()][:15]}
 
 
 @bp.route("/keywords", methods=["GET", "POST"])
@@ -415,9 +428,18 @@ def keywords_page():
         try:
             ai = ai_summary(result, Config.from_env())
             logger.info("keyword finder: local AI picked %d main keywords for %s", len(ai["main_keywords"]), url)
-        except (LLMError, ValueError, AttributeError) as e:
+        except LLMError as e:
             ai_error = str(e)
             logger.warning("keyword finder: local AI summary failed: %s", e)
-    line = monitor_line(result["positives"], result["negatives"] + (ai["negatives"] if ai else [])) if result else ""
-    return render_template("keywords.html", result=result, error=error, url=url, use_ai=use_ai, ai=ai, ai_error=ai_error,
-                           line=line)
+        except Exception as e:  # the keyword results still show without the AI part
+            ai_error = f"Something went wrong asking the model ({type(e).__name__}: {e})."
+            logger.exception("keyword finder: local AI summary crashed for %s", url)
+    try:
+        line = monitor_line(result["positives"], result["negatives"] + (ai["negatives"] if ai else [])) if result else ""
+        return render_template("keywords.html", result=result, error=error, url=url, use_ai=use_ai, ai=ai,
+                               ai_error=ai_error, line=line)
+    except Exception as e:
+        logger.exception("keyword finder: couldn't show results for %s", url)
+        return render_template("keywords.html", result=None, url=url, use_ai=use_ai, ai=None, ai_error=None, line="",
+                               error=f"Couldn't show the results for that page ({type(e).__name__}: {e}). "
+                                     "Details are in Logs; please send them over.")
