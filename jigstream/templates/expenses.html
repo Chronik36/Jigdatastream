@@ -15,13 +15,21 @@
 .look a{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);color:var(--text)}.look a:last-child{border:0}
 .look a b{color:var(--orange)}.look a:hover{color:var(--accent)}
 .mini td{padding:9px 12px}
+.card .meter{height:6px;border-radius:999px;background:var(--line);margin-top:10px;overflow:hidden}
+.card .meter span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--green))}
+.card .meter span.near{background:var(--orange)}.card .meter span.over{background:var(--red)}
+.card .mtext{display:block;margin-top:6px;text-transform:none;letter-spacing:0;font-weight:500;font-size:12px}
 </style>
 {% include "_expense_tabs.html" %}
 {% set look = (counts.charge_only or 0) + (counts.receipt_only or 0) + (counts.close or 0) %}
 <div class="stats">
-<div class="card">Spent in {{o.month_name}} <b>{{o.this_month|money}}</b></div>
+<div class="card{{' bad' if month.state == 'over'}}">Spent in {{o.month_name}} <b>{{o.this_month|money}}</b>
+{% if month.budget %}<div class="meter"><span class="{{month.state}}" style="width:{{[month.pct, 100]|min}}%"></span></div><small class="mtext">{{"%.0f"|format(month.pct)}}% of your {{month.budget|money}} budget</small>{% endif %}</div>
 <div class="card">Last month <b>{{o.last_month|money}}</b></div>
-<div class="card">Last 12 months <b>{{o.last_year|money}}</b></div>
+<div class="card">Recurring per month <b>{{rec.per_month|money}}</b></div>
+<div class="card">Renewing next 30 days <b>{{rec.next30|money}}</b></div>
+<div class="card{{' ok' if profit.net >= 0 and profit.sales else (' bad' if profit.net < 0 else '')}}">Profit in {{o.month_name}} <b>{{"+" if profit.net > 0 else ("−" if profit.net < 0 else "")}}{{profit.net|abs|money}}</b>
+<small class="mtext">{{profit.sales}} sale{{"" if profit.sales == 1 else "s"}} minus costs and expenses</small></div>
 <div class="card{{' bad' if look}}">Needs a look <b>{{look}}</b></div>
 </div>
 
@@ -46,10 +54,15 @@
 <div class="track"><span style="width:{{(c.total / top * 100) if top else 0}}%;background:{{c.color}}"></span></div><span class="v">{{c.total|money}}</span></div>
 {% else %}<p class="muted">Nothing spent this month yet.</p>{% endfor %}
 </div>
+<div class="panel"><h4>Coming up<span class="sp"></span><a href="/expenses/recurring">Recurring →</a></h4>
+<table class="mini"><tbody>{% for d, s in soon %}<tr><td><b>{{s.vendor}}</b> <span class="muted">{{s.label|lower}}</span></td>
+<td class="num muted">{{d.strftime("%b %-d")}}</td><td class="num">{{(s.last_amount if s.last_amount is not none else s.amount)|money}}</td></tr>
+{% else %}<tr><td class="muted">No renewals in the next 30 days. Track subscriptions on the Recurring tab.</td></tr>{% endfor %}</tbody></table></div>
 <div class="panel look"><h4>Needs a look<span class="sp"></span><a href="/expenses/ledger">Ledger →</a></h4>
 <a href="/expenses/ledger?show=charge_only">Card charges with no receipt <b>{{counts.charge_only or 0}}</b></a>
 <a href="/expenses/ledger?show=receipt_only">Receipts with no card charge <b>{{counts.receipt_only or 0}}</b></a>
 <a href="/expenses/ledger?show=close">Amounts that are close, not exact <b>{{counts.close or 0}}</b></a>
+<a href="/expenses/recurring">Missed renewals and price changes <b>{{rec.alerts}}</b></a>
 </div>
 </div>
 </div>
@@ -64,4 +77,5 @@
 </div>
 {% include "sync.html" %}
 {% include "_expense_dialog.html" %}
+{% include "_recurring_dialog.html" %}
 {% endblock %}

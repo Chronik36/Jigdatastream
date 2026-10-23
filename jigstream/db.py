@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS ai_adapters (
     id INTEGER PRIMARY KEY, task_key TEXT, base_model TEXT, path TEXT, examples INTEGER, iters INTEGER,
     loss REAL, created_at TEXT
 );
+CREATE INDEX IF NOT EXISTS checkouts_order ON checkouts (order_number);
+CREATE INDEX IF NOT EXISTS checkouts_profile ON checkouts (profile, status);
+CREATE INDEX IF NOT EXISTS checkouts_ts ON checkouts (ts);
 CREATE TABLE IF NOT EXISTS profile_groups (name TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS saved_addresses (
     nickname TEXT PRIMARY KEY,
@@ -50,13 +53,25 @@ MIGRATIONS = [("profiles", "card_brand", "TEXT"), ("profiles", "card_exp", "TEXT
               ("profiles", "card_id", "INTEGER")]
 
 
-def connect(path=None):
-    path = path or DB_PATH
-    d = os.path.dirname(path)
-    if d:
-        os.makedirs(d, exist_ok=True)
-    con = sqlite3.connect(path, check_same_thread=False)  # handed to background threads (one user at a time)
-    con.row_factory = sqlite3.Row
+_ready = set()  # (database file, part) pairs already set up by this process
+
+
+def setup_once(con, part, setup):
+    """Run setup(con) the first time this process opens this database file, so pages don't re-run
+    CREATE TABLE scripts and migrations on every request. In-memory databases are always set up."""
+    path = con.execute("PRAGMA database_list").fetchone()[2]
+    key = None
+    if path:
+        st = os.stat(path)
+        key = (path, st.st_dev, st.st_ino, part)  # a replaced file (restored backup) is set up again
+    if key is None or st.st_size == 0 or key not in _ready:
+        setup(con)
+        if key:
+            _ready.add(key)
+    return con
+
+
+def _setup(con):
     con.executescript(SCHEMA)
     for table, column, kind in MIGRATIONS:
         if column not in {r[1] for r in con.execute(f"PRAGMA table_info({table})")}:
@@ -65,4 +80,13 @@ def connect(path=None):
     con.executescript(discord.SCHEMA)
     con.executescript(wallet.SCHEMA)
     con.executescript(emailbook.SCHEMA)
-    return con
+
+
+def connect(path=None):
+    path = path or DB_PATH
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+    con = sqlite3.connect(path, check_same_thread=False)  # handed to background threads (one user at a time)
+    con.row_factory = sqlite3.Row
+    return setup_once(con, "core", _setup)

@@ -144,6 +144,25 @@ def seed(path):
                 "10/04/2026,WHOP*NOTIFY,-41.20"]
         bank.import_file(c, "activity.csv", "\n".join(rows).encode(), "Chase Sapphire 1234")
         bank.auto_match(c)
+    if has_module("recurring"):
+        from jigstream import recurring
+        recurring.track(c, "Vultr", "monthly", category="server")
+    if has_module("budget"):
+        from jigstream import budget
+        budget.set_budgets(c, {"proxy": 150, "bot": 100, "cook_group": 50, "server": 40, "captcha": 25})
+    if has_module("sales"):
+        from jigstream import sales
+        c.execute("UPDATE tracked_orders SET items = ? WHERE retailer = 'Foot Locker'",
+                  (json.dumps([{"name": "New Balance 9060 Sea Salt", "quantity": 1, "price": 149.99}]),))
+        c.commit()
+        sales.add(c, {"platform": "StockX", "item": "New Balance 9060 Sea Salt", "size": "10.5", "sale_price": 210,
+                      "fees": 21.60, "payout": 188.40, "date": "2026-10-19"})
+        sales.add(c, {"platform": "Mercari", "item": "Kith Box Logo Hoodie", "payout": 240, "cost": 165,
+                      "date": "2026-10-21"})
+        sales.add(c, {"platform": "eBay", "payout": 412.50, "date": "2026-10-20", "counted": 0})
+        c.execute("UPDATE sales SET counted = 0 WHERE item IS NULL")
+        sales.set_setting(c, "monthly_goal", "300")
+        c.commit()
     logs = WORK / "logs"
     logs.mkdir(exist_ok=True)
     (logs / "app.log").write_text(
@@ -390,14 +409,6 @@ def phone_login(page):
     page.wait_for_load_state("networkidle")
 
 
-def phone_login(page):
-    page.goto(BASE + "/m/login")
-    page.fill("input[name=email]", PHONE_EMAIL)
-    page.fill("input[name=password]", PHONE_PASSWORD)
-    page.click("button")
-    page.wait_for_load_state("networkidle")
-
-
 TOP = {"x": 0, "y": 0, "width": 1360, "height": 150}
 shot("nav", "/orders", [(".side a.it[href='/']", 1), (".side a[href='/orders']", 2), (".side a[href='/inbox']", 3),
                         (".side a[href='/expenses']", 4), (".side a[href='/bank']", 5), (".side a[href='/training']", 6),
@@ -419,6 +430,13 @@ shot("expenses", "/expenses", [(".xtabs", 1), (".stats .card:first-child", 2), (
                                ("button[onclick='openExpense()']", 5)], viewport={"width": 1360, "height": 1000})
 shot("expense-ledger", "/expenses/ledger", [(".ftabs", 1), ("#mf", 2), ("main > p.muted.m", 3), (".st-close", 4),
                                             ("select[name=method]", 5)], viewport={"width": 1360, "height": 1420})
+shot("expense-recurring", "/expenses/recurring", [(".stats", 1), (".idea", 2), ("table", 3), (".cal", 4)],
+     viewport={"width": 1360, "height": 1300})
+shot("expense-budget", "/expenses/budget", [(".mnav b", 1), (".stats", 2), (".brow", 3), (".chart", 4),
+                                            ("button[onclick='budgetdlg.showModal()']", 5)],
+     viewport={"width": 1360, "height": 1000})
+shot("expense-profit", "/expenses/profit", [(".big", 1), (".eq", 2), ("table", 3), (".chips", 4)],
+     viewport={"width": 1360, "height": 1350})
 shot("checkouts", "/checkouts", [("main > p", 1), ("tbody tr:nth-child(3) td:nth-child(3), tr:nth-child(3) td:nth-child(3)", 2),
                                  ("tr:nth-child(3) td:last-child", 3)])
 shot("profiles", "/profiles", [(".gside", 1), ("button[onclick='openProfile()']", 2), ("button[onclick*=exportdlg]", 3),

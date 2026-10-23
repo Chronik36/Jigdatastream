@@ -1,0 +1,136 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.xgrid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:1100px){.xgrid{grid-template-columns:minmax(0,1fr)}}
+.panel h4{margin:0 0 12px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}.panel h4 .sp{flex:1}
+.panel h4 button{padding:5px 12px;font-size:12.5px}
+.mnav{display:flex;align-items:center;gap:10px;margin-bottom:16px}.mnav b{font-size:16px;min-width:150px;text-align:center}
+.mnav a{padding:5px 11px;border:1px solid var(--line-2);border-radius:9px;color:var(--muted)}.mnav a:hover{color:var(--accent);border-color:var(--accent)}
+.big{font-size:38px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1.15}
+.big small{font-size:15px;color:var(--muted);font-weight:500;letter-spacing:0}
+.goalbar{position:relative;height:12px;border-radius:999px;background:var(--line);margin:16px 0 8px}
+.goalbar span{position:absolute;inset:0 auto 0 0;border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--green))}
+.goalbar span.neg{background:var(--red)}
+.goalbar i{position:absolute;top:-5px;bottom:-5px;width:2px;border-radius:2px;background:var(--text)}
+.gl{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.eq{display:grid;gap:8px;font-variant-numeric:tabular-nums;font-size:13.5px}
+.eq div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--line);padding-bottom:7px}
+.eq .tot{border:0;font-weight:700;font-size:15px;padding-bottom:4px}.eq .muted{font-weight:400}
+.pos{color:var(--green)}.neg{color:var(--red)}
+td{vertical-align:middle}.sub{display:block;font-size:12.5px;color:var(--muted)}.mini td{padding:9px 12px}td.num{white-space:nowrap}
+.acts{display:flex;gap:4px;align-items:center;white-space:nowrap}.acts form{margin:0}.acts button{padding:4px 10px;font-size:12px}
+tr.off td{opacity:.55}
+.chart text{fill:var(--muted);font:11px Inter,sans-serif}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.chip2{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;border:1px solid var(--line-2);font-size:12.5px}
+.chip2 form{margin:0}.chip2 button{background:none;border:0;box-shadow:none;color:var(--muted);padding:0 0 0 2px;font-size:14px}
+.chip2.mine{border-color:rgba(61,216,239,.4);color:var(--accent)}
+.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;align-items:start}
+.g3 .mini td:first-child{white-space:normal}
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}.sgrid label{font-size:13px}.sgrid input,.sgrid select{width:100%}
+</style>
+{% include "_expense_tabs.html" %}
+<div class="mnav"><a href="?month={{prev}}" aria-label="Previous month">←</a><b>{{p.name}}</b>{% if next %}<a href="?month={{next}}" aria-label="Next month">→</a>{% endif %}</div>
+
+<div class="xgrid">
+<div class="panel">
+<h4>{{"This month" if p.current else p.name}}<span class="sp"></span><button type="button" class="ghost" onclick="goaldlg.showModal()">{{"Change goal" if p.goal else "Set a monthly goal"}}</button></h4>
+<div class="big {{'pos' if p.flips >= p.target and p.target else ''}}">{{p.flips|money}} <small>profit on flips{% if p.target %} of {{p.target|money}} {{"to reach your goal" if p.goal else "to break even"}}{% endif %}</small></div>
+{% set top = [p.target, p.flips, 1]|max %}
+<div class="goalbar"><span class="{{'neg' if p.flips < 0}}" style="width:{{([p.flips, 0]|max / top * 100)|round(1)}}%"></span>
+{% if p.goal and p.break_even %}<i style="left:{{(p.break_even / top * 100)|round(1)}}%" title="Break-even {{p.break_even|money}}"></i>{% endif %}</div>
+<div class="gl"><span>{{p.sales}} sale{{"" if p.sales == 1 else "s"}}</span><span>Break-even {{p.break_even|money}}{% if p.flips >= p.break_even and p.break_even %} (passed){% endif %}</span>{% if p.goal %}<span>Goal: {{p.goal|money}} profit</span>{% endif %}</div>
+<p style="margin-top:14px">{% if p.need > 0 %}{{"You need" if p.current else "This month was"}} <b>{{p.need|money}} {{"more profit from flips" if p.current else "short"}}</b>{% if p.current %} this month{% endif %}.
+{% if p.more %} At your average of {{p.avg|money}} per flip (last 90 days), that's about <b>{{p.more}} more sale{{"" if p.more == 1 else "s"}}</b>.{% endif %}
+{% elif p.target %}<b class="pos">{{"Goal reached" if p.goal else "Expenses covered"}}.</b> Flips made {{(p.flips - p.target)|money}} more than {{"your goal" if p.goal else "your expenses"}}.{% else %}No sales or expenses this month yet.{% endif %}
+{% if p.unpriced %}<span class="muted"> {{p.unpriced}} sale{{"" if p.unpriced == 1 else "s"}} {{"has" if p.unpriced == 1 else "have"}} no cost yet; add the order or cost so {{"its" if p.unpriced == 1 else "their"}} profit counts right.</span>{% endif %}</p>
+</div>
+
+<div class="panel"><h4>How it adds up</h4>
+<div class="eq">
+<div><span>Sales and payouts <span class="muted">({{p.sales}})</span></span><span>{{p.income|money}}</span></div>
+<div><span>Cost of the items sold</span><span>−{{p.costs|money}}</span></div>
+<div class="tot"><span>Profit on flips</span><span class="{{'pos' if p.flips >= 0 else 'neg'}}">{{p.flips|money}}</span></div>
+<div><span>Botting expenses{% if p.due %} <span class="muted">+ {{p.due|money}} renewals still due</span>{% endif %}</span><span>{{p.break_even|money}}</span></div>
+<div class="tot"><span>Net profit {{"so far" if p.current else ""}}</span><span class="{{'pos' if p.net >= 0 else 'neg'}}">{{"+" if p.net > 0 else ("−" if p.net < 0 else "")}}{{p.net|abs|money}}</span></div>
+<div><span class="muted">Inventory bought this month</span><span class="muted">{{p.bought|money}}</span></div>
+</div></div>
+</div>
+
+<div class="panel"><h4>Sales and payouts<span class="sp"></span><button type="button" onclick="openSale()">+ Add sale</button></h4>
+<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Sold</th><th>Where</th><th class="num">Payout</th><th class="num">Cost</th><th class="num">Profit</th><th></th></tr></thead><tbody>
+{% for s in rows %}<tr class="{{'off' if not s.counted}}">
+<td>{{s.date or "-"}}</td>
+<td><b>{{s.item or "Payout"}}</b>{% if s.size %} <span class="muted">size {{s.size}}</span>{% endif %}<span class="sub">{% if s.order_id %}Bought: {{s.order_retailer}} {{s.order_ref or ""}}{% elif s.item %}No order linked{% else %}A lump payout{% endif %}{% if not s.counted %} · not counted{% endif %}</span></td>
+<td>{{s.platform}}<span class="sub">{{"from your bank" if s.source == "bank" else ("typed in" if s.source == "manual" else "email")}}</span></td>
+<td class="num">{{s.money_in|money(s.currency)}}{% if s.sale_price and s.payout is not none and s.sale_price != s.payout %}<span class="sub">sold {{s.sale_price|money}}</span>{% endif %}</td>
+<td class="num">{{s.cost|money if s.cost is not none else "-"}}</td>
+<td class="num {{'pos' if s.profit and s.profit > 0 else ('neg' if s.profit and s.profit < 0 else '')}}">{% if s.profit is not none %}{{"+" if s.profit > 0 else ("−" if s.profit < 0 else "")}}{{s.profit|abs|money}}{% else %}-{% endif %}</td>
+<td><div class="acts"><button type="button" class="ghost" onclick='openSale({{ {"id": s.id, "platform": s.platform, "item": s.item, "size": s.size, "sale_price": s.sale_price, "fees": s.fees, "payout": s.payout, "date": s.date, "cost": s.cost, "order_id": s.order_id}|tojson }})'>Edit</button>
+<form method="post" action="/expenses/sales/{{s.id}}/count"><input type="hidden" name="counted" value="{{0 if s.counted else 1}}"><button class="ghost" title="{{'Leave it out, e.g. a payout of sales already counted one by one' if s.counted else 'Count it toward this month'}}">{{"Don't count" if s.counted else "Count it"}}</button></form></div></td></tr>
+{% else %}<tr><td colspan="7" class="muted">No sales in {{p.name}}. They come from sale and payout emails on the next sync, or press Add sale.</td></tr>{% endfor %}
+</tbody></table></div></div>
+
+<div class="g3">
+<div class="panel"><h4>Net profit by month<span class="sp"></span><span class="muted" style="font-weight:400">flips minus expenses</span></h4>
+<div style="overflow-x:auto"><svg class="chart" viewBox="0 0 {{hist.width}} {{hist.height}}" width="100%" style="min-width:280px" role="img" aria-label="Net profit per month">
+{% for g in hist.grid %}<line x1="{{hist.left}}" x2="{{hist.width - hist.right}}" y1="{{g.y}}" y2="{{g.y}}" stroke="#1f2d63"/>
+<text x="{{hist.left - 8}}" y="{{g.y + 4}}" text-anchor="end">{{"−" if g.v < 0 else ""}}${{"{:,.0f}".format(g.v|abs)}}</text>{% endfor %}
+<line x1="{{hist.left}}" x2="{{hist.width - hist.right}}" y1="{{hist.zero}}" y2="{{hist.zero}}" stroke="#2c3d7c" stroke-width="1.5"/>
+{% for r in hist.rows %}<a href="?month={{r.month}}"><g><title>{{r.name}}: {{r.net|money}} (flips {{r.flips|money}}, expenses {{r.expenses|money}})</title>
+<rect x="{{r.x}}" y="{{r.y}}" width="{{r.w}}" height="{{r.h}}" rx="2" fill="{{r.color}}" opacity="{{1 if r.month == p.month else 0.75}}"/>
+<text x="{{r.x + r.w / 2}}" y="{{hist.height - 8}}" text-anchor="middle"{% if r.month == p.month %} style="fill:var(--text)"{% endif %}>{{r.label}}</text></g></a>{% endfor %}
+</svg></div></div>
+
+{% if deposits %}<div class="panel"><h4>Payout deposits on your statements</h4>
+<table class="mini"><tbody>{% for t in deposits %}<tr><td>{{t.date}}<span class="sub">{{t.account_name or ""}}</span></td><td><b>{{t.platform}}</b><span class="sub">{{t.description}}</span></td><td class="num">{{(-t.amount)|money}}</td>
+<td><form method="post" action="/expenses/sales/deposit/{{t.id}}" style="margin:0"><input type="hidden" name="platform" value="{{t.platform}}"><button class="ghost" style="padding:4px 10px;font-size:12px" title="Only if this payout's sales aren't already counted from emails">Add as sale</button></form></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+
+<div class="panel"><h4>Unsold inventory<span class="sp"></span><span class="muted" style="font-weight:400">orders not tied to a sale</span></h4>
+<table class="mini"><tbody>{% for o in unsold %}<tr><td><b>{{o.retailer}}</b><span class="sub">{{o.day or ""}} · {{o.names}}</span></td><td class="num">{{o.total|money}}</td>
+<td><button type="button" class="ghost" style="padding:4px 10px;font-size:12px;white-space:nowrap" onclick='openSale({{ {"order_id": o.id, "cost": o.total, "item": o.first}|tojson }})'>Sold it</button></td></tr>
+{% else %}<tr><td class="muted">Nothing waiting to sell.</td></tr>{% endfor %}</tbody></table></div>
+
+<div class="panel"><h4>Where you sell</h4>
+<div class="chips">{% for pl in platforms %}<span class="chip2{{' mine' if pl in custom}}">{{pl}}{% if pl in custom %}<form method="post" action="/expenses/platforms"><input type="hidden" name="remove" value="{{pl}}"><button title="Remove">×</button></form>{% endif %}</span>{% endfor %}</div>
+<form method="post" action="/expenses/platforms" style="display:flex;gap:6px;margin:0"><input name="name" placeholder="Add another, e.g. Depop" style="flex:1;margin:0"><button class="ghost">Add</button></form>
+<p class="muted" style="font-size:12.5px;margin-top:10px">The AI reads sale and payout emails from these and from any other marketplace. If it misses one, find the email on <a href="/inbox">Inbox</a> and label it <b>Sale / payout</b>: it learns from that.</p></div>
+</div>
+
+<dialog id="goaldlg"><div class="dh"><h3>Monthly profit goal</h3><button class="x" type="button" onclick="goaldlg.close()">×</button></div>
+<form method="post" action="/expenses/profit/goal" class="db" style="display:block;margin:0">
+<p class="muted" style="font-size:13px">The profit you want to keep each month after botting expenses are paid. Leave it at 0 to just track break-even.</p>
+<input name="goal" inputmode="decimal" value="{{'%.2f'|format(p.goal)}}" style="width:100%"><button>Save goal</button></form></dialog>
+
+<dialog id="saledlg"><div class="dh"><h3 id="stitle">Add sale</h3><button class="x" type="button" onclick="saledlg.close()">×</button></div>
+<form method="post" id="sform" action="/expenses/sales/new" class="db" style="display:block;margin:0">
+<div class="sgrid">
+<label>Where you sold it<br><input name="platform" id="s-platform" list="plist" required></label>
+<label>Date<br><input type="date" name="date" id="s-date"></label>
+<label>Item<br><input name="item" id="s-item" placeholder="e.g. Dunk Low Panda"></label>
+<label>Size<br><input name="size" id="s-size"></label>
+<label>Sold for<br><input name="sale_price" id="s-sale_price" inputmode="decimal"></label>
+<label>Fees<br><input name="fees" id="s-fees" inputmode="decimal"></label>
+<label>Payout (what you got)<br><input name="payout" id="s-payout" inputmode="decimal"></label>
+<label>Cost <span class="muted">(blank = the order's total)</span><br><input name="cost" id="s-cost" inputmode="decimal" placeholder="What you paid, or MSRP"></label>
+</div>
+<label>Bought with order<br><select name="order_id" id="s-order_id" style="width:100%"><option value="">No order (type the cost)</option>{% for o in orders %}<option value="{{o.id}}">{{o.label}}</option>{% endfor %}</select></label>
+<div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button>Save</button><span style="flex:1"></span>
+<button type="submit" class="danger" id="s-delete" formnovalidate onclick="return confirm('Delete this sale?')">Delete</button></div>
+</form></dialog>
+<datalist id="plist">{% for pl in platforms %}<option value="{{pl}}">{% endfor %}</datalist>
+<script>
+const goaldlg = document.getElementById('goaldlg'), saledlg = document.getElementById('saledlg');
+function openSale(s) {
+  s = s || {};
+  const set = (k, v) => document.getElementById('s-' + k).value = v == null ? '' : v;
+  ['platform', 'item', 'size', 'sale_price', 'fees', 'payout', 'date', 'cost', 'order_id'].forEach(k => set(k, s[k]));
+  if (!s.date) set('date', new Date().toISOString().slice(0, 10));
+  document.getElementById('sform').action = s.id ? '/expenses/sales/' + s.id + '/edit' : '/expenses/sales/new';
+  document.getElementById('stitle').textContent = s.id ? 'Edit sale' : 'Add sale';
+  const del = document.getElementById('s-delete');
+  del.style.display = s.id ? '' : 'none'; del.formAction = s.id ? '/expenses/sales/' + s.id + '/delete' : '';
+  saledlg.showModal();
+}
+</script>
+{% include "_expense_dialog.html" %}
+{% endblock %}

@@ -3,8 +3,8 @@
 Listing only reads headers. Opening or labelling an email downloads it read-only. A labelled
 email is read by the model, its answer is corrected to your label, and the pair is saved as a
 training example (shown to the model before new emails, and exported for fine-tuning). The label
-is also applied, so a "Delivered" email updates its order and an "Expense" email lands on the
-Botting expenses page.
+is also applied, so a "Delivered" email updates its order, an "Expense" email lands on the
+Botting expenses page, and a "Sale / payout" email counts toward the Profit goal.
 """
 import logging
 
@@ -23,12 +23,14 @@ LABELS = {
     "cancelled": ("Cancelled", {"kind": "order", "shipping_status": "cancelled"}),
     "returned": ("Returned / refunded", {"kind": "order", "shipping_status": "returned"}),
     "expense": ("Botting expense", {"kind": "botting_expense"}),
+    "sale": ("Sale / payout", {"kind": "sale"}),
     "other": ("Not an order", {"kind": "other"}),
 }
 QUICK_FILTERS = {
     "Purchases": "(order OR receipt OR invoice OR shipped OR delivered OR cancelled OR subscription)",
     "Shipping": "(shipped OR tracking OR \"in transit\" OR \"out for delivery\" OR delivered)",
     "Cancellations": "(cancelled OR canceled OR cancellation OR refund)",
+    "Sales": "(sold OR payout OR \"paid out\" OR \"you made the sale\")",
     "Spam": "in:spam",
     "Everything": "",
     "AI skipped": None,  # read from BotTrack's own records, not a Gmail search
@@ -53,7 +55,7 @@ def corrected_answer(raw, label):
         return {"kind": "other"}
     out = dict(raw)
     out.update(target)
-    if target["kind"] == "botting_expense":
+    if target["kind"] in ("botting_expense", "sale"):
         out.pop("shipping_status", None)
     return out
 
@@ -85,7 +87,8 @@ def open_email(config, account, message_id):
 
 def label_emails(config, store, llm, picks, label):
     """picks: [{"account", "message_id", "sender", "subject", "date"}]. Runs in the background."""
-    examples = few_shot(store)
+    from . import sales
+    examples, platforms = few_shot(store), sales.platforms(store.db)
     for row in picks:
         store.set_inbox_label(row, label, "working")
         try:
@@ -93,14 +96,17 @@ def label_emails(config, store, llm, picks, label):
             if not email:
                 store.set_inbox_label(row, label, "not found in Gmail")
                 continue
-            prompt = email_prompt(email, config.max_body_chars)
-            raw, _ = extract_raw(llm, email, config.max_body_chars, examples)
+            prompt = email_prompt(email, config.max_body_chars, platforms)
+            raw, _ = extract_raw(llm, email, config.max_body_chars, examples, platforms)
             corrected = corrected_answer(raw, label)
             store.add_inbox_example(email, prompt, raw, corrected, label)
             result = normalize(corrected, email)
             store.save(email, result)
             if result["kind"] != "botting_expense":  # e.g. a receipt the AI wrongly filed as an expense
                 store.db.execute("DELETE FROM expenses WHERE message_id = ?", (email.message_id,))
+                store.db.commit()
+            if result["kind"] != "sale":
+                sales.ensure(store.db).execute("DELETE FROM sales WHERE message_id = ?", (email.message_id,))
                 store.db.commit()
             was = raw.get("shipping_status") if raw.get("kind") == "order" else raw.get("kind")
             store.set_inbox_label(row, label, f"saved (the AI had said {was or 'nothing'})")
