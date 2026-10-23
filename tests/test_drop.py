@@ -291,3 +291,25 @@ def test_not_an_order_is_left_out_of_every_count_and_can_be_set_anywhere(tmp_pat
     # The order email isn't touched: the test checkout was wrong, not the email.
     assert c.execute("SELECT shipping_status FROM tracked_orders WHERE order_number = '9001'").fetchone()[0] == "ordered"
     assert "Not an order" in client.get("/stuck?show=not_order").get_data(as_text=True)
+
+
+def test_click_through_checkout_profile_address(tmp_path, monkeypatch):
+    c, store = setup(tmp_path)
+    from jigstream import profiles as P
+    P.ingest(c, json.dumps([{"name": "Ana", "shipping": {"address1": "12 Main St Apt 4", "city": "Austin", "state": "TX", "zip": "78701"}},
+                            {"name": "Bo", "shipping": {"address1": "XJ 12 Mainn Street", "city": "Austin", "state": "TX", "zip": "78701"}},
+                            {"name": "Cy", "shipping": {"address1": "9 Elm St", "city": "Austin", "state": "TX", "zip": "78701"}}]), "Hayha")
+    hook(c, "a", "Target", "Ana", "ISP A", "isp.example.net:8000", number="9001")
+    hook(c, "b", "Target", "Bo", "ISP A", "isp.example.net:8000", ts="2026-10-20T15:01:00Z")
+    hook(c, "c", "Target", "Cy", "ISP A", "isp.example.net:8000", ts="2026-10-20T15:02:00Z")
+    mail(store, "a1", "Target", "ordered", "2026-10-20T15:05:00+00:00", "9001")
+    client = create_app(str(tmp_path / "m.db")).test_client()
+    profile = client.get("/profile-orders?profile=Ana").get_data(as_text=True)
+    assert "Checkouts on this profile" in profile and 'value="not_order"' in profile
+    link = profile.split('href="/address?name=')[1].split('"')[0]
+    page = client.get("/address?name=" + link).get_data(as_text=True)
+    assert "Profiles here" in page and ">Ana<" in page and ">Bo<" in page and ">Cy<" not in page
+    assert page.count('action="/drop/') == 2  # both checkouts, each correctable
+    assert "Everything at this address" in client.get("/profiles").get_data(as_text=True)
+    assert "Open profile" in client.get("/drop?day=2026-10-20&site=Target&by=profile&name=Ana").get_data(as_text=True)
+    assert client.get("/address").status_code == 200
