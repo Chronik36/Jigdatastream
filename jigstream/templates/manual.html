@@ -192,12 +192,29 @@ the receipt to Expenses. Give it a minute, then refresh.</p>
 <p>Receipts for botting: proxies, bots, cook groups, captcha solvers, servers, ACO services and accounts. There's no list of vendors to keep
 up to date; the AI decides from the receipt itself, so a new proxy company is picked up automatically. When a receipt comes through Stripe,
 PayPal or whop.com, it names the actual seller.</p>
-{{ fig("expenses", "The Expenses page.", [
-  "Totals: all botting spend, then spend for each category.",
-  "Spend by month for the last six months, and your top vendors.",
-  "Search by vendor or description.",
-  "Show one category only.",
-  "Billing: whether the charge is one-time, monthly, and so on."]) }}
+<h4>Overview</h4>
+{{ fig("expenses", "The Expenses overview.", [
+  "Tabs: Overview, and the Ledger with how many rows need a look.",
+  "What you spent this month, last month and over the last year.",
+  "Spend by month for the last 12 months, colored by category. Hover a bar for the exact amounts.",
+  "Charges and receipts that don't line up. Click one to open the Ledger at that list.",
+  "Add an expense by hand, for something that never sent a receipt."]) }}
+<h4 id="expense-ledger">Ledger</h4>
+<p>The Ledger puts every botting receipt next to the card charge that paid for it, using the statements you imported on
+<a href="#bank">Bank</a>. Each row gets a status:</p>
+<ul>
+<li><b>Matched</b>: the receipt (or order) and the card charge agree.</li>
+<li><b>Charge, no receipt</b>: money left your card, but no email explains it. Use <span class="ui">Match…</span> to pick the receipt or order, add it as an expense, or <span class="ui">Ignore</span> it if it isn't botting.</li>
+<li><b>Receipt, no charge</b>: a receipt your imported cards never charged. If you paid with PayPal balance, crypto or a card you didn't import, choose it under <span class="ui">Paid another way</span>.</li>
+<li><b>Close amount</b>: a charge a few dollars off its receipt, from currency fees or tax added at checkout. Press <span class="ui">Confirm</span> if it's the same purchase, or <span class="ui">Not this</span>.</li>
+<li><b>No statement yet</b>: the receipt is from a date your statements don't cover, so there is nothing to check it against.</li>
+</ul>
+{{ fig("expense-ledger", "The Ledger tab.", [
+  "Show everything, or one status at a time.",
+  "Narrow to one category or month. The total of the rows shown is on the right.",
+  "Which dates your imported statements cover.",
+  "A close amount waiting for you to confirm it.",
+  "Mark a receipt as paid another way."]) }}
 <p>Expenses are found by the same <span class="ui">Sync now</span> as orders, and the Sync buttons are on this page too.
 If a receipt is missing, find it on <a href="#inbox">Inbox</a> and label it <b>Botting expense</b>.</p>
 </section>
@@ -556,8 +573,8 @@ numbers are always hidden.</p>
   "Download all logs (.zip): send this to whoever is helping you when something goes wrong.",
   "The log itself."]) }}
 <h3>Send logs to developer</h3>
-<p>Press <span class="ui">Send logs to developer</span> to email the logs straight to the developer from your own Gmail, with a note about
-what went wrong. The next page lists every file that goes out, and nothing is sent until you tick the box and press
+<p>Press <span class="ui">Send logs to developer</span> to email the logs straight to the developer from your own Gmail. You have to describe
+what went wrong (at least 20 characters) before it will send; your note goes in the email and in the zip. The next page lists every file that goes out, and nothing is sent until you tick the box and press
 <span class="ui">Send logs</span>. Your database, cards, bank data, profiles and emails are never included.</p>
 </section>
 

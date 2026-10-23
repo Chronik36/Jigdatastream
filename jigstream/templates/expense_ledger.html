@@ -1,0 +1,72 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.ftabs{display:flex;gap:6px;flex-wrap:wrap}.ftabs a{padding:5px 12px;border-radius:999px;border:1px solid var(--line-2);color:var(--muted);font-size:13px}
+.ftabs a.on{color:var(--accent);background:var(--accent-soft);border-color:rgba(61,216,239,.35)}.ftabs a em{font-style:normal;margin-left:5px;color:#5d6a98}
+.ftabs a.warn em{color:var(--orange)}
+.lbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0 6px}.lbar input,.lbar select{margin:0}
+td{vertical-align:middle}.m{font-size:12.5px}.sub{display:block;font-size:12.5px;color:var(--muted)}
+.acts{display:flex;gap:4px;align-items:center;white-space:nowrap}.acts form{margin:0;display:flex;gap:4px}.acts button,.acts select{padding:4px 10px;font-size:12px;margin:0}
+.st{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.st:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.st-matched,.st-other_way{color:var(--green);background:var(--green-soft)}
+.st-charge_only{color:var(--orange);background:rgba(255,138,61,.12)}
+.st-receipt_only{color:var(--red);background:rgba(255,107,122,.1)}
+.st-close{color:var(--accent);background:var(--accent-soft)}
+.st-no_statement{color:var(--muted);background:rgba(255,255,255,.04)}
+.cdot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px}
+</style>
+{% include "_expense_tabs.html" %}
+<div class="ftabs">{% for f in filters %}
+<a href="/expenses/ledger{{'' if f == 'all' else '?show=' ~ f}}" class="{{'on' if show == f}}{{' warn' if f in ('charge_only', 'receipt_only', 'close') and counts[f]}}">{{"Everything" if f == "all" else states[f]}}<em>{{counts[f] or 0}}</em></a>{% endfor %}</div>
+<div class="lbar"><input id="q" placeholder="Search vendor, charge or description" size="32">
+<select id="f"><option value="">All categories</option>{% for c in categories %}<option value="{{c}}">{{c|replace("_", " ")|capitalize}}</option>{% endfor %}<option value="__order">Orders</option><option value="__none">Not sorted yet</option></select>
+<select id="mf"><option value="">All months</option>{% for m in months %}<option value="{{m}}">{{m}}</option>{% endfor %}</select>
+<span class="grow" style="flex:1"></span><span class="muted m" id="sum"></span></div>
+<p class="muted m">{% if first %}Your imported statements cover {{first}} to {{last}}. Receipts outside those dates aren't flagged as missing a charge.{% else %}No card or bank statements yet. <a href="/bank">Import one</a> to check every receipt against what was actually charged.{% endif %}</p>
+<table><thead><tr><th>Date</th><th>What</th><th>Receipt or order</th><th>Card charge</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>
+{% for r in rows %}{% set e = r.expense %}{% set t = r.charge %}
+<tr data-f="{{r.category or ('__order' if r.kind == 'order' else '__none')}}" data-m="{{(r.date or '')[:7]}}" data-a="{{r.amount or 0}}">
+<td>{{r.date or "-"}}</td>
+<td><b>{{r.name or "-"}}</b><span class="sub">{% if r.category %}<span class="cdot" style="background:{{colors.get(r.category, '#8592bd')}}"></span>{{r.category|replace("_", " ")|capitalize}}{% if r.detail %} · {% endif %}{% endif %}{{r.detail or ""}}</span></td>
+<td class="m">{% if r.kind == "expense" %}<b>Receipt</b>{% if e.billing_period %} · {{e.billing_period|replace("_", " ")}}{% endif %}<span class="sub">{{r.inbox or ""}}</span>
+{% elif r.kind == "order" %}<a href="/orders#order-{{(r.order or {}).id or (r.suggestion or {}).id}}"><b>Order</b></a>{% if r.order and r.order.shipping_status %} <span class="pill s-{{r.order.shipping_status}}">{{r.order.shipping_status|status_label}}</span>{% endif %}
+{% else %}<span class="muted">No email found</span>{% endif %}</td>
+<td class="m">{% if t %}<b>{{t.account_name or "Card"}}</b><span class="sub">{{t.date}}{% if r.state == "close" or (t.amount|round(2)) != ((r.amount or 0)|round(2)) %} · {{t.amount|money(t.currency)}}{% endif %}{% if r.kind != "charge" %} · {{t.description}}{% endif %}</span>
+{% elif r.state == "other_way" %}<b>{{e.paid_with}}</b>{% elif r.state == "receipt_only" %}<span class="muted">No charge on your imported cards</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+<td class="num">{{r.amount|money(r.currency)}}</td>
+<td><span class="st st-{{r.state}}">{{states[r.state]}}</span></td>
+<td><div class="acts">
+{% if r.state == "close" %}
+<form method="post" action="/expenses/ledger/{{t.id}}/close"><input type="hidden" name="target" value="{{r.suggestion.kind}}:{{r.suggestion.id}}">
+<button name="action" value="confirm" title="Same purchase: the charge differs by {{(t.amount - r.amount)|abs|money}}">Confirm</button><button class="ghost" name="action" value="reject">Not this</button></form>
+{% elif r.state == "charge_only" %}
+<button type="button" onclick="openMatch({{t.id}})">Match…</button>
+<form method="post" action="/bank/{{t.id}}/match"><input type="hidden" name="action" value="ignore"><button class="ghost" title="Not a purchase you track (groceries, rent...)">Ignore</button></form>
+{% elif r.state == "receipt_only" %}
+<form method="post" action="/expenses/{{e.id}}/paid"><select name="method" onchange="this.form.requestSubmit()" title="Paid without one of your imported cards">
+<option value="">Paid another way…</option>{% for p in methods %}<option value="{{p}}">{{p}}</option>{% endfor %}</select></form>
+{% elif r.state == "other_way" %}
+<form method="post" action="/expenses/{{e.id}}/paid"><input type="hidden" name="method" value=""><button class="ghost" title="Look for its card charge again">Undo</button></form>
+{% elif r.state == "matched" %}
+<form method="post" action="/bank/{{t.id}}/match"><input type="hidden" name="action" value="unmatch"><button class="ghost">Unmatch</button></form>
+{% endif %}
+{% if e %}<button type="button" class="ghost" onclick='openExpense({{e|tojson}})'>Edit</button>{% endif %}
+</div></td></tr>
+{% else %}<tr><td colspan="7" class="muted">{{"Nothing here." if counts.all else "No botting receipts or card charges yet. Sync your inboxes, or import a card statement on the Bank page."}}</td></tr>{% endfor %}
+</tbody></table>
+{% include "_match_dialog.html" %}
+{% include "_expense_dialog.html" %}
+<script>
+const q = document.getElementById('q'), f = document.getElementById('f'), mf = document.getElementById('mf'), sum = document.getElementById('sum');
+function apply() {
+  const text = q.value.toLowerCase(); let n = 0, total = 0;
+  document.querySelectorAll('tbody tr[data-f]').forEach(tr => {
+    const on = tr.textContent.toLowerCase().includes(text) && (!f.value || tr.dataset.f === f.value) && (!mf.value || tr.dataset.m === mf.value);
+    tr.style.display = on ? '' : 'none';
+    if (on) { n++; total += Number(tr.dataset.a); }
+  });
+  sum.textContent = n + ' rows · $' + total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+[q, f, mf].forEach(el => el.addEventListener(el === q ? 'input' : 'change', apply)); apply();
+</script>
+{% endblock %}

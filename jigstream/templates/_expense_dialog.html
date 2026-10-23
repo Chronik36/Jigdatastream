@@ -1,0 +1,31 @@
+{# Add or edit one botting expense. openExpense() for a new one, openExpense(row) to edit. #}
+<dialog id="expdlg"><div class="dh"><h3 id="xtitle">Add expense</h3><button class="x" type="button" onclick="expdlg.close()">×</button></div>
+<form method="post" id="xform" action="/expenses/new" class="db" style="display:block;margin:0">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px">
+<label>Vendor<br><input name="vendor" id="x-vendor" required style="width:100%"></label>
+<label>Amount<br><input name="amount" id="x-amount" inputmode="decimal" placeholder="0.00" style="width:100%"></label>
+<label>Category<br><select name="category" id="x-category" style="width:100%">{% for c in categories %}<option value="{{c}}">{{c|replace("_", " ")|capitalize}}</option>{% endfor %}</select></label>
+<label>Date<br><input type="date" name="date" id="x-date" style="width:100%"></label>
+<label>Billing<br><select name="billing_period" id="x-billing" style="width:100%"><option value="">Not set</option>{% for p in periods %}<option value="{{p}}">{{p|replace("_", " ")|capitalize}}</option>{% endfor %}</select></label>
+<label>Currency<br><input name="currency" id="x-currency" value="USD" maxlength="3" style="width:100%"></label>
+</div>
+<label>What you bought<br><input name="description" id="x-description" style="width:100%" placeholder="e.g. 10 GB residential proxies"></label>
+<div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button>Save</button><span class="grow" style="flex:1"></span>
+<button type="submit" class="danger" id="x-delete" formaction="" formnovalidate onclick="return confirm('Delete this expense?')">Delete</button></div>
+</form></dialog>
+<script>
+const expdlg = document.getElementById('expdlg');
+function openExpense(e) {
+  const f = document.getElementById('xform'), set = (k, v) => document.getElementById('x-' + k).value = v == null ? '' : v;
+  e = e || {};
+  ['vendor', 'amount', 'category', 'date', 'description'].forEach(k => set(k, e[k]));
+  set('billing', e.billing_period); set('currency', e.currency || 'USD');
+  if (!e.category) set('category', 'proxy');
+  if (!e.date) set('date', new Date().toISOString().slice(0, 10));
+  f.action = e.id ? '/expenses/' + e.id + '/edit' : '/expenses/new';
+  document.getElementById('xtitle').textContent = e.id ? 'Edit expense' : 'Add expense';
+  const del = document.getElementById('x-delete');
+  del.style.display = e.id ? '' : 'none'; del.formAction = e.id ? '/expenses/' + e.id + '/delete' : '';
+  expdlg.showModal();
+}
+</script>
