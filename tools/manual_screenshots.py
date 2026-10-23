@@ -142,8 +142,8 @@ def seed(path):
                                "https://demo-sneakers.example/air-jordan-1-chicago", "Air Jordan 1 Retro High OG 'Chicago'")
         keywordrules.save_rule(c, "demo-sneakers.example", "jordan", "+", "og", "add",
                                "https://demo-sneakers.example/air-jordan-1-chicago", "Air Jordan 1 Retro High OG 'Chicago'")
-        keywordrules.save_example(c, "https://demo-sneakers.example/air-jordan-1-low", "demo-sneakers.example",
-                                  "Air Jordan 1 Low 'Bred'", {"name": "Air Jordan 1 Low 'Bred'"},
+        from jigstream import keywords
+        keywordrules.save_example(c, keywords.AI_SYSTEM, {"name": "Air Jordan 1 Low 'Bred'", "host": "demo-sneakers.example"},
                                   ["air", "jordan", "1", "low", "bred"], ["mid", "high", "gs", "ps", "td"])
     if has_module("bank"):  # the Bank page, once it's in the app
         from jigstream import bank
@@ -512,9 +512,8 @@ shot("keywords", "/keywords", KEYWORD_MARKS,
      js="document.querySelector('input[name=url]').value = 'https://demo-sneakers.example/air-jordan-1-chicago';"
         "document.querySelector('form.kw-form').submit()",
      viewport={"width": 1360, "height": 1950 if has_module("keywordrules") else 1250}, needs=lambda: has_module("keywords"))
-shot("training-keywords", "/training/email", [("h3#keywords + p + table", 1), ("h3#keywords + p + table button.danger", 2),
-                                             ("a[href='/keywords/training/export'] button", 3)],
-     scroll="h3@Keyword finder corrections", needs=lambda: has_module("keywordrules"))
+shot("keyword-rules", "/keywords", [("#rules table", 1), ("#rules .kw-x", 2)], clip_to="#rules",
+     needs=lambda: has_module("keywordrules"))
 shot("stock", "/stock?run=1&retailer=target&product=https%3A%2F%2Fwww.target.com%2Fp%2F-%2FA-89238122&zip=78701&radius=25",
      [("input[name=product]", 1), ("select[name=retailer]", 2), ("input[name=zip]", 3), ("select[name=radius]", 4),
       ("table.st-table", 5), ("#recheck", 6), ("form[action='/stock/bestbuy-key']", 7)],
