@@ -95,3 +95,35 @@ def test_pages(tmp_path, monkeypatch):
     assert "#9001" in page and "Walmart" not in page
     assert "Cancelled" in client.get("/checkouts").get_data(as_text=True)
     assert 'href="/stuck"' in page and 'id="stuck"' in client.get("/manual").get_data(as_text=True)
+
+
+def refund(c, desc, amount, day, mask=None):
+    from jigstream import bank
+    acct = bank.account_for(c, "Card " + (mask or "x"), mask=mask)
+    bank.import_rows(c, acct, [{"date": day, "description": desc, "amount": -amount, "category": ""}], "file")
+
+
+def test_bank_refund_cancels_a_checkout(tmp_path):
+    c, store = setup(tmp_path)
+    c.execute("UPDATE profiles SET card_last4='4242' WHERE name='Ana'")
+    # Target refunds at once; no cancel email came. The refund carries tax on top of the bot's price.
+    checkout(c, "a", "Target", "Ana", ts="2026-10-20T15:00:00Z")
+    c.execute("UPDATE checkouts SET price='$49.99' WHERE fingerprint='a'")
+    refund(c, "TARGET.COM * 800-591-3869 MN", 54.11, "2026-10-21", mask="4242")
+    # Same store and amount, but the refund went to another card.
+    checkout(c, "b", "Target", "Ana", ts="2026-10-20T15:00:00Z")
+    c.execute("UPDATE checkouts SET price='$20.00' WHERE fingerprint='b'")
+    refund(c, "TARGET.COM", 20.00, "2026-10-21", mask="1111")
+    # An order email's total wins over the bot's price; another store's refund doesn't count.
+    checkout(c, "d", "Walmart", "Ana", "W-9", ts="2026-10-20T15:00:00Z")
+    mail(store, "d1", "Walmart", "ordered", "2026-10-20T15:01:00+00:00", "W-9")
+    c.execute("UPDATE tracked_orders SET total=88.20 WHERE order_number='W-9'")
+    refund(c, "WALMART.COM 8009256278", 88.20, "2026-10-22")
+    refund(c, "BEST BUY 00012", 88.20, "2026-10-22")
+    c.commit()
+    rows = by_fp(stuck.cross_reference(c))
+    assert rows["a"]["state"] == "cancelled" and rows["a"]["refund"]["amount"] == -54.11
+    assert rows["b"]["state"] == "no_email" and rows["b"]["refund"] is None
+    assert rows["d"]["state"] == "cancelled" and "WALMART" in rows["d"]["refund"]["description"]
+    page = create_app(str(tmp_path / "m.db")).test_client().get("/stuck?show=cancelled").get_data(as_text=True)
+    assert "$54.11" in page and "$88.20" in page
