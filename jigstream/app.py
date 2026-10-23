@@ -528,6 +528,7 @@ def create_app(db_path=None):
         return True
 
     app.start_sync = start_sync
+    app.sync_state = sync_state  # the phone's Update button checks it too
 
     @app.get("/inbox")
     def inbox_page():

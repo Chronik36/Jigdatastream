@@ -1,0 +1,15 @@
+{% extends "mobile/base.html" %}{% block title %}Updating{% endblock %}{% block body %}
+<div style="text-align:center;margin-top:60px"><img src="{{url_for('static', filename='mark.png')}}" alt="" width="72" height="72" style="border-radius:18px">
+<h2 style="margin:16px 0 6px">Updating BotTrack</h2><p class="muted" id="msg">Your Mac is installing the new version and restarting. This page comes back by itself.</p></div>
+<script>
+var tries = 0;
+setTimeout(function ping() {
+  fetch('{{url_for("mobile.changes")}}', {cache: 'no-store', credentials: 'same-origin'})
+    .then(function (r) { if (r.ok) location.href = '{{url_for("mobile.app_page")}}'; else throw 0; })
+    .catch(function () {
+      if (++tries < 90) setTimeout(ping, 2000);
+      else document.getElementById('msg').textContent = "It's taking a while. Check that BotTrack opened again on your Mac.";
+    });
+}, 4000);
+</script>
+{% endblock %}
