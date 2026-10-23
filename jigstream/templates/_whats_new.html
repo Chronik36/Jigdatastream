@@ -1,0 +1,24 @@
+{# After an update: what changed since the version BotTrack had before, from each release's patch notes. #}
+<dialog id="wnew" style="width:min(560px,calc(100vw - 32px))"><div class="dh"><h3>What's new in BotTrack</h3><button class="x" type="button" onclick="wnew.close()">×</button></div>
+<div style="padding:16px 22px;max-height:60vh;overflow-y:auto" id="wnew-body"><p class="muted">Loading the patch notes...</p></div>
+<div class="df" style="padding:14px 22px;display:flex;justify-content:flex-end"><button type="button" onclick="wnew.close()">Got it</button></div></dialog>
+<style>#wnew h4{margin:14px 0 6px;font-size:13px;color:var(--muted);font-weight:600}#wnew h4:first-child{margin-top:0}#wnew ul{margin:0;padding-left:18px}#wnew li{margin:4px 0}</style>
+<script>
+(function () {
+  var dlg = document.getElementById('wnew'), body = document.getElementById('wnew-body');
+  function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+  dlg.addEventListener('close', function () { fetch('/whats-new/seen', {method: 'POST'}); });
+  fetch('/whats-new', {cache: 'no-store'}).then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.releases.length) {
+      if (!d.error) return fetch('/whats-new/seen', {method: 'POST'});  // nothing to show
+      body.innerHTML = '<p class="muted">' + esc(d.error) + '</p>';
+    } else {
+      body.innerHTML = d.releases.map(function (r) {
+        return '<h4>Build ' + r.build + (r.date ? ' · ' + esc(r.date) : '') + '</h4><ul>' +
+          (r.notes.length ? r.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') : '<li>Small fixes.</li>') + '</ul>';
+      }).join('');
+    }
+    dlg.showModal();
+  }).catch(function () {});
+})();
+</script>

@@ -283,5 +283,6 @@ function mini() {
 }
 </script>
 {% with watch_data=path in ("/orders", "/expenses", "/profiles") %}{% if watch_data or on_phone %}{% include "live.html" %}{% endif %}{% endwith %}
+{% if whats_new %}{% include "_whats_new.html" %}{% endif %}
 {% if on_phone %}{% include "phone.html" %}{% endif %}
 </body></html>
