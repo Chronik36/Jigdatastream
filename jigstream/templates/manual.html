@@ -340,14 +340,20 @@ cancelled. If the profile's card and the bank account both show their last 4 dig
 and <b>Every webhook</b> (see <a href="#checkouts">Checkouts</a>).</p>
 <p><b>By date</b> lists each retail site with its drop dates. Click a date to see that drop's checkouts, sorted by proxy group, proxy
 and profile (or by profile first, with the Sort buttons). The proxy group and proxy come from the webhook's <b>Proxy Group</b> and
-<b>Proxy</b> fields. Each checkout is marked:</p>
+<b>Proxy</b> fields. Above the list, click a proxy group, proxy or profile to see only its checkouts (click it again in the
+bar, or ✕, to see them all). The names in the tables at the bottom and in each checkout row open the same view. Each checkout is
+marked:</p>
 <ul>
-<li><b>Good</b> (green): an order email confirmed it and nothing cancelled it.</li>
+<li><b>Good</b> (green): an order email, or the bot's own follow-up, confirmed it and nothing cancelled it.</li>
 <li><b>Unsure</b> (orange): the bot checked out and nothing cancelled it, but no order email has matched yet.</li>
-<li><b>Cancelled</b> (red): a cancel email or a bank refund came after it. Pokemon Center can cancel a month or more later, so a
+<li><b>Cancelled</b> (red): a cancel email, a bank refund or the bot's follow-up said it was cancelled. Pokemon Center can cancel a month or more later, so a
 good checkout can still turn red.</li>
 <li><b>Declined</b>: the site declined it at checkout (red Hayha webhooks, or any webhook with a Cancel Reason).</li>
 </ul>
+<p><b>Bot follow-ups:</b> some bots (Valor) post a second webhook after the checkout saying whether the order stuck or got
+cancelled, such as "Order Cancelled" or "Order Stuck". BotTrack links it to its checkout by order number (or the same bot, site
+and profile), and doesn't count it as another checkout. A cancel from the bot always counts; the bot saying good counts unless an
+email or refund cancelled it.</p>
 <p>If a result is wrong, use the <b>Correct it</b> menu next to it: Good or Cancelled. Your choice sticks across syncs, and
 "Back to auto" undoes it. When the checkout has an order email that said otherwise, the order is corrected too and its emails
 become training examples, the same as correcting an order on the Orders page. A cancel email or refund that arrives after you

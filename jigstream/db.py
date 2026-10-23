@@ -42,6 +42,11 @@ CREATE INDEX IF NOT EXISTS checkouts_profile ON checkouts (profile, status);
 CREATE INDEX IF NOT EXISTS checkouts_ts ON checkouts (ts);
 -- Good / cancelled set by hand on the Drops page; wins over what the emails and bank say.
 CREATE TABLE IF NOT EXISTS checkout_verdicts (checkout_id INTEGER PRIMARY KEY, verdict TEXT, set_at TEXT);
+-- A bot's follow-up on an earlier checkout (Valor posts one when the order stuck or got cancelled).
+CREATE TABLE IF NOT EXISTS checkout_updates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, fingerprint TEXT UNIQUE, bot TEXT, verdict TEXT,
+    site TEXT, profile TEXT, order_number TEXT, email TEXT, ts TEXT, raw TEXT
+);
 CREATE TABLE IF NOT EXISTS profile_groups (name TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS saved_addresses (
     nickname TEXT PRIMARY KEY,
@@ -83,6 +88,7 @@ def _setup(con):
     con.executescript(wallet.SCHEMA)
     con.executescript(emailbook.SCHEMA)
     parsers.reclassify(con)  # Hayha declines stored before they were told apart by color
+    parsers.move_updates(con)  # bot follow-ups (Valor) stored as checkouts before they were told apart
 
 
 def connect(path=None):
