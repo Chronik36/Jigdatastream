@@ -111,6 +111,18 @@ def init_app(app):
                       PERMANENT_SESSION_LIFETIME=timedelta(days=30))
     app.jinja_env.globals["csrf_token"] = csrf_token
     app.register_blueprint(bp)
+    try:
+        watch_changes(db.connect(app.config.get("DB_PATH")))
+    except Exception:
+        logger.exception("couldn't set up live updates")
+
+    @app.context_processor
+    def phone_flags():
+        if not request.path.startswith("/m/"):
+            return {}
+        up, app_version = updater.state, android_app_version()
+        return {"update": up, "app_version": app_version,
+                "apk_update": bool(app_version and up.get("apk_url") and up.get("apk_version", 0) > app_version)}
 
     @app.before_request
     def guard():
@@ -129,6 +141,35 @@ def init_app(app):
         if request.method == "POST" and not token_ok():
             abort(400)
         return None
+
+
+# ---- live updates: every open page, on the Mac or a phone, reloads when the data changes ---------
+
+WATCHED = ("tracked_orders", "expenses", "profiles")
+
+
+def watch_changes(c):
+    """SQLite triggers count every change to orders, expenses and profiles, whoever makes it: a phone,
+    the Mac's own pages, or a background sync. Pages poll the count and refresh when it moves."""
+    c.execute("CREATE TABLE IF NOT EXISTS change_count (id INTEGER PRIMARY KEY CHECK (id = 1), n INTEGER)")
+    c.execute("INSERT OR IGNORE INTO change_count VALUES (1, 0)")
+    for table in WATCHED:
+        for op in ("INSERT", "UPDATE", "DELETE"):
+            c.execute(f"CREATE TRIGGER IF NOT EXISTS count_{table}_{op.lower()} AFTER {op} ON {table} "
+                      "BEGIN UPDATE change_count SET n = n + 1 WHERE id = 1; END")
+    c.commit()
+
+
+@bp.get("/api/changes")
+def changes():
+    row = con().execute("SELECT n FROM change_count WHERE id = 1").fetchone()
+    return jsonify(n=row[0] if row else 0), 200, {"Cache-Control": "no-store"}
+
+
+def android_app_version():
+    """The Android app adds "BotTrackApp/<versionCode>" to its user agent."""
+    m = re.search(r"BotTrackApp/(\d+)", request.headers.get("User-Agent", ""))
+    return int(m.group(1)) if m else (1 if "BotTrackApp" in request.headers.get("User-Agent", "") else 0)
 
 
 # ---- desktop Setup: turn phone access on and see how to reach it ---------------------------------
@@ -260,6 +301,41 @@ def manifest():
 @bp.get("/")
 def home():
     return redirect(url_for("mobile.orders"))
+
+
+@bp.get("/app")
+def app_page():
+    return render_template("mobile/app.html", version=updater.installed_version(), tab="app",
+                           can_update=updater.can_self_update())
+
+
+@bp.post("/update/check")
+def update_check():
+    s = updater.check()
+    flash(f"Couldn't check for updates: {s['error']}" if s["error"] else
+          "A new version is ready." if s["available"] else "BotTrack is up to date.")
+    return redirect(url_for("mobile.app_page"))
+
+
+@bp.post("/update")
+def update_install():
+    """Update BotTrack on the Mac from the phone. The phone pages come from the Mac, so this updates
+    them too; an Android app that's out of date is offered its new version once BotTrack is back."""
+    if not updater.can_self_update():
+        flash("This copy of BotTrack runs from a developer checkout, so it doesn't update itself.")
+        return redirect(url_for("mobile.app_page"))
+    if getattr(current_app, "sync_state", {}).get("running"):
+        flash("BotTrack is syncing your inboxes. Try again when it finishes.")
+        return redirect(url_for("mobile.app_page"))
+    try:
+        updater.install()
+    except Exception as e:
+        logger.exception("update from a phone failed")
+        flash(f"The update failed and nothing was changed: {e}")
+        return redirect(url_for("mobile.app_page"))
+    logger.info("update started from a phone")
+    updater.restart_soon()
+    return render_template("mobile/updating.html")
 
 
 def _text(name):

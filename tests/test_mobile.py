@@ -50,7 +50,7 @@ def test_phone_must_sign_in_and_never_reaches_desktop_pages(app):
     for path in ("/setup", "/logs", "/logs/download", "/api/orders"):
         assert c.get(path).headers["Location"].endswith("/m/orders"), path
     assert c.post("/update/install").status_code in (302, 400)  # never runs the desktop route
-    assert c.post("/m/setup", data={"on": "1", "csrf": csrf(c, "/m/profiles")}).status_code == 404
+    assert c.post("/m/setup", data={"on": "1", "csrf": csrf(c, "/m/app")}).status_code == 404
 
 
 def test_the_mac_window_needs_no_sign_in(app):
@@ -143,3 +143,59 @@ def test_setup_turns_phone_access_on(app):
     assert "PHONE_SECRET_KEY=" in env
     assert "Restart BotTrack to turn phone access on" in c.get("/setup").get_data(as_text=True)
     assert sign_in(phone(app)).status_code == 302
+
+
+def test_pages_see_changes_from_anywhere(app):
+    c = phone(app)
+    sign_in(c)
+    n = c.get("/m/api/changes").get_json()["n"]
+    con = appmod.db.connect(app.config["DB_PATH"])
+    con.execute("INSERT INTO profiles (name) VALUES ('From the Mac')")  # e.g. the Mac's own pages or a sync
+    con.commit()
+    assert c.get("/m/api/changes").get_json()["n"] == n + 1
+    appmod.Store(con).add_expense({"vendor": "Proxies", "amount": 5.0})
+    assert c.get("/m/api/changes").get_json()["n"] == n + 2
+    assert client(app, "100.64.0.9").get("/m/api/changes").status_code == 302  # signed out: no data
+
+
+def test_update_from_the_phone(app, monkeypatch):
+    from jigstream import updater
+    c = phone(app)
+    sign_in(c)
+    monkeypatch.setitem(updater.state, "available", True)
+    page = c.get("/m/orders").get_data(as_text=True)
+    assert "A new version of BotTrack is ready" in page
+    calls = []
+    monkeypatch.setattr(updater, "can_self_update", lambda: True)
+    monkeypatch.setattr(updater, "install", lambda: calls.append("install"))
+    monkeypatch.setattr(updater, "restart_soon", lambda: calls.append("restart"))
+    t = csrf(c, "/m/app")
+    assert c.post("/m/update").status_code == 400  # needs the page token
+    assert "Updating BotTrack" in c.post("/m/update", data={"csrf": t}).get_data(as_text=True)
+    assert calls == ["install", "restart"]
+    app.sync_state["running"] = True
+    c.post("/m/update", data={"csrf": t})
+    assert calls == ["install", "restart"]
+
+
+def test_android_app_is_offered_its_update(app, monkeypatch):
+    from jigstream import updater
+    monkeypatch.setitem(updater.state, "available", False)
+    monkeypatch.setitem(updater.state, "apk_version", 3)
+    monkeypatch.setitem(updater.state, "apk_url", "https://example.com/BotTrack-android-3.apk")
+    c = phone(app)
+    sign_in(c)
+    assert "Android app is ready" not in c.get("/m/orders").get_data(as_text=True)  # a browser, not the app
+    old = c.get("/m/orders", headers={"User-Agent": "Mozilla/5.0 BotTrackApp/2"}).get_data(as_text=True)
+    assert "Android app is ready" in old and "BotTrack-android-3.apk" in old
+    assert "Android app is ready" not in c.get("/m/orders", headers={"User-Agent": "x BotTrackApp/3"}).get_data(as_text=True)
+
+
+def test_release_check_finds_the_android_app(monkeypatch):
+    from jigstream import updater
+    rel = {"tag_name": "build-9-abc", "body": "x", "assets": [
+        {"name": "bottrack-code.zip", "browser_download_url": "https://e/code.zip"},
+        {"name": "BotTrack-android-4.apk", "browser_download_url": "https://e/BotTrack-android-4.apk"}]}
+    monkeypatch.setattr(updater, "_get", lambda *a, **k: __import__("json").dumps(rel).encode())
+    updater._latest_release(updater.settings())
+    assert updater.state["apk_version"] == 4 and updater.state["apk_url"].endswith("-4.apk")
