@@ -15,6 +15,7 @@ logger = logging.getLogger("jigstream.sync")
 
 
 RECHECK_DAYS = 60
+ERROR_STREAK = 5
 
 
 def search_days(config, state):
@@ -46,8 +47,12 @@ def process(email, store, llm, config, counts, log, examples=(), platforms=()):
             raise
         store.record_email(email, "error", str(e)[:500])
         counts["error"] += 1
+        counts["streak"] = counts.get("streak", 0) + 1
         log(f"  ! {email.subject[:70]}: {e}", file=sys.stderr)
+        if counts["streak"] >= ERROR_STREAK:  # the engine is failing on everything; stop instead of grinding on
+            raise LLMError(f"The local model failed on {ERROR_STREAK} emails in a row; stopping this sync. Last: {e}")
         return
+    counts.pop("streak", None)
     store.save(email, result)
     counts[result["kind"]] = counts.get(result["kind"], 0) + 1
     logger.info("%s in %.1fs: %s | %s -> %s", result["kind"], time.monotonic() - started, email.sender,
@@ -83,6 +88,7 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
         for email in emails:
             if email.message_id not in seen:
                 process(email, store, llm, config, counts, log, examples, platforms)
+        counts.pop("streak", None)
         return counts
 
     if not config.accounts:
@@ -115,6 +121,7 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
         # A capped run (MAX_EMAILS) hasn't finished the range, so don't record it as synced.
         if not (config.max_emails and total["n"] >= config.max_emails):
             store.mark_synced(address, started, full=days is None)
+    counts.pop("streak", None)
     logger.info("sync finished: %s", summary(counts))
     return counts
 
