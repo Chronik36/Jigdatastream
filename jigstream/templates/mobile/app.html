@@ -1,0 +1,17 @@
+{% extends "mobile/base.html" %}{% block title %}App{% endblock %}{% block body %}
+<fieldset><legend>BotTrack on your Mac</legend>
+<p class="small" style="margin:0 0 10px">Version <b>{{(version or "unknown")[:20]}}</b>{% if update.checked_at %}<br><span class="muted">Checked {{update.checked_at[:16]|replace("T", " ")}}</span>{% endif %}</p>
+{% if update.available %}<p class="small" style="margin:0 0 10px">A new version is ready{% if update.message %}: <span class="muted">{{update.message}}</span>{% endif %}</p>
+<form method="post" action="{{url_for('mobile.update_install')}}" style="margin-bottom:12px"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Update BotTrack</button></form>
+<p class="muted small">This updates the Mac and these phone pages together. BotTrack restarts for a few seconds.</p>
+{% else %}<form method="post" action="{{url_for('mobile.update_check')}}" style="margin-bottom:12px"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button class="ghost" style="width:100%;padding:11px">Check for updates</button></form>{% endif %}
+</fieldset>
+{% if app_version %}<fieldset><legend>Android app</legend>
+<p class="small" style="margin:0 0 10px">Version {{app_version}}{% if apk_update %}. Version {{update.apk_version}} is ready.{% else %}, up to date.{% endif %}</p>
+{% if apk_update %}<p><a class="row" href="{{update.apk_url}}" style="text-align:center;font-weight:600;color:var(--accent)">Download the new app</a></p>
+<p class="muted small">Open the download and tap Install. It replaces this app and keeps you signed in.</p>{% endif %}
+<p style="text-align:center"><a href="bottrack://setup" class="small">Change Mac address</a></p>
+</fieldset>{% endif %}
+<form method="post" action="{{url_for('mobile.logout')}}" style="margin-top:8px;text-align:center"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button class="ghost">Sign out of this phone</button></form>
+<p class="muted small" style="text-align:center;margin-top:18px">Changes you make here show up on your Mac right away, and the other way around.</p>
+{% endblock %}

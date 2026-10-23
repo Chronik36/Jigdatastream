@@ -122,7 +122,8 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setSaveFormData(false);  // profile fields hold personal details
-        s.setUserAgentString(s.getUserAgentString() + " BotTrackApp");  // shows the "Change Mac address" link
+        // Tells the phone pages this is the app and which version, for "Change Mac address" and app updates.
+        s.setUserAgentString(s.getUserAgentString() + " BotTrackApp/" + BuildConfig.VERSION_CODE);
         CookieManager.getInstance().setAcceptCookie(true);
 
         web.setWebViewClient(new WebViewClient() {

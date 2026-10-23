@@ -49,12 +49,39 @@ button.danger{background:transparent;color:var(--red);border:1px solid rgba(255,
 button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line-2);width:auto;padding:6px 12px;font-size:14px}
 .check{display:flex;align-items:center;gap:10px;color:var(--text);font-weight:500}.check input{width:auto}
 .search{margin-bottom:12px}
+.upd{display:flex;align-items:center;gap:10px;border-color:rgba(61,220,132,.4);background:var(--green-soft)}.upd span{flex:1}
+.upd button,.upd .btn{width:auto;padding:8px 14px;font-size:14px;border-radius:10px;background:var(--green);color:#04122a;font-weight:600}
 </style></head><body>
 <header>{% block back %}{% endblock %}<h1>{% block title %}BotTrack{% endblock %}</h1>{% block action %}{% endblock %}</header>
-<main>{% for m in get_flashed_messages() %}<div class="flash">{{m}}</div>{% endfor %}{% block body %}{% endblock %}</main>
+<main>{% if tab and update and update.available %}<form method="post" action="{{url_for('mobile.update_install')}}" class="flash upd"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+<span>A new version of BotTrack is ready.</span><button>Update</button></form>
+{% elif tab and apk_update %}<div class="flash upd"><span>A new version of the Android app is ready.</span><a class="btn" href="{{update.apk_url}}">Download</a></div>{% endif %}
+<div class="flash" id="live" hidden>Changed on another device. <a href="javascript:location.reload()">Show the latest</a></div>
+{% for m in get_flashed_messages() %}<div class="flash">{{m}}</div>{% endfor %}{% block body %}{% endblock %}</main>
 {% if tab %}<nav class="tabs">
 <a href="{{url_for('mobile.orders')}}" class="{{'on' if tab == 'orders'}}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg>Orders</a>
 <a href="{{url_for('mobile.expenses')}}" class="{{'on' if tab == 'expenses'}}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg>Expenses</a>
 <a href="{{url_for('mobile.profiles')}}" class="{{'on' if tab == 'profiles'}}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Profiles</a>
-</nav>{% endif %}
+<a href="{{url_for('mobile.app_page')}}" class="{{'on' if tab == 'app'}}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>App</a>
+</nav>
+<script>
+// Live updates: when anything changes on the Mac or another phone, lists refresh by themselves and
+// forms say so (so nothing you're typing is lost).
+(function () {
+  var last = null, editing = !!document.querySelector('main form[method=post] input[name=csrf] ~ fieldset');
+  function poll() {
+    if (document.hidden) return setTimeout(poll, 4000);
+    fetch('{{url_for("mobile.changes")}}', {cache: 'no-store', credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (last !== null && d.n !== last) {
+          if (editing) document.getElementById('live').hidden = false; else return location.reload();
+        }
+        last = d.n; setTimeout(poll, 4000);
+      }).catch(function () { setTimeout(poll, 8000); });
+  }
+  poll();
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && last !== null) poll(); });
+})();
+</script>{% endif %}
 </body></html>

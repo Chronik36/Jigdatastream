@@ -11,6 +11,7 @@ import io
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -33,11 +34,12 @@ API = "https://api.github.com"
 KEEP_BACKUPS = 1  # only the version before the last update is kept, for "Undo last update"
 
 state = {"checked_at": None, "available": False, "latest": None, "message": "", "error": None, "installing": False,
-         "download_url": None}
+         "download_url": None, "apk_version": 0, "apk_url": None}
 
 
 RELEASES_REPO = "Chronik36/BotTrack-releases"
 CODE_ASSET = "bottrack-code.zip"
+APK_ASSET = re.compile(r"^BotTrack-android-(\d+)\.apk$")  # the Android app, numbered by its versionCode
 
 
 def settings():
@@ -62,6 +64,10 @@ def _latest_release(s):
         raise RuntimeError(f"GitHub answered {e.code}") from e
     except urllib.error.URLError as e:
         raise RuntimeError(f"Couldn't reach GitHub: {e.reason}") from e
+    for a in rel.get("assets", []):  # the phone pages offer this to Android phones running an older app
+        m = APK_ASSET.match(a["name"])
+        if m:
+            state.update(apk_version=int(m.group(1)), apk_url=a["browser_download_url"])
     asset = next((a for a in rel.get("assets", []) if a["name"] == CODE_ASSET), None)
     if not asset:
         raise RuntimeError("The latest release has no app code attached.")
