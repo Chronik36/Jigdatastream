@@ -251,3 +251,30 @@ def test_corrections_are_remembered_and_taught(tmp_path, monkeypatch):
     client.post(f"/keywords/rules/{rule_id}/delete")
     html = client.post("/keywords", data={"url": url}).get_data(as_text=True)
     assert 'data-word="mini"' in html
+
+
+def test_ai_never_excludes_a_plus_keyword_spelled_apart(tmp_path, monkeypatch):
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, TOY_PAGE))
+    monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, s, u, **k: {
+        "negative_keywords": [{"word": "nee doh"}, {"word": "Nee"}, {"word": "slime"}]})
+    html = client.post("/keywords", data={"url": "https://gotoytime.com/p", "ai": "1"}).get_data(as_text=True)
+    assert 'data-word="slime"' in html and 'data-word="nee doh"' not in html and 'data-word="nee"' not in html
+
+
+def test_saving_waits_for_a_busy_database(tmp_path, monkeypatch):
+    import sqlite3
+    import threading
+    import time as _time
+    path = str(tmp_path / "k.db")
+    client = create_app(path).test_client()
+    client.get("/keywords")  # makes the tables
+    blocker = sqlite3.connect(path, check_same_thread=False)
+    blocker.execute("BEGIN IMMEDIATE")  # a sync mid-write
+    threading.Thread(target=lambda: (_time.sleep(6), blocker.commit()), daemon=True).start()
+    r = client.post("/keywords/feedback", json={"url": "u", "host": "shop.example", "kind": "+", "word": "nee",
+                                                "action": "add"})
+    assert r.get_json()["ok"]  # waited past sqlite's default 5 seconds instead of "database is locked"
+    r = client.post("/keywords/feedback", json={"url": "u", "host": "shop.example", "kind": "+", "word": "nee",
+                                                "action": "remove"})
+    assert r.get_json()["ok"]
