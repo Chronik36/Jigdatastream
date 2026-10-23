@@ -144,20 +144,31 @@ def drops(items, sort="proxy"):
     return sorted(out, key=lambda s: s["latest"], reverse=True)
 
 
-def report(con, site=None, sort="proxy", day=None):
-    """Totals, leaderboards and drops for every checkout, or one site's, or one drop day's."""
+# The groups a drop's checkouts can be looked at by; the name of each is what the leaderboards show.
+GROUPS = {"group": lambda c: c["proxy_group"] or "No group", "proxy": lambda c: c["proxy"] or "No proxy",
+          "profile": lambda c: c["profile"] or "No profile"}
+
+
+def report(con, site=None, sort="proxy", day=None, by=None, name=None):
+    """Totals, leaderboards and drops for every checkout, or one site's, one drop day's, and/or one proxy group's,
+    proxy's or profile's (by + name)."""
     items = rows(con)
     sites = sorted({c["site"] for c in items if c["site"]}, key=str.lower)
     if site:
         items = [c for c in items if stuck.same_site(c["site"], site)]
     if day:
         items = [c for c in items if c["day"] == day]
+    # The groups to click into come from before picking one, so the others stay on screen.
+    chips = {k: leaderboard(items, f) for k, f in GROUPS.items()}
+    if by in GROUPS and name:
+        items = [c for c in items if GROUPS[by](c) == name]
     return {
         "sites": sites,
+        "chips": chips,
         "tally": tally(items),
-        "groups": leaderboard(items, lambda c: c["proxy_group"] or "No group"),
-        "proxies": leaderboard(items, lambda c: c["proxy"] or "No proxy"),
-        "profiles": leaderboard(items, lambda c: c["profile"] or "No profile"),
+        "groups": leaderboard(items, GROUPS["group"]),
+        "proxies": leaderboard(items, GROUPS["proxy"]),
+        "profiles": leaderboard(items, GROUPS["profile"]),
         "combos": [t for t in leaderboard(items, lambda c: f"{c['proxy_group'] or c['proxy'] or 'No proxy'} + "
                                                          f"{c['profile'] or 'No profile'}") if t["real"]][:10],
         "drops": drops(items, sort),

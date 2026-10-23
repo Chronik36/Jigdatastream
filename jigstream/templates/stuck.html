@@ -16,6 +16,6 @@
 {% if r.state == "cancelled" %}<div class="muted" style="font-size:12px;margin-top:4px">{{(o.last_email_date or "")[:10]}}</div>{% endif %}
 {% else %}<span class="pill s-unknown">No email found</span>{% endif %}</td>
 <td>{% if r.refund %}<a href="/bank?show=refunds"><span class="pill s-refunded">{{(-r.refund.amount)|money}}</span></a><div class="muted" style="font-size:12px;margin-top:4px">{{r.refund.date}}</div>{% else %}<span class="muted">-</span>{% endif %}</td>
-<td class="muted">{{r.matched_on or ""}}</td></tr>
+<td class="muted">{{r.matched_on or ""}}{% if r.bot_update %}<div>{{r.bot_update.bot or "Bot"}} says {{r.bot_update.verdict}}</div>{% endif %}</td></tr>
 {% else %}<tr><td colspan="8" class="muted">{% if not counts.all %}No successful checkouts yet. Import your bot webhooks on the <a href="/">Dashboard</a> or connect Discord on Setup.{% else %}Nothing here.{% endif %}</td></tr>{% endfor %}</tbody></table>
 {% endblock %}
