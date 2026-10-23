@@ -216,27 +216,41 @@ class Store:
                 return row
         if result["shipping_status"] in ("cancelled", "refunded"):
             return self._order_for_cancel(result, email)
-        return None
+        return self._cancel_for_order(result, email)
+
+    def _same_buyer_orders(self, result, email, where):
+        from .stuck import same_site, when
+        to, sent = result.get("recipient_email"), when(email.date)
+        if not to or not sent:
+            return []
+        picks = []
+        for row in self.db.execute(f"SELECT * FROM tracked_orders WHERE lower(recipient_email) = ? AND {where}",
+                                   (to.lower(),)):
+            if not same_site(row["retailer"], result["retailer"]):
+                continue
+            if result["order_number"] and row["order_number"] and \
+                    _key(row["order_number"]) != _key(result["order_number"]):
+                continue  # a different order from the same store
+            placed = when(row["last_email_date"]) or when(row["order_date"])
+            if placed:
+                picks.append((row, sent - placed))
+        return picks
 
     def _order_for_cancel(self, result, email):
         """A cancel email with no order number we already know: the one open order from the same store
-        sent to the same address (the To address) in the two weeks before it. None when that isn't clear."""
-        from .stuck import same_site, when
-        to = result.get("recipient_email")
-        sent = when(email.date)
-        if not to or not sent:
-            return None
-        picks = []
-        for row in self.db.execute("SELECT * FROM tracked_orders WHERE lower(recipient_email) = ?"
-                                   " AND COALESCE(shipping_status, '') NOT IN ('cancelled', 'refunded', 'returned',"
-                                   " 'delivered')", (to.lower(),)):
-            placed = when(row["last_email_date"]) or when(row["order_date"])
-            if same_site(row["retailer"], result["retailer"]) and placed and \
-                    timedelta(0) <= sent - placed <= timedelta(days=14):
-                if result["order_number"] and row["order_number"] and \
-                        _key(row["order_number"]) != _key(result["order_number"]):
-                    continue  # a different order from the same store
-                picks.append(row)
+        sent to the same address (the To address) from two weeks before it to a day after (the cancel
+        can land before the confirmation). None when that isn't clear."""
+        picks = [r for r, gap in self._same_buyer_orders(
+            result, email, "COALESCE(shipping_status, '') NOT IN ('cancelled', 'refunded', 'returned', 'delivered')")
+            if -timedelta(days=1) <= gap <= timedelta(days=14)]
+        return picks[0] if len(picks) == 1 else None
+
+    def _cancel_for_order(self, result, email):
+        """An order confirmation that arrives after its cancel: the one cancel saved on its own (no order
+        number, or this one) from the same store to the same address within a day."""
+        picks = [r for r, gap in self._same_buyer_orders(
+            result, email, "shipping_status = 'cancelled' AND (order_number IS NULL OR order_number = '')"
+            " AND merge_key LIKE 'msg:%'") if abs(gap) <= timedelta(days=1)]
         return picks[0] if len(picks) == 1 else None
 
     def _save_order(self, email, result):
@@ -283,7 +297,11 @@ class Store:
         # move it forward (e.g. a missed "shipped" email after "ordered").
         # A cancel, return or refund is final: an older email read later (the order confirmation after
         # the cancel) never undoes it.
-        final = old in ("cancelled", "returned", "refunded") and not newer
+        # The cancel can also arrive first, so a confirmation after it ("ordered", "processing") never
+        # reopens it either; only real shipping news, a refund or a return moves it on.
+        final = old in ("cancelled", "returned", "refunded") and (
+            not newer or (old == "cancelled" and status not in ("shipped", "in_transit", "out_for_delivery",
+                                                                "delivered", "refunded", "returned")))
         if status_advances(old, status) and not final and (newer or status in PROGRESS or old in (None, "unknown")):
             updates["shipping_status"] = status
         if newer:
