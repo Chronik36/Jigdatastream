@@ -106,3 +106,31 @@ def test_cancel_with_no_number_first_then_confirmation_joins_it(tmp_path):
     rows = {r["recipient_email"]: (r["order_number"], r["shipping_status"])
             for r in store.db.execute("SELECT * FROM tracked_orders")}
     assert rows == {"buyer1@x.com": ("A1B2C3D4", "cancelled"), "buyer2@x.com": ("Z9Y8X7W6", "ordered")}
+
+
+def test_pokemon_center_cancel_a_month_later_finds_its_order(tmp_path):
+    sender = "Pokémon Center <orders@pokemoncenter.com>"
+    store = Store(db.connect(tmp_path / "t.db"))
+    for mid, item, day in (("<1>", "Prismatic Evolutions ETB", "01"), ("<2>", "Surging Sparks Booster Box", "02")):
+        e = mail(mid, "Thanks for your order", "", f"2026-09-{day}T09:00:00+00:00", sender=sender)
+        store.save(e, normalize({"kind": "order", "retailer": "Pokémon Center", "shipping_status": "ordered",
+                                 "items": [{"name": item, "quantity": 1}]}, e))
+    cancel = mail("<3>", "Your order has been canceled", "Prismatic Evolutions ETB", "2026-10-06T09:00:00+00:00",
+                  sender=sender)
+    store.save(cancel, normalize({"kind": "order", "retailer": "Pokemon Center",
+                                  "items": [{"name": "Prismatic Evolutions ETB"}]}, cancel))
+    rows = {json_item(r): r["shipping_status"] for r in store.db.execute("SELECT * FROM tracked_orders")}
+    assert rows == {"Prismatic Evolutions ETB": "cancelled", "Surging Sparks Booster Box": "ordered"}
+
+
+def json_item(row):
+    import json
+    return json.loads(row["items"])[0]["name"]
+
+
+def test_every_sync_rechecks_two_months():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from jigstream.sync import search_days
+    cfg = SimpleNamespace(full_history=False, days_back=None, first_sync_days=365)
+    assert search_days(cfg, {"last_synced_at": datetime.now(timezone.utc).isoformat()}) == 60
