@@ -127,3 +127,83 @@ def test_bank_refund_cancels_a_checkout(tmp_path):
     assert rows["d"]["state"] == "cancelled" and "WALMART" in rows["d"]["refund"]["description"]
     page = create_app(str(tmp_path / "m.db")).test_client().get("/stuck?show=cancelled").get_data(as_text=True)
     assert "$54.11" in page and "$88.20" in page
+
+
+def test_hayha_is_read_by_embed_color(tmp_path):
+    from jigstream import parsers
+    green = {"username": "Hayha", "embeds": [{"title": "Successful Checkout!", "color": 0x2ECC71,
+                                              "fields": [{"name": "Site", "value": "Target"}, {"name": "Profile", "value": "Ana"}]}]}
+    red = {"username": "Hayha", "embeds": [{"title": "Successful Checkout!", "color": 0xE74C3C, "description": "Card declined",
+                                            "fields": [{"name": "Site", "value": "Target"}, {"name": "Profile", "value": "Ana"}]}]}
+    import json
+    recs = parsers.parse_text(json.dumps([green, red]))
+    assert [r["status"] for r in recs] == ["success", "decline"]
+    assert recs[1]["reason"] == "Card declined"
+    # Another bot keeps reading the text.
+    other = {"username": "Valor", "embeds": [dict(red["embeds"][0], description="")]}
+    assert parsers.parse_text(json.dumps(other))[0]["status"] == "success"
+    # Hayha declines stored before this rule are fixed when the app opens the database.
+    c = db.connect(str(tmp_path / "old.db"))
+    rec = parsers.parse_text(json.dumps(red))[0]
+    rec.update(status="success", fingerprint="old", reason="")
+    c.execute("INSERT INTO checkouts (fingerprint,bot,status,reason,site,product,size,price,profile,order_number,email,ts,raw)"
+              " VALUES (:fingerprint,:bot,:status,:reason,:site,:product,:size,:price,:profile,:order_number,:email,:ts,:raw)", rec)
+    c.commit()
+    assert parsers.reclassify(c) == 1
+    assert c.execute("SELECT status, reason FROM checkouts").fetchone()[:] == ("decline", "Card declined")
+    assert parsers.ingest(c, json.dumps(red)) == 0  # importing it again doesn't add a copy
+
+
+def test_hayha_cancel_reason_and_item_price():
+    import json
+    from jigstream import parsers
+    # Shaped like jacob's real Hayha webhooks: both say "Successful Checkout!".
+    fields = [("Site", "Target"), ("Item", "Pok&#233;mon Trading Card Game: 30th Celebration Booster Bundle Box - $63.98"),
+              ("Mode", "onlineSafe (api) - Global Monitor"), ("Quantity", "2"), ("Profile Name", "Ana"),
+              ("Order Number", "912000111"), ("Account", "ana@x.com")]
+    embed = lambda color, extra: {"title": "Successful Checkout!", "description": "Way to go", "color": color,
+                                  "footer": {"text": "HayhaAIO 2.12.59"},
+                                  "fields": [{"name": k, "value": v} for k, v in fields + extra]}
+    ok, bad = parsers.parse_text(json.dumps({"username": "HayhaAIO", "embeds": [
+        embed(0x2ECC71, []), embed(0xE74C3C, [("Cancel Reason", "Policy - Item Demand")])]}))
+    assert (ok["status"], ok["bot"], ok["price"]) == ("success", "Hayha", "$63.98")
+    assert ok["product"] == "Pokémon Trading Card Game: 30th Celebration Booster Bundle Box"
+    assert (ok["profile"], ok["order_number"], ok["email"]) == ("Ana", "912000111", "ana@x.com")
+    assert (bad["status"], bad["reason"]) == ("decline", "Policy - Item Demand")
+    # Even with no color, a Cancel Reason is a decline.
+    assert parsers.classify(embed(None, [("Cancel Reason", "Policy - Item Demand")])) == "decline"
+
+
+def test_declines_show_earlier_checkouts_on_the_profile_or_email(tmp_path):
+    c, store = setup(tmp_path)
+    checkout(c, "s1", "Target", "Ana", "#1", ts="2026-10-01T10:00:00Z")
+    mail(store, "m1", "Target", "cancelled", "2026-10-01T11:00:00+00:00", "1")
+    checkout(c, "s2", "Walmart", "Other", ts="2026-10-02T10:00:00Z", email="a.na+x@gmail.com")
+    checkout(c, "s3", "Target", "Ana", ts="2026-10-30T10:00:00Z")  # after the decline: not counted
+    for fp, prof, email, ts in (("d1", "Ana", "ana@gmail.com", "2026-10-05T10:00:00Z"),
+                                ("d2", "New", "", "2026-10-06T10:00:00Z")):
+        c.execute("INSERT INTO checkouts (fingerprint, bot, status, site, profile, email, ts) VALUES (?, 'Hayha', 'decline',"
+                  " 'Target', ?, ?, ?)", (fp, prof, email, ts))
+    c.commit()
+    ids = {r["fingerprint"]: r["id"] for r in c.execute("SELECT id, fingerprint FROM checkouts")}
+    h = stuck.decline_history(c)
+    assert h[ids["d1"]]["checkouts"] == 2 and h[ids["d1"]]["cancelled"] == 1 and h[ids["d1"]]["stuck"] == 1
+    assert h[ids["d1"]]["last"]["site"] == "Walmart" and h[ids["d1"]]["orders"] == 1  # the Target email, matched to Ana by its order number
+    assert h[ids["d2"]]["checkouts"] == 0
+    page = create_app(str(tmp_path / "m.db")).test_client().get("/checkouts?status=decline").get_data(as_text=True)
+    assert "Checked out 2x before" in page and "Never checked out on this profile/email before" in page
+
+
+def test_to_address_beats_profile_when_matching(tmp_path):
+    c, store = setup(tmp_path)
+    checkout(c, "a", "Target", "Ana", ts="2026-10-20T15:00:00Z", email="ana.alt+tg@gmail.com")
+    # A closer email that only matches on the profile's address...
+    mail(store, "p1", "Target", "ordered", "2026-10-20T15:01:00+00:00", "T-1", "Ana Lopez, 9 Oak Ave, Dallas TX 75201")
+    # ...and one sent to the account the bot checked out with (gmail dots and +tags ignored), later.
+    e = Email("<t2@x>", "Target <orders@x.com>", "Order cancelled", "2026-10-20T18:00:00+00:00", "", "inbox@gmail.com",
+              "anaalt@gmail.com")
+    store.save(e, normalize({"kind": "order", "retailer": "Target", "order_number": "T-2",
+                             "shipping_status": "cancelled"}, e))
+    row = stuck.cross_reference(c)[0]
+    assert row["order"]["order_number"] == "T-2" and row["matched_on"] == "same site and To email"
+    assert row["state"] == "cancelled"

@@ -6,6 +6,7 @@ looked up through alias lists. Add aliases below (or a bot-specific override)
 once you have real payloads from your bots.
 """
 import hashlib
+import html
 import json
 import re
 
@@ -24,7 +25,7 @@ ALIASES = {
     "price": ["price", "total", "amount", "cost"],
     "order_number": ["order", "order #", "order number", "order id", "order no", "confirmation"],
     "email": ["email", "account", "account email", "login"],
-    "reason": ["reason", "error", "message", "status message", "details", "response"],
+    "reason": ["cancel reason", "decline reason", "reason", "error", "message", "status message", "details", "response"],
 }
 
 SUCCESS_WORDS = ["success", "checked out", "checkout complete", "order placed", "order confirmed", "purchased"]
@@ -33,7 +34,8 @@ FAIL_WORDS = ["fail", "error", "out of stock", "oos", "banned", "blocked", "time
 
 
 def _clean(s):
-    s = re.sub(r"[*_`~|]", "", str(s))
+    s = html.unescape(str(s))  # Hayha sends "Pok&#233;mon"
+    s = re.sub(r"[*_`~|]", "", s)
     s = re.sub(r"\|\|", "", s)
     return s.strip()
 
@@ -61,7 +63,33 @@ def detect_bot(payload, embed):
     return "Unknown"
 
 
-def classify(embed):
+def color_status(color):
+    """'success' for a green embed, 'decline' for a red one, else None."""
+    try:
+        color = int(color)
+    except (TypeError, ValueError):
+        return None
+    r, g, b = color >> 16 & 255, color >> 8 & 255, color & 255
+    if g > 100 and g > r * 1.3 and g >= b * 0.8:
+        return "success"
+    if r > 120 and r > g * 1.6 and r > b * 1.6:
+        return "decline"
+    return None
+
+
+def classify(embed, bot=None):
+    # A "Cancel Reason" field (Hayha) means the site cancelled it on the spot, whatever the title says.
+    if any(k in ("cancel reason", "decline reason") and v for k, v in flatten_embed(embed).items()):
+        return "decline"
+    # Hayha titles its declines "Successful" too; only the embed color tells them apart (green or red).
+    if bot == "Hayha":
+        by_color = color_status(embed.get("color"))
+        if by_color == "success":
+            return "success"
+        if by_color == "decline":
+            text_status = classify(embed)
+            return text_status if text_status == "failure" and "success" not in str(embed.get("title", "")).lower() \
+                else "decline"
     text = f"{embed.get('title', '')} {embed.get('description', '')}".lower()
     flat = " ".join(flatten_embed(embed).keys()).lower()
     # decline/fail words win over "success" appearing in e.g. "not successful"
@@ -88,10 +116,14 @@ def _pick(fields, key):
 def parse_embed(payload, embed):
     fields = flatten_embed(embed)
     rec = {k: _pick(fields, k) for k in ALIASES}
-    if not rec["product"]:
-        rec["product"] = _clean(embed.get("description", ""))[:200] if classify(embed) == "success" else ""
-    rec["status"] = classify(embed)
     rec["bot"] = detect_bot(payload, embed)
+    rec["status"] = classify(embed, rec["bot"])
+    if not rec["product"]:
+        rec["product"] = _clean(embed.get("description", ""))[:200] if rec["status"] == "success" else ""
+    # Hayha puts the price at the end of the item: "Booster Bundle Box - $63.98".
+    m = re.match(r"(.+?)\s+-\s+(\$\s?[\d,]+(?:\.\d\d)?)$", rec["product"])
+    if m and not rec["price"]:
+        rec["product"], rec["price"] = m.group(1), m.group(2)
     rec["ts"] = embed.get("timestamp") or payload.get("timestamp") or ""
     if rec["status"] != "success" and not rec["reason"]:
         rec["reason"] = _clean(embed.get("description", ""))[:300]
@@ -123,6 +155,31 @@ def parse_text(text):
         for emb in p.get("embeds", []) or []:
             out.append(parse_embed(p, emb))
     return out
+
+
+def reclassify(con, bot="Hayha"):
+    """Re-read stored checkouts of one bot from their raw embed, after a parsing rule changed. Returns how many
+    changed status. The fingerprint follows, so importing the same webhook again doesn't add it twice."""
+    changed = 0
+    for row in con.execute("SELECT id, status, product, price, fingerprint, raw FROM checkouts WHERE bot = ?",
+                           (bot,)).fetchall():
+        try:
+            raw = json.loads(row["raw"] or "{}")
+        except ValueError:
+            continue
+        if not isinstance(raw, dict) or not isinstance(raw.get("embed"), dict):
+            continue
+        rec = parse_embed({"username": raw.get("payload_username")}, raw["embed"])
+        if rec["bot"] != bot or all(rec[k] == row[k] for k in ("status", "product", "price", "fingerprint")):
+            continue
+        cur = con.execute("UPDATE OR IGNORE checkouts SET status = ?, reason = ?, product = ?, price = ?, fingerprint = ?"
+                          " WHERE id = ?", (rec["status"], rec["reason"], rec["product"], rec["price"],
+                                            rec["fingerprint"], row["id"]))
+        if not cur.rowcount:  # the corrected row is already stored
+            con.execute("DELETE FROM checkouts WHERE id = ?", (row["id"],))
+        changed += rec["status"] != row["status"]
+    con.commit()
+    return changed
 
 
 def ingest(con, text):

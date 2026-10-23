@@ -1,7 +1,7 @@
 import os
 import sqlite3
 
-from . import discord, emailbook, orderstore, wallet
+from . import discord, emailbook, orderstore, parsers, wallet
 
 DB_PATH = os.environ.get("JIGSTREAM_DB", os.path.join("data", "jigstream.db"))
 
@@ -80,6 +80,7 @@ def _setup(con):
     con.executescript(discord.SCHEMA)
     con.executescript(wallet.SCHEMA)
     con.executescript(emailbook.SCHEMA)
+    parsers.reclassify(con)  # Hayha declines stored before they were told apart by color
 
 
 def connect(path=None):
