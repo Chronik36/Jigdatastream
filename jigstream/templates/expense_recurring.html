@@ -1,0 +1,69 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.xgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:0}
+.panel h4{margin:0 0 12px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}.panel h4 .sp{flex:1}
+.idea{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:linear-gradient(90deg,rgba(61,216,239,.08),transparent);border:1px dashed var(--line-2);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.idea .t{flex:1;min-width:240px}.idea form{margin:0}.idea button{padding:6px 12px;font-size:12.5px}
+td{vertical-align:middle}.sub{display:block;font-size:12.5px;color:var(--muted)}
+.acts{display:flex;gap:4px;align-items:center;white-space:nowrap}.acts form{margin:0}.acts button{padding:4px 10px;font-size:12px}
+.rs{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.rs:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.rs-ok{color:var(--green);background:var(--green-soft)}.rs-soon{color:var(--accent);background:var(--accent-soft)}
+.rs-warn{color:var(--orange);background:rgba(255,138,61,.12)}.rs-bad{color:var(--red);background:rgba(255,107,122,.1)}
+.rs-off{color:var(--muted);background:rgba(255,255,255,.04)}
+tr.off td{opacity:.6}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;font-size:11.5px}
+.cal .h{text-align:center;font-weight:600;color:#5d6a98;padding-bottom:2px}
+.cal .d{min-height:70px;background:var(--surface-2);border:1px solid transparent;border-radius:8px;padding:4px 5px;color:#5d6a98;overflow:hidden}
+.cal .d.past{opacity:.45}.cal .d.today{border-color:var(--accent);color:var(--text)}
+.cal .d span{display:block;margin-top:3px;padding:1px 5px;border-radius:5px;font-size:10.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cdot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px}
+</style>
+{% include "_expense_tabs.html" %}
+<div class="stats">
+<div class="card">Recurring per month <b>{{totals.per_month|money}}</b></div>
+<div class="card">Per year <b>{{totals.per_year|money}}</b></div>
+<div class="card">Renewing next 30 days <b>{{totals.next30|money}}</b></div>
+<div class="card{{' bad' if totals.alerts}}">Needs a look <b>{{totals.alerts}}</b></div>
+</div>
+
+{% for i in ideas %}<div class="idea"><div class="t"><b>Looks like {{i.label|lower}}:</b> {{i.name}}, {{i.amount|money}}
+{%- if i.count > 1 %} on {{i.dates|join(", ")}}{% else %} (the receipt says it renews {{i.label|lower}}){% endif %}
+{% if i.kind == "charge" %}<span class="muted"> · card charges with no receipt</span>{% endif %}</div>
+<form method="post" action="/expenses/recurring/track"><input type="hidden" name="vendor" value="{{i.name}}">
+<input type="hidden" name="period" value="{{i.period}}"><input type="hidden" name="every_days" value="{{i.every_days or ''}}">
+<input type="hidden" name="amount" value="{{i.amount}}"><input type="hidden" name="category" value="{{i.category}}">
+<input type="hidden" name="{{'tx_id' if i.kind == 'charge' else 'expense_id'}}" value="{{i.id}}">
+<button>Track {{i.label|lower}}</button></form>
+<button type="button" class="ghost" onclick='openRepeat({{ {"vendor": i.name, "amount": i.amount, "period": i.period, "every_days": i.every_days, "category": i.category, ("tx_id" if i.kind == "charge" else "expense_id"): i.id}|tojson }})'>Different schedule…</button>
+<form method="post" action="/expenses/recurring/dismiss"><input type="hidden" name="key" value="{{i.key}}"><button class="ghost">Not recurring</button></form>
+</div>{% endfor %}
+
+<div class="xgrid">
+<div class="panel"><h4>Subscriptions<span class="sp"></span><button type="button" class="ghost" onclick="openRepeat()" style="padding:5px 12px;font-size:12.5px">+ Track one</button></h4>
+<div style="overflow-x:auto"><table><thead><tr><th>Vendor</th><th>Repeats</th><th>Next renewal</th><th class="num">Amount</th><th class="num">Per month</th><th>Status</th><th></th></tr></thead><tbody>
+{% for s in subs %}<tr class="{{'off' if s.status == 'cancelled'}}">
+<td><b>{{s.vendor}}</b><span class="sub"><span class="cdot" style="background:{{s.color}}"></span>{{s.category|replace("_", " ")|capitalize}} · {{s.payments}} payment{{"" if s.payments == 1 else "s"}}{% if s.last_paid %}, last {{s.last_paid}}{% endif %}</span></td>
+<td>{{s.label}}</td>
+<td>{% if s.status == "active" and s.next_due %}{{s.next_due}}<span class="sub">{% if s.days == 0 %}today{% elif s.days == 1 %}tomorrow{% elif s.days > 0 %}in {{s.days}} days{% else %}{{-s.days}} days ago{% endif %}</span>{% else %}-{% endif %}</td>
+<td class="num">{{(s.last_amount if s.last_amount is not none else s.amount)|money}}</td>
+<td class="num">{{s.per_month|money if s.status == "active" else "-"}}</td>
+<td><span class="rs rs-{{s.state}}">{{s.state_text}}</span></td>
+<td><div class="acts">
+<button type="button" class="ghost" onclick='openRepeat({{ {"sub": s.id, "vendor": s.vendor, "amount": s.last_amount if s.last_amount is not none else s.amount, "period": s.period, "every_days": s.every_days, "category": s.category, "next_due": s.next_due}|tojson }})'>Edit</button>
+{% if s.status == "active" %}<form method="post" action="/expenses/recurring/{{s.id}}/cancel"><button class="ghost" title="You cancelled it with the vendor">Mark cancelled</button></form>
+{% else %}<form method="post" action="/expenses/recurring/{{s.id}}/reactivate"><button class="ghost">Resume</button></form>{% endif %}
+<form method="post" action="/expenses/recurring/{{s.id}}/delete" onsubmit="return confirm('Stop tracking {{s.vendor|e}}? Its receipts stay in your expenses.')"><button class="ghost" title="Stop tracking">×</button></form>
+</div></td></tr>
+{% else %}<tr><td colspan="7" class="muted">Nothing tracked yet. Track a suggestion above, use Repeats on a Ledger row, or press Track one.</td></tr>{% endfor %}
+</tbody></table></div></div>
+
+<div class="panel"><h4>Next 5 weeks<span class="sp"></span><span class="muted" style="font-weight:400">{{totals.next30_n}} renewal{{"" if totals.next30_n == 1 else "s"}} in 30 days</span></h4>
+<div class="cal">{% for d in ["S", "M", "T", "W", "T", "F", "S"] %}<div class="h">{{d}}</div>{% endfor %}
+{% for week in weeks %}{% for c in week %}<div class="d{{' today' if c.day == today}}{{' past' if c.day < today}}">{{c.day.day}}{% if c.day.day == 1 %} {{c.day.strftime("%b")}}{% endif %}
+{% for s in c.subs %}<span style="background:{{s.color}}33" title="{{s.vendor}} {{(s.last_amount or s.amount)|money}}">{{s.vendor}}</span>{% endfor %}</div>{% endfor %}{% endfor %}
+</div></div>
+</div>
+{% include "_recurring_dialog.html" %}
+{% include "_expense_dialog.html" %}
+{% endblock %}

@@ -144,6 +144,9 @@ def seed(path):
                 "10/04/2026,WHOP*NOTIFY,-41.20"]
         bank.import_file(c, "activity.csv", "\n".join(rows).encode(), "Chase Sapphire 1234")
         bank.auto_match(c)
+    if has_module("recurring"):
+        from jigstream import recurring
+        recurring.track(c, "Vultr", "monthly", category="server")
     logs = WORK / "logs"
     logs.mkdir(exist_ok=True)
     (logs / "app.log").write_text(
@@ -369,6 +372,8 @@ shot("expenses", "/expenses", [(".xtabs", 1), (".stats .card:first-child", 2), (
                                ("button[onclick='openExpense()']", 5)], viewport={"width": 1360, "height": 1000})
 shot("expense-ledger", "/expenses/ledger", [(".ftabs", 1), ("#mf", 2), ("main > p.muted.m", 3), (".st-close", 4),
                                             ("select[name=method]", 5)], viewport={"width": 1360, "height": 1420})
+shot("expense-recurring", "/expenses/recurring", [(".stats", 1), (".idea", 2), ("table", 3), (".cal", 4)],
+     viewport={"width": 1360, "height": 1300})
 shot("checkouts", "/checkouts", [("main > p", 1), ("tbody tr:nth-child(3) td:nth-child(3), tr:nth-child(3) td:nth-child(3)", 2),
                                  ("tr:nth-child(3) td:last-child", 3)])
 shot("profiles", "/profiles", [(".gside", 1), ("button[onclick='openProfile()']", 2), ("button[onclick*=exportdlg]", 3),

@@ -9,7 +9,8 @@ from flask import Flask, Response, flash, jsonify, redirect, render_template, re
 
 from . import address as A
 from . import (analysis, bankpages, carriers, db, discord, emailbook, engines, expensepages, export, inbox, keywords,
-               logs, manual, mobile, parsers, profilebook, profilematch, profiles, stock, tasks, training, updater, wallet)
+               logs, manual, mobile, parsers, profilebook, profilematch, profiles, recurring, stock, tasks, training,
+               updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
@@ -84,6 +85,10 @@ def create_app(db_path=None):
                         inbox.fill_missing_amounts(config, Store(con()))
                     except Exception:
                         logger.exception("filling missing expense amounts failed")
+                    try:
+                        recurring.refresh(con())  # new receipts move renewal dates forward
+                    except Exception:
+                        logger.exception("updating recurring expenses failed")
                 except Exception as e:
                     logger.exception("Gmail sync failed")
                     parts.append(f"Gmail sync failed: {e}")

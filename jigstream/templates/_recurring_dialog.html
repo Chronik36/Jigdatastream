@@ -1,0 +1,28 @@
+{# Track something as recurring, or edit a tracked subscription. openRepeat({...}) fills it. #}
+<dialog id="recdlg"><div class="dh"><h3 id="rtitle">Repeats</h3><button class="x" type="button" onclick="recdlg.close()">×</button></div>
+<form method="post" id="rform" action="/expenses/recurring/track" class="db" style="display:block;margin:0">
+<input type="hidden" name="expense_id" id="r-expense_id"><input type="hidden" name="tx_id" id="r-tx_id">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px">
+<label>Vendor<br><input name="vendor" id="r-vendor" required style="width:100%"></label>
+<label>Amount each time<br><input name="amount" id="r-amount" inputmode="decimal" style="width:100%"></label>
+<label>Repeats<br><select name="period" id="r-period" style="width:100%" onchange="rdays()">{% for k, v in rec_periods.items() %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></label>
+<label id="r-days-l">Every how many days<br><input type="number" min="1" max="730" name="every_days" id="r-every_days" style="width:100%" placeholder="45"></label>
+<label>Category<br><select name="category" id="r-category" style="width:100%">{% for c in categories %}<option value="{{c}}">{{c|replace("_", " ")|capitalize}}</option>{% endfor %}</select></label>
+<label>Next renewal <span class="muted">(optional)</span><br><input type="date" name="next_due" id="r-next_due" style="width:100%"></label>
+</div>
+<p class="muted" style="font-size:12.5px" id="r-note">Earlier receipts from this vendor at about this price are linked automatically, and the next renewal moves forward when a new one arrives.</p>
+<button>Save</button></form></dialog>
+<script>
+const recdlg = document.getElementById('recdlg');
+function rdays() { document.getElementById('r-days-l').style.visibility = document.getElementById('r-period').value === 'custom' ? '' : 'hidden'; }
+function openRepeat(r) {
+  r = r || {};
+  const set = (k, v) => document.getElementById('r-' + k).value = v == null ? '' : v;
+  ['vendor', 'amount', 'every_days', 'next_due', 'expense_id', 'tx_id'].forEach(k => set(k, r[k]));
+  set('period', r.period || 'monthly'); set('category', r.category || 'proxy');
+  document.getElementById('rform').action = r.sub ? '/expenses/recurring/' + r.sub + '/edit' : '/expenses/recurring/track';
+  document.getElementById('rtitle').textContent = r.sub ? 'Edit subscription' : 'Track as recurring';
+  document.getElementById('r-note').style.display = r.sub ? 'none' : '';
+  rdays(); recdlg.showModal();
+}
+</script>
