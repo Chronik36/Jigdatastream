@@ -7,6 +7,7 @@ from a bot's Discord webhook with the same order number settles it outright.
 """
 import json
 import re
+from functools import lru_cache
 
 from . import address as A
 
@@ -24,6 +25,7 @@ def _alpha(text):
     return [w.lower() for w in re.findall(r"[A-Za-z]+", text or "")]
 
 
+@lru_cache(maxsize=20000)
 def norm_email(e):
     """Gmail ignores dots and +tags, so j.smith+nike@gmail.com is jsmith@gmail.com."""
     e = (e or "").strip().lower()
@@ -37,6 +39,7 @@ def norm_email(e):
     return f"{user}@{domain}"
 
 
+@lru_cache(maxsize=20000)  # every page load re-matches every order; the answer only changes with the text
 def parse_order_address(text, name=None):
     """Pieces of a one-line address from an email: house numbers, street words, ZIP and the name in front."""
     text = text or ""
@@ -116,6 +119,25 @@ def _checkout_profiles(con, names):
     return out
 
 
+class KeyIndex(list):
+    """Profile keys, looked up by house number, ZIP and email. score() only passes a profile that shares
+    one of those with the order, so the rest never need scoring."""
+
+    def __init__(self, keys):
+        super().__init__(keys)
+        self.by = {}
+        for i, k in enumerate(keys):
+            for f in ("number", "zip", "email"):
+                if k[f]:
+                    self.by.setdefault((f, k[f]), []).append(i)
+
+    def candidates(self, parsed, recipient):
+        hits = {i for n in parsed["numbers"] for i in self.by.get(("number", n), ())}
+        hits.update(self.by.get(("zip", parsed["zip"]), ()) if parsed["zip"] else ())
+        hits.update(self.by.get(("email", recipient), ()) if recipient else ())
+        return [self[i] for i in sorted(hits)]
+
+
 def best_match(o, keys, checkouts):
     """(profile name or None, reason text, other candidates)."""
     number = re.sub(r"[^A-Za-z0-9]", "", o.get("order_number") or "").upper()
@@ -124,7 +146,7 @@ def best_match(o, keys, checkouts):
     parsed = parse_order_address(o.get("shipping_address"), o.get("shipping_name"))
     recipient, inbox = norm_email(o.get("recipient_email")), norm_email(o.get("account"))
     scored = []
-    for k in keys:
+    for k in keys.candidates(parsed, recipient):
         s = score(parsed, k, recipient, inbox)
         if s:
             scored.append((s[0], k["name"], s[1]))
@@ -140,7 +162,7 @@ def best_match(o, keys, checkouts):
 def match_orders(con):
     """Match every order that wasn't assigned by hand. Returns how many changed."""
     profiles = con.execute("SELECT * FROM profiles").fetchall()
-    keys = [_profile_key(p) for p in profiles]
+    keys = KeyIndex([_profile_key(p) for p in profiles])
     checkouts = _checkout_profiles(con, {p["name"] for p in profiles})
     changed = 0
     for o in con.execute("SELECT * FROM tracked_orders WHERE COALESCE(profile_manual, 0) = 0").fetchall():

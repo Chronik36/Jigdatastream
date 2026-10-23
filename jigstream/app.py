@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import threading
+import time
 from pathlib import Path
 from urllib.parse import quote
 
@@ -146,12 +147,13 @@ def create_app(db_path=None):
         profilematch.match_orders(store.db)
         config = Config.from_env()
         rows = store.orders()
-        return render_template("orders.html", rows=rows, stats=store.stats(), sync=sync_state,
+        stats = store.stats(orders=rows)
+        return render_template("orders.html", rows=rows, stats=stats, sync=sync_state,
                                profile_names=[r[0] for r in store.db.execute("SELECT name FROM profiles ORDER BY name")],
                                profile_counts=_profile_counts(rows),
                                accounts=store.accounts(), configured=bool(config.accounts),
                                training=config.training_mode, labels=store.labels(),
-                               label_choices=STATUS_CHOICES, status_counts=status_counts(store.stats()["by_status"]))
+                               label_choices=STATUS_CHOICES, status_counts=status_counts(stats["by_status"]))
 
     def _profile_counts(rows):
         counts = {}
@@ -547,7 +549,12 @@ def create_app(db_path=None):
             rows, errors = inbox.skipped(store), []
         else:
             rows, errors = inbox.search(config, query) if config.accounts else ([], [])
-        decided = {r["message_id"]: r["kind"] for r in store.db.execute("SELECT message_id, kind FROM emails")}
+        ids = [r["message_id"] for r in rows]
+        decided = {}
+        for i in range(0, len(ids), 500):  # only the emails on screen, not every email ever read
+            chunk = ids[i:i + 500]
+            decided.update(store.db.execute("SELECT message_id, kind FROM emails WHERE message_id IN (%s)"
+                                            % ",".join("?" * len(chunk)), chunk).fetchall())
         return render_template("_inbox_rows.html", rows=rows, errors=errors, labels=inbox.LABELS,
                                marked=store.inbox_labels(), decided=decided, configured=bool(config.accounts))
 
@@ -595,6 +602,20 @@ def create_app(db_path=None):
             flash("The AI model is still getting ready; syncing starts by itself when it is.")
         return redirect(url_for("orders"))
 
+    # The bot's name and channel list come from Discord's API; asking on every Setup visit made the page slow.
+    discord_cache = {}
+
+    def discord_info(token):
+        hit = discord_cache.get(token)
+        if hit and time.monotonic() - hit[0] < 300 and not request.args.get("refresh"):
+            return hit[1]
+        client = discord.DiscordClient(token)
+        me = client.me()
+        info = (me.get("username"), me.get("id"), client.channels())
+        discord_cache.clear()
+        discord_cache[token] = (time.monotonic(), info)
+        return info
+
     @app.get("/setup")
     def setup():
         config = Config.from_env()
@@ -602,10 +623,7 @@ def create_app(db_path=None):
         bot, bot_id, channels, discord_error = None, None, [], None
         if config.discord_bot_token:
             try:
-                client = discord.DiscordClient(config.discord_bot_token)
-                me = client.me()
-                bot, bot_id = me.get("username"), me.get("id")
-                channels = client.channels()
+                bot, bot_id, channels = discord_info(config.discord_bot_token)
             except discord.DiscordError as e:
                 discord_error = str(e)
         return render_template("setup.html", accounts=[a for a, _ in config.accounts], config=config,
@@ -642,6 +660,7 @@ def create_app(db_path=None):
     def set_discord_channels():
         ids = [i for i in request.form.getlist("channel") if i.isdigit()]
         save_env({"DISCORD_CHANNEL_IDS": ",".join(ids)})
+        discord_cache.clear()
         logger.info("Discord channels set: %s", ids)
         flash(f"Reading {len(ids)} channel(s). The first pull covers the last year of messages.")
         start_sync()
@@ -650,6 +669,7 @@ def create_app(db_path=None):
     @app.post("/setup/discord/remove")
     def remove_discord():
         save_env({"DISCORD_BOT_TOKEN": "", "DISCORD_CHANNEL_IDS": ""})
+        discord_cache.clear()
         logger.info("Discord disconnected")
         flash("Discord disconnected. Checkouts already read stay on the dashboard.")
         return redirect(url_for("setup"))

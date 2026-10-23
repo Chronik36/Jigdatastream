@@ -111,20 +111,42 @@ ORDER_FIELDS = [
 ]
 
 
+# Lookups done on every sync and page load. Created after MIGRATIONS, since some columns are added there.
+INDEXES = """
+CREATE INDEX IF NOT EXISTS tracked_orders_number ON tracked_orders (order_number);
+CREATE INDEX IF NOT EXISTS tracked_orders_tracking ON tracked_orders (tracking_number);
+CREATE INDEX IF NOT EXISTS tracked_orders_profile ON tracked_orders (profile_name);
+CREATE INDEX IF NOT EXISTS expenses_date ON expenses (date);
+CREATE INDEX IF NOT EXISTS labels_order ON labels (order_id);
+"""
+
+
+def _setup(con):
+    con.executescript(SCHEMA)
+    con.executescript(LABEL_SCHEMA)
+    for table, column, kind in MIGRATIONS:
+        if column not in {r[1] for r in con.execute(f"PRAGMA table_info({table})")}:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+    con.executescript(INDEXES)
+    con.commit()
+
+
+def _order_dict(row):
+    d = dict(row)
+    d["items"] = json.loads(d["items"] or "[]")
+    d["message_ids"] = json.loads(d["message_ids"] or "[]")
+    d["profile_candidates"] = json.loads(d["profile_candidates"] or "[]")
+    return d
+
+
 def _key(s):
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
 class Store:
     def __init__(self, con):
-        self.db = con
-        self.db.executescript(SCHEMA)
-        self.db.executescript(LABEL_SCHEMA)
-        for table, column, kind in MIGRATIONS:
-            cols = {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}
-            if column not in cols:
-                self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
-        self.db.commit()
+        from . import db
+        self.db = db.setup_once(con, "orderstore", _setup)
 
     def seen_ids(self):
         """Message ids already handled; failed ones are retried on the next sync."""
@@ -385,30 +407,25 @@ class Store:
         return {r["order_id"]: dict(r) for r in self.db.execute("SELECT * FROM labels ORDER BY id")}
 
     def order(self, order_id):
-        return next((o for o in self.orders() if o["id"] == order_id), None)
+        row = self.db.execute("SELECT * FROM tracked_orders WHERE id = ?", (order_id,)).fetchone()
+        return _order_dict(row) if row else None
 
     def orders(self):
         rows = self.db.execute(
             "SELECT * FROM tracked_orders ORDER BY COALESCE(order_date, last_email_date) DESC"
         ).fetchall()
-        out = []
-        for r in rows:
-            d = dict(r)
-            d["items"] = json.loads(d["items"] or "[]")
-            d["message_ids"] = json.loads(d["message_ids"] or "[]")
-            d["profile_candidates"] = json.loads(d["profile_candidates"] or "[]")
-            out.append(d)
-        return out
+        return [_order_dict(r) for r in rows]
 
     def expenses(self):
         return [dict(r) for r in self.db.execute("SELECT * FROM expenses ORDER BY date DESC")]
 
-    def stats(self):
-        orders = self.orders()
+    def stats(self, orders=None, expenses=None):
+        """Totals for the stat tiles. Pass rows a page already loaded to skip reading them again."""
+        orders = self.orders() if orders is None else orders
         by_status = {s: 0 for s in STATUSES}
         for o in orders:
             by_status[o["shipping_status"] or "unknown"] += 1
-        expenses = self.expenses()
+        expenses = self.expenses() if expenses is None else expenses
         by_category = {}
         by_month = {}
         by_vendor = {}

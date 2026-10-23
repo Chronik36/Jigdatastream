@@ -14,15 +14,46 @@
 <td><ul class="items">{% for i in o["items"] %}<li>{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}</li>{% endfor %}</ul></td>
 <td class="num">{{o.total|money(o.currency)}}</td>
 <td><span class="pill s-{{status}}">{{status|status_label}}</span>{% if o.status_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}
-{% if training %}<form method="post" action="/orders/{{o.id}}/label" style="display:block;margin:8px 0 0"><select name="status" onchange="if (this.value !== 'not_an_order' || confirm('Remove this from Orders? Its emails become examples of what is not an order.')) this.form.submit(); else this.value = ''" style="margin:0;padding:4px 8px;font-size:12px" title="Set the right status; the app then searches your inboxes for this order's emails and learns from them"><option value="">Change status…</option>{% for c in label_choices %}{% if c == "not_an_order" %}<option disabled>──────────</option>{% endif %}<option value="{{c}}" {{"disabled" if c == status|status_group}}>{{c|status_label}}</option>{% endfor %}</select></form>
+{% if training %}<form class="rowpick st" method="post" action="/orders/{{o.id}}/label"><select name="status" class="relabel" data-now="{{status|status_group}}" title="Set the right status; the app then searches your inboxes for this order's emails and learns from them"><option value="">Change status…</option></select></form>
 {% set lb = labels.get(o.id) %}{% if lb %}<div class="muted" style="font-size:12px;max-width:220px">{{"Searching..." if lb.rescan == "pending" else lb.rescan}}</div>{% endif %}{% endif %}{% if o.estimated_delivery %}<div class="muted" style="white-space:nowrap;font-size:12px;margin-top:4px">ETA {{o.estimated_delivery}}</div>{% endif %}</td>
 <td>{% if o.tracking_number %}{% set url = o|track_url %}<a class="track" href="{{url}}" target="_blank" rel="noopener" title="Open the carrier's tracking page"><span class="muted">{{o.carrier or "Track"}}</span> {{o.tracking_number}} ↗</a>{% else %}<span class="muted">No tracking yet</span>{% endif %}
 {% if o.carrier_status %}<div class="muted" style="font-size:12px;margin-top:4px" title="From the carrier, checked {{o.carrier_checked_at}}">{{o.carrier_status}}</div>{% endif %}</td>
 <td>{% if o.profile_name %}<a href="/profile-orders?profile={{o.profile_name|urlencode}}"><b>{{o.profile_name}}</b></a><div class="muted" style="font-size:12px">{{o.profile_match}}</div>
 {% elif o.profile_candidates %}<span style="color:var(--orange)" title="These profiles share the address, name and email on this order">Could be {{o.profile_candidates|join(", ")}}</span>
 {% else %}<span class="muted">{{"None of yours" if o.profile_manual else "No match"}}</span>{% endif %}
-{% if profile_names %}<form method="post" action="/orders/{{o.id}}/profile" style="display:block;margin:6px 0 0"><select name="profile" onchange="if (this.value !== '__keep__') this.form.submit()" style="margin:0;padding:4px 8px;font-size:12px" title="Pick the profile this order was placed with"><option value="__keep__">{{"Pick profile…" if o.profile_candidates else "Change…"}}</option>{% for n in o.profile_candidates %}<option value="{{n}}">{{n}}</option>{% endfor %}{% if o.profile_candidates %}<option disabled>──────────</option>{% endif %}{% for n in profile_names %}<option value="{{n}}">{{n}}</option>{% endfor %}<option disabled>──────────</option><option value="">None of my profiles</option>{% if o.profile_manual %}<option value="__auto__">Match automatically</option>{% endif %}</select></form>{% endif %}</td>
+{% if profile_names %}<form class="rowpick" method="post" action="/orders/{{o.id}}/profile"><select name="profile" class="pick" title="Pick the profile this order was placed with"><option value="__keep__">{{"Pick profile…" if o.profile_candidates else "Change…"}}</option>{% for n in o.profile_candidates %}<option value="{{n}}">{{n}}</option>{% endfor %}{% if o.profile_candidates %}<option disabled>──────────</option>{% endif %}<option disabled data-all>──────────</option><option value="">None of my profiles</option>{% if o.profile_manual %}<option value="__auto__">Match automatically</option>{% endif %}</select></form>{% endif %}</td>
 <td>{% if o.shipping_name %}<b>{{o.shipping_name}}</b><br>{% endif %}{{o.shipping_address or "-"}}<div class="muted" style="font-size:12px">{% if o.recipient_email %}sent to {{o.recipient_email}}{% if o.account and o.account != o.recipient_email %} · {% endif %}{% endif %}{% if o.account != o.recipient_email %}{{o.account or ""}}{% endif %}</div></td></tr>
 {% else %}<tr><td colspan="8" class="muted">No orders yet. Press Sync Gmail.</td></tr>{% endfor %}</tbody></table>
+<style>.rowpick{display:block;margin:6px 0 0}.rowpick.st{margin-top:8px}.rowpick select{margin:0;padding:4px 8px;font-size:12px;min-width:150px}.rowpick.st select{min-width:164px}</style>
+<script>
+// The status and profile pickers in each row save as soon as you choose.
+document.addEventListener('change', e => {
+  const sel = e.target;
+  if (sel.classList.contains('relabel')) {
+    if (sel.value !== 'not_an_order' || confirm('Remove this from Orders? Its emails become examples of what is not an order.')) sel.form.submit();
+    else sel.value = '';
+  } else if (sel.classList.contains('pick') && sel.value !== '__keep__') sel.form.submit();
+});
+</script>
+<template id="status-options">{% for c in label_choices %}{% if c == "not_an_order" %}<option disabled>──────────</option>{% endif %}<option value="{{c}}">{{c|status_label}}</option>{% endfor %}</template>
+<template id="profile-options">{% for n in profile_names %}<option value="{{n}}">{{n}}</option>{% endfor %}</template>
+<script>
+// The pickers' long option lists are added when a picker is first opened, so the page doesn't carry a copy
+// of every status and every profile for each order.
+function fillPicker(e) {
+  const sel = e.target;
+  if (!sel.classList || sel.dataset.filled) return;
+  if (sel.classList.contains('relabel')) {
+    sel.append(document.getElementById('status-options').content.cloneNode(true));
+    const now = sel.querySelector(`option[value="${sel.dataset.now}"]`);
+    if (now) now.disabled = true;
+  } else if (sel.classList.contains('pick')) {
+    sel.querySelector('[data-all]').before(document.getElementById('profile-options').content.cloneNode(true));
+  } else return;
+  sel.dataset.filled = '1';
+}
+document.addEventListener('mousedown', fillPicker, true);
+document.addEventListener('focusin', fillPicker);
+</script>
 {% include "filter.html" %}
 {% endblock %}
