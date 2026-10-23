@@ -10,7 +10,9 @@ from pathlib import Path
 DEFAULT_QUERY = (
     "(order OR shipped OR shipping OR delivered OR delivery OR tracking OR receipt OR invoice"
     " OR purchase OR subscription OR payment OR paid OR renewal OR renew OR license OR billing"
-    " OR charge OR proxies OR proxy OR whop OR stripe OR paddle OR sellix OR shopify)"
+    " OR charge OR proxies OR proxy OR whop OR stripe OR paddle OR sellix OR shopify"
+    " OR sold OR payout OR \"paid out\" OR earnings OR stockx OR goat OR ebay OR tradepost OR mercari OR vinted"
+    " OR alias)"
     " -in:spam -in:trash"
 )
 
