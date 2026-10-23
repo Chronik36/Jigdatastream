@@ -37,8 +37,13 @@ without your real password:</p>
 <p class="muted">The password is checked with Gmail, then saved only on this Mac. Your mail never leaves this computer.</p>
 
 <h3 id="tracking">Live package tracking</h3>
-<p>With a free key from a carrier, BotTrack asks that carrier about each open order every 3 hours and moves it to In transit, Out for delivery or Delivered. Without a key, status still comes from your emails.
+<p>Every 3 hours BotTrack checks each open USPS, UPS and FedEx package and moves it to In transit, Out for delivery or Delivered. No keys needed: it opens the carrier's normal tracking page in a hidden window on this Mac and reads the status, slowly and one page at a time. If a carrier shows a robot check, that package keeps the status from your emails.
 {% if tracking.last %}<br><span class="muted">{{tracking.last}}</span>{% endif %}</p>
+<div style="margin:10px 0;padding:12px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)">
+<b>Key-free tracking</b> {% if not page_reader %}<span class="muted">Only in the BotTrack app</span>{% elif page_tracking %}<span class="ok">On</span>{% else %}<span class="muted">Off</span>{% endif %}
+<form method="post" action="/setup/page-tracking" style="display:inline"><input type="hidden" name="on" value="{{"0" if page_tracking else "1"}}"><button class="ghost">{{"Turn off" if page_tracking else "Turn on"}}</button></form>
+</div>
+<p class="muted">Optional: a free key from a carrier checks that carrier through its own API instead, which is faster and never sees a robot check.</p>
 {% set steps = {
  "USPS": ("Client ID", "Client Secret", "https://developers.usps.com", ["Go to developers.usps.com and click Sign up (a free USPS business account; no shipping account needed).", "After you sign in, open Apps and click Add App. Name it BotTrack.", "Open the app and copy the Consumer Key (Client ID) and Consumer Secret (Client Secret) into the boxes here."]),
  "UPS": ("Client ID", "Client Secret", "https://developer.ups.com", ["Go to developer.ups.com and log in with a ups.com account (create one if needed).", "Click your profile, then Apps, then Add Apps. When it asks for an account, choose to open a new UPS account if you don't have one; it's free and nothing is charged unless you ship.", "Add the Tracking API product to the app and save.", "Click the eye icons to show the Client ID and Client Secret, and copy them here."]),
@@ -50,7 +55,7 @@ without your real password:</p>
 {% if carrier_keys[c] %}<form method="post" action="/setup/carriers" style="display:inline"><input type="hidden" name="carrier" value="{{c}}"><input type="hidden" name="action" value="remove"><button class="ghost">Remove key</button></form>
 {% else %}<form method="post" action="/setup/carriers"><input type="hidden" name="carrier" value="{{c}}"><input name="key" placeholder="{{kl}}" autocomplete="off" required> <input name="secret" type="password" placeholder="{{sl}}" autocomplete="off" required> <button>Save and test</button></form>{% endif %}
 </div>{% endfor %}
-{% if carrier_keys.values()|select|list %}<form method="post" action="/tracking/check"><button class="ghost" {{"disabled" if tracking.running}}>{{"Checking…" if tracking.running else "Check all packages now"}}</button></form>{% endif %}
+{% if can_track %}<form method="post" action="/tracking/check"><button class="ghost" {{"disabled" if tracking.running}}>{{"Checking…" if tracking.running else "Check all packages now"}}</button></form>{% endif %}
 
 <h3 id="discord">Discord bot checkouts</h3>
 <p>Reads the checkout webhooks your bots post in Discord (and JSON pasted or attached there) into the Checkouts
