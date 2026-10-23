@@ -1,13 +1,8 @@
 {% extends "base.html" %}{% block body %}
 <style>
 .playout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px;align-items:start}
-.gside{position:sticky;top:76px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
-.gside a{display:flex;justify-content:space-between;padding:7px 10px;border-radius:9px;color:var(--text);font-weight:500}
-.gside a span{color:var(--muted);font-weight:400}.gside a:hover{background:var(--surface-2)}
-.gside a.on{background:var(--accent-soft);color:var(--accent)}.gside .lbl{color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.07em;margin:12px 10px 6px}
 .gside form{display:flex;margin:10px 0 0}.gside input{width:100%;margin:0 6px 0 0 !important;padding:6px 10px !important}.gside button{padding:6px 10px}
 .phead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.phead h2{margin:0;flex:1}
-.toolbar{position:sticky;top:64px;z-index:5;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--line-2);border-radius:12px;padding:8px 12px;margin-bottom:14px}
 .toolbar form,.toolbar select,.toolbar input,.toolbar button{margin:0}.toolbar .sep{width:1px;height:22px;background:var(--line-2);margin:0 4px}
 .toolbar button{padding:6px 12px}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
@@ -24,15 +19,11 @@
 .pcard .icons a:hover,.pcard .icons button:hover{background:var(--surface-2);filter:none}
 .pcard svg{width:16px;height:16px}.pcard .icons .edit{color:var(--accent)}.pcard .icons .del{color:var(--red)}
 .pcard .warnicon{color:var(--orange);cursor:help;display:flex;padding:6px}.pcard .issues{color:var(--orange);font-size:12px;margin-top:10px}
-dialog{background:var(--surface);color:var(--text);border:1px solid var(--line-2);border-radius:16px;padding:0;width:min(640px,94vw);max-height:90vh;box-shadow:0 30px 80px rgba(0,0,0,.5)}
-dialog::backdrop{background:rgba(5,10,30,.7);backdrop-filter:blur(3px)}
-dialog .dh{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--line)}
-dialog .dh h3{margin:0;color:var(--text);text-transform:none;letter-spacing:0;font-size:17px}
-dialog .x{background:none;border:0;color:var(--muted);font-size:20px;padding:2px 8px;box-shadow:none}
+dialog{width:min(640px,94vw);max-height:90vh}
 dialog .db{padding:18px 22px;overflow:auto;max-height:calc(90vh - 130px)}
 dialog .df{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--line)}
 dialog form{display:block;margin:0}
-.fl{display:block;color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin:12px 0 6px}
+.fl{display:block;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin:12px 0 6px}
 .f2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}.f3{display:grid;grid-template-columns:1.2fr 1fr .7fr;gap:0 12px}
 dialog input[type=text],dialog input[type=email],dialog select,dialog textarea{width:100%;margin:0}
 textarea{font:inherit;background:var(--surface-2);color:var(--text);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;outline:none;resize:vertical}
@@ -45,7 +36,7 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
 .md .fields input{display:none}.md .fields label:has(input:checked){background:linear-gradient(135deg,var(--blue),var(--accent));color:#04122a;font-weight:600}
 .md .vals{padding:16px 20px}.md textarea{height:300px}
 .hint{color:var(--accent);font-size:12px;margin:2px 0 8px}
-@media (max-width:900px){.playout{grid-template-columns:1fr}.gside{position:static}.md .db{grid-template-columns:1fr}}
+@media (max-width:900px){.playout{grid-template-columns:1fr}.md .db{grid-template-columns:1fr}}
 </style>
 
 <div class="phead"><h2>Profiles <span class="muted" style="font-size:15px;font-weight:500">{{rows|length}}{% if group is not none %} in {{group or "no group"}}{% endif %}</span></h2>

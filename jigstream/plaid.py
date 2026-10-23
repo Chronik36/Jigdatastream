@@ -42,8 +42,8 @@ class PlaidError(RuntimeError):
 
 
 def ensure(con):
-    con.executescript(SCHEMA)
-    return con
+    from . import db
+    return db.setup_once(con, __name__, lambda c: c.executescript(SCHEMA))
 
 
 def _encrypt(text):

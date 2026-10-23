@@ -346,14 +346,6 @@ def phone_login(page):
     page.wait_for_load_state("networkidle")
 
 
-def phone_login(page):
-    page.goto(BASE + "/m/login")
-    page.fill("input[name=email]", PHONE_EMAIL)
-    page.fill("input[name=password]", PHONE_PASSWORD)
-    page.click("button")
-    page.wait_for_load_state("networkidle")
-
-
 TOP = {"x": 0, "y": 0, "width": 1360, "height": 150}
 shot("nav", "/orders", [(".side a.it[href='/']", 1), (".side a[href='/orders']", 2), (".side a[href='/inbox']", 3),
                         (".side a[href='/expenses']", 4), (".side a[href='/bank']", 5), (".side a[href='/training']", 6),
