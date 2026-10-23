@@ -267,4 +267,5 @@ function mini() {
   try { localStorage.setItem('bt-mini', on ? '1' : '0'); } catch (e) {}
 }
 </script>
+{% if path in ("/orders", "/expenses", "/profiles") %}{% include "live.html" %}{% endif %}
 </body></html>
