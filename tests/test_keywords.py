@@ -44,7 +44,7 @@ def test_analyze_finds_keywords_and_negatives():
 
 
 def test_catch_alls_skip_target_words():
-    negs = keywords.negative_keywords("Air Jordan 1 Low GS", [], [])
+    negs = keywords.negative_keywords("Air Jordan 1 Low GS", [])
     pos = {w: r for w, r, _ in keywords.positive_keywords("Air Jordan 1 Low GS Shoes", [])}
     assert "gs" in pos and "shoes" not in pos  # the GS version must require GS; generic words add nothing
     assert "gs" not in [w for w, _ in negs] and "ps" in [w for w, _ in negs]
@@ -78,10 +78,176 @@ def test_page_and_blocked_site(tmp_path, monkeypatch):
 def test_ai_negatives_merged(tmp_path, monkeypatch):
     client = create_app(str(tmp_path / "k.db")).test_client()
     monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
-    monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, system, user: {
+    monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, system, user, **k: {
         "summary": "A sneaker product page.", "main_keywords": ["air jordan 1 low panda"],
         "positive_keywords": [{"word": "panda", "reason": "colourway"}],
         "negative_keywords": [{"word": "reimagined", "reason": "different release"}, {"word": "panda", "reason": "x"}]})
     html = client.post("/keywords", data={"url": "https://kicks.example/p/0", "ai": "1"}).get_data(as_text=True)
     assert "A sneaker product page." in html and "-reimagined" in html and "+panda" in html
     assert "-panda" not in html  # the model may not exclude the product's own words
+
+
+def test_model_failures_never_crash_the_page(tmp_path, monkeypatch):
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
+
+    def slow(self, system, user, **k):
+        raise TimeoutError("timed out")
+
+    odd_answers = [slow, lambda self, s, u, **k: {"negative_keywords": 5, "positive_keywords": "panda", "main_keywords": None},
+                   lambda self, s, u, **k: ["not", "a", "dict"], lambda self, s, u, **k: {}.get("x")["y"]]
+    for answer in odd_answers:
+        monkeypatch.setattr(keywords.LLMClient, "chat_json", answer)
+        r = client.post("/keywords", data={"url": "https://kicks.example/p/0", "ai": "1"})
+        assert r.status_code == 200 and "553558-040" in r.get_data(as_text=True)
+
+
+def test_plain_string_negatives_from_model(tmp_path, monkeypatch):
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
+    monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, s, u, **k: {"negative_keywords": ["reimagined", 7]})
+    assert "-reimagined" in client.post("/keywords", data={"url": "https://x.example/p", "ai": "1"}).get_data(as_text=True)
+
+
+def test_render_failure_shows_friendly_error(tmp_path, monkeypatch):
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
+    monkeypatch.setattr(keywords, "monitor_line", lambda *a: (_ for _ in ()).throw(KeyError("boom")))
+    r = client.post("/keywords", data={"url": "https://x.example/p"})
+    assert r.status_code == 200 and "show the results for that page" in r.get_data(as_text=True)
+
+
+def test_llm_client_null_reply_is_llm_error(monkeypatch):
+    import io
+    from jigstream import llm
+
+    class Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", lambda req, timeout: Resp(b'{"choices":[{"message":{"content":null}}]}'))
+    try:
+        llm.LLMClient("http://localhost:1/v1", "m").chat_json("s", "u")
+    except llm.LLMError:
+        pass
+    else:
+        raise AssertionError("expected LLMError")
+
+    def slow(req, timeout):
+        raise TimeoutError("timed out")
+    monkeypatch.setattr(llm.urllib.request, "urlopen", slow)
+    try:
+        llm.LLMClient("http://localhost:1/v1", "m", timeout=5).chat_json("s", "u")
+    except llm.LLMError as e:
+        assert "longer than 5 seconds" in str(e)
+
+
+def test_shopify_variants_are_not_lookalikes():
+    ld = {"@type": "ProductGroup", "name": "Nee Doh Dig It Pig", "brand": {"name": "Schylling"},
+          "hasVariant": [{"@type": "Product", "name": "Nee Doh Dig It Pig - Default Title", "sku": "NDDIP"}]}
+    html = ('<html><head><script type="application/ld+json">%s</script></head><body><h1>Nee Doh Dig It Pig</h1>'
+            '<a href="/a">Nee Doh Dig It Pig Mini</a></body></html>' % json.dumps(ld))
+    r = keywords.analyze(html, "https://gotoytime.com/products/nee-doh-dig-it-pig")
+    negs = [w for w, _ in r["negatives"]]
+    assert "mini" in negs and "default" not in negs and "title" not in negs
+
+
+TOY_LD = {"@type": "Product", "name": "Dig It Pig NeeDoh", "brand": {"name": "SCHYLLING"}, "gtin13": "0019649520008"}
+TOY_PAGE = """<html><head><title>Nee doh dig it pig - ToyTime</title><meta property="og:site_name" content="ToyTime">
+<meta name="description" content="Buy Nee doh dig it pig for only $6.99 at ToyTime!">
+<script type="application/ld+json">%s</script></head><body>
+<header class="site-header"><svg><title>ToyTimeTrade_IconsTrade</title></svg>
+<nav class="menu"><a href="/c/toys">Toys</a><a href="/c/books">Books</a><a href="/c/bruder">Bruder Toys</a>
+<a href="/c/calico">Calico Critters</a><a href="/c/m">Model Kits</a><span>Expand child</span></nav></header>
+<main><div class="product"><h1>Nee doh dig it pig</h1><p>Squish the Nee Doh pig. Glow and Green colours sold separately.</p>
+<form><button>Add to cart</button><select><option>Default Title</option></select></form></div>
+<h2>You may also like</h2>
+<a href="/p/1"><span class="visually-hidden">Nice Ice Baby NeeDoh</span> Nice Ice Baby NeeDoh Sorry, this item is out of stock $5.99</a>
+<a href="/p/2">Nice Cube NeeDoh Nice Cube NeeDoh Sorry, this item is out of stock</a>
+<a href="/p/3" title="Needoh ice cube - ToyTime">Needoh ice cube - ToyTime</a>
+<a href="/p/4">Nee Doh Dig It Pig Mini</a>
+<a href="/p/5">Nee Doh Snowball High Bounce</a>
+</main><footer><svg><title>American Express</title></svg><svg><title>Apple Pay</title></svg>
+<a href="/policies">Refund policy</a> <a href="/x">Hat Pin Sticker Backpack Pants</a></footer></body></html>""" % json.dumps(TOY_LD)
+
+
+def test_shop_page_keeps_to_the_product():
+    r = keywords.analyze(TOY_PAGE, "https://gotoytime.com/collections/fidgets/products/nee-doh-dig-it-pig")
+    assert r["title"] == "Nee doh dig it pig - ToyTime"  # icon <title>s are not the page title
+    top = [w for w, *_ in r["words"]]
+    for chrome in ("iconstrade", "books", "bruder", "calico", "expand", "express", "refund", "toys", "sorry", "stock"):
+        assert chrome not in top
+    pos = {w: reason for w, reason, _ in r["positives"]}
+    assert "needoh" in pos and "nee doh" in pos["needoh"].lower()
+    negs = [w for w, _ in r["negatives"]]
+    for bad in ("nee", "doh", "toytime", "gotoytime", "sorry", "stock", "item", "hat", "pin", "pants", "backpack",
+                "sticker", "default", "title"):
+        assert bad not in negs, bad
+    for good in ("mini", "ice", "cube", "baby"):
+        assert good in negs, good
+    assert r["codes"] == ["0019649520008"]  # not "Green", "Kits" or "Glow"
+    assert "Nice Ice Baby NeeDoh" in r["related"] and not any("Sorry" in x for x in r["related"])
+
+
+def test_page_details_wrap_long_values(tmp_path, monkeypatch):
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, TOY_PAGE))
+    html = client.post("/keywords", data={"url": "https://gotoytime.com/p"}).get_data(as_text=True)
+    assert "overflow-wrap:anywhere" in html
+
+
+def test_corrections_are_remembered_and_taught(tmp_path, monkeypatch):
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, TOY_PAGE))
+    url = "https://gotoytime.com/products/nee-doh-dig-it-pig"
+    html = client.post("/keywords", data={"url": url}).get_data(as_text=True)
+    assert 'data-word="mini"' in html and "+dig,+pig,+needoh" in html
+
+    page = keywords.page_summary(keywords.analyze(TOY_PAGE, url))
+    base = {"url": url, "host": "gotoytime.com", "brand": "SCHYLLING", "product": "Dig It Pig NeeDoh", "page": page,
+            "positives": ["dig", "pig", "needoh"], "negatives": ["ice", "glow"]}
+    r = client.post("/keywords/feedback", json=dict(base, kind="-", word="mini", action="remove"))
+    assert r.get_json()["ok"] and r.get_json()["rule_id"]
+    assert client.post("/keywords/feedback", json=dict(base, kind="-", word="-Glow", action="add")).get_json()["word"] == "glow"
+    assert client.post("/keywords/feedback", json=dict(base, kind="?", word="x", action="add")).status_code == 400
+
+    # Same store, another page: the rules apply.
+    html = client.post("/keywords", data={"url": "https://gotoytime.com/products/other"}).get_data(as_text=True)
+    assert 'data-word="mini"' not in html and 'data-word="glow"' in html and "Removed by you" in html
+    assert "-glow" in html and "-mini" not in html.split('id="kwline"')[1].split("</div>")[0]
+
+    # Same brand on another store: still applies. Unrelated store and brand: doesn't.
+    other = TOY_PAGE.replace("SCHYLLING", "OTHERCO")
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, other))
+    assert 'data-word="glow"' not in client.post("/keywords", data={"url": "https://elsewhere.com/p"}).get_data(as_text=True)
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, TOY_PAGE))
+    assert 'data-word="glow"' in client.post("/keywords", data={"url": "https://elsewhere.com/p"}).get_data(as_text=True)
+
+    # The corrected page is shown to the model as an example for a new page; AI suggestions you removed stay out.
+    seen = {}
+
+    def model(self, system, user, examples=()):
+        seen["examples"] = examples
+        return {"summary": "x", "negative_keywords": [{"word": "mini"}, {"word": "slime"}]}
+    monkeypatch.setattr(keywords.LLMClient, "chat_json", model)
+    html = client.post("/keywords", data={"url": "https://gotoytime.com/products/new", "ai": "1"}).get_data(as_text=True)
+    assert len(seen["examples"]) == 1 and '"glow"' in seen["examples"][0][1]
+    assert 'data-word="slime"' in html and 'data-word="mini"' not in html
+
+    # The corrected page is an example of the Training page's "Keyword finder" task (one per page);
+    # rules are listed on the Keywords page and can be deleted.
+    from jigstream import db as jdb
+    c = jdb.connect(str(tmp_path / "k.db"))
+    task_id = c.execute("SELECT id FROM ai_tasks WHERE name = 'Keyword finder'").fetchone()[0]
+    rows = c.execute("SELECT output FROM ai_task_examples WHERE task_id = ?", (task_id,)).fetchall()
+    assert len(rows) == 1 and '"glow"' in rows[0][0]
+    assert "Keyword finder" in client.get("/training").get_data(as_text=True)
+    listing = client.get("/keywords").get_data(as_text=True)
+    assert "Your keyword rules" in listing and "-mini" in listing
+    rule_id = r.get_json()["rule_id"]
+    client.post(f"/keywords/rules/{rule_id}/delete")
+    html = client.post("/keywords", data={"url": url}).get_data(as_text=True)
+    assert 'data-word="mini"' in html
