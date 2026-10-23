@@ -76,8 +76,14 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.BOTTRACK }}
         run: |
           tag="build-${{ github.run_number }}-${GITHUB_SHA::7}"
-          git log -1 --pretty=%s > notes.txt
+          repo="${{ vars.RELEASES_REPO || 'Chronik36/BotTrack-releases' }}"
+          # Patch notes: every change since the last release (its tag ends in that build's commit id).
+          prev=$(gh release list -R "$repo" -L 1 --json tagName -q '.[0].tagName' 2>/dev/null || true)
+          range="-1"
+          if [ -n "$prev" ] && git cat-file -e "${prev##*-}^{commit}" 2>/dev/null; then range="${prev##*-}..HEAD"; fi
+          git log $range --no-merges --pretty='- %s' | sed -E 's/ \(#[0-9]+\)$//' | head -40 > notes.txt
+          [ -s notes.txt ] || git log -1 --pretty='- %s' > notes.txt
           shopt -s nullglob
           gh release create "$tag" dist/BotTrack.dmg dist/bottrack-code.zip apk/*.apk \
-            -R "${{ vars.RELEASES_REPO || 'Chronik36/BotTrack-releases' }}" \
+            -R "$repo" \
             --title "BotTrack build ${{ github.run_number }}" --notes-file notes.txt

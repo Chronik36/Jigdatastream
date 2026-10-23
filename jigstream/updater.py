@@ -216,17 +216,59 @@ def install(app_dir=APP_DIR, sha=None, blob=None, pip=True):
             shutil.rmtree(new, ignore_errors=True)
             logger.error("pip failed during update: %s", r.stderr[-2000:])
             raise RuntimeError("Installing the new version's Python packages failed; nothing was changed. See Logs.")
+    old_version = installed_version(app_dir)
     bdir = app_dir.parent / "backups"
     bdir.mkdir(exist_ok=True)
     backup = bdir / f"app-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{(installed_version(app_dir) or 'unknown')[:7]}"
     if app_dir.exists():
         app_dir.rename(backup)
     new.rename(app_dir)
+    try:  # after the restart, Setup shows what changed since this version
+        whats_new_file(app_dir).write_text(json.dumps({"from": old_version}))
+    except OSError:
+        logger.warning("couldn't save the note for the patch notes")
     for old in backups(app_dir)[KEEP_BACKUPS:]:
         shutil.rmtree(old, ignore_errors=True)
     state.update(available=False, message="")
     logger.info("update %s installed; previous version saved in %s", sha[:7], backup.name)
     return backup
+
+
+def whats_new_file(app_dir=APP_DIR):
+    return app_dir.parent / "whats-new.json"
+
+
+def whats_new_pending(app_dir=APP_DIR):
+    """The version BotTrack was updated from, while its patch notes haven't been seen yet; else None."""
+    try:
+        old = json.loads(whats_new_file(app_dir).read_text()).get("from", "")
+    except (OSError, ValueError):
+        return None
+    return old if build_number(installed_version(app_dir)) > build_number(old) else None
+
+
+_notes_cache = {}
+
+
+def release_notes(since, upto, fetch=None):
+    """Patch notes of every release after build `since` up to build `upto`, newest first:
+    [{"build": 66, "date": "2026-10-23", "notes": ["Stop sync button ...", ...]}]."""
+    key = (since, upto)
+    if key not in _notes_cache:
+        s = settings()
+        rels = (fetch or (lambda: json.loads(_get(f"{API}/repos/{s['releases']}/releases?per_page=50", None))))()
+        out = []
+        for r in rels:
+            n = build_number(r.get("tag_name"))
+            if since < n <= upto:
+                lines = [ln.strip().lstrip("-* ").strip() for ln in (r.get("body") or "").splitlines()]
+                out.append({"build": n, "date": (r.get("published_at") or "")[:10], "notes": [ln for ln in lines if ln]})
+        _notes_cache[key] = sorted(out, key=lambda r: -r["build"])
+    return _notes_cache[key]
+
+
+def seen_whats_new(app_dir=APP_DIR):
+    whats_new_file(app_dir).unlink(missing_ok=True)
 
 
 def _needs_packages(requirements):
@@ -240,6 +282,7 @@ def _needs_packages(requirements):
 def rollback(app_dir=APP_DIR):
     """Put the most recent backup back. The current code becomes a backup itself.
     In the Mac app, undoing the first update simply goes back to the code inside the app."""
+    seen_whats_new(app_dir)
     found = backups(app_dir)
     bundled = bool(os.environ.get("BOTTRACK_CODE_DIR")) and app_dir.exists()
     if not found and not bundled:
