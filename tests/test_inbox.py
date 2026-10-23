@@ -40,7 +40,7 @@ def test_expense_label(tmp_path, monkeypatch):
 
 def test_inbox_page_and_label_route(tmp_path, monkeypatch):
     monkeypatch.setenv("GMAIL_ACCOUNTS", "me@gmail.com:pw")
-    monkeypatch.setattr(inbox, "search", lambda config, q, limit=50: ([dict(ROW, spam=False)], []))
+    monkeypatch.setattr(inbox, "search", lambda config, q, limit=50, after=None: ([dict(ROW, spam=False)], [], None))
     monkeypatch.setattr(inbox, "open_email", lambda *a: MAIL)
     started = []
     monkeypatch.setattr(appmod.threading, "Thread",
@@ -110,3 +110,51 @@ def test_fill_missing_amounts_retries_when_email_cant_be_opened(tmp_path, monkey
     monkeypatch.setattr(inbox, "open_email", lambda *a: Email("<a@x>", "s", "Receipt", "", "Total\n | \n | \n$30.00"))
     assert inbox.fill_missing_amounts(object(), store) == (1, 0)
     assert store.expenses()[0]["amount"] == 30.0
+
+
+def test_search_pages_merge_inboxes_without_gaps_or_repeats(monkeypatch):
+    # Two inboxes of 7 and 4 emails, interleaved by date; read 3 at a time.
+    boxes = {"a@x": [{"message_id": f"<a{u}>", "date": f"2026-10-{u * 2:02d}", "uid": u, "f": 0} for u in range(7, 0, -1)],
+             "b@x": [{"message_id": f"<b{u}>", "date": f"2026-10-{u * 2 + 1:02d}", "uid": u, "f": 0} for u in range(4, 0, -1)]}
+
+    def fake(config, address, password, query, limit, after=None):
+        rows = [r for r in boxes[address] if not after or r["uid"] < after["u"]]
+        return [dict(r, account=address) for r in rows[:limit]]
+    monkeypatch.setattr(inbox, "search_headers", fake)
+    config = type("C", (), {"accounts": [("a@x", "pw"), ("b@x", "pw")]})()
+    seen, after, pages = [], None, 0
+    while True:
+        rows, errors, after = inbox.search(config, "", limit=3, after=after)
+        seen += [r["message_id"] for r in rows]
+        pages += 1
+        if after is None:
+            break
+        after = json.loads(json.dumps(after))  # it travels through the page as JSON
+    assert errors == [] and pages == 4
+    everything = sorted(boxes["a@x"] + boxes["b@x"], key=lambda r: r["date"], reverse=True)
+    assert seen == [r["message_id"] for r in everything]
+
+
+def test_rows_route_passes_cursor_and_skipped_pages(tmp_path, monkeypatch):
+    monkeypatch.setenv("GMAIL_ACCOUNTS", "me@gmail.com:pw")
+    calls = []
+
+    def fake(config, q, limit=50, after=None):
+        calls.append(after)
+        return ([dict(ROW, spam=False)], [], {"me@gmail.com": {"f": 0, "u": 5}}) if after is None else ([], [], None)
+    monkeypatch.setattr(inbox, "search", fake)
+    path = str(tmp_path / "p.db")
+    store = Store(db.connect(path))
+    for n in range(60):
+        store.db.execute("INSERT INTO emails (message_id, account, sender, subject, date, kind) VALUES (?,?,?,?,?,?)",
+                         (f"<n{n}>", "me@gmail.com", "S", f"Skipped {n:02d}", f"2026-09-{n % 28 + 1:02d}T{n:02d}", "other"))
+    store.db.commit()
+    c = appmod.create_app(path).test_client()
+    html = c.get("/inbox/rows").get_data(as_text=True)
+    assert "Your order was cancelled" in html and 'class="mrow more"' in html
+    nxt = html.split('data-next="')[1].split('"')[0].replace("&#34;", '"')
+    assert c.get("/inbox/rows?after=" + nxt).status_code == 200 and calls[1] == {"me@gmail.com": {"f": 0, "u": 5}}
+    first = c.get("/inbox/rows?f=AI+skipped").get_data(as_text=True)
+    assert first.count('data-id=') == 50 and 'data-next="50"' in first
+    rest = c.get("/inbox/rows?f=AI+skipped&after=50").get_data(as_text=True)
+    assert rest.count('data-id=') == 10 and "mrow more" not in rest and "That's everything" in rest

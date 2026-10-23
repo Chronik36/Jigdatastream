@@ -22,7 +22,7 @@ FOLDERS = {
 class FakeIMAP:
     searches = []
 
-    def __init__(self, host):
+    def __init__(self, host, timeout=None):
         self.folder = None
 
     def login(self, user, password):
@@ -85,3 +85,13 @@ def test_localized_spam_name_and_missing_folder(monkeypatch):
     # The folder isn't selectable here, so only All Mail is read.
     got = list(mail.fetch_emails(Config(), "me@gmail.com", "pw", skip_ids={"<a>", "<b>"}))
     assert [e.message_id for e in got] == ["<c>"]
+
+
+def test_search_headers_pages_through_all_mail_then_spam(monkeypatch):
+    monkeypatch.setattr(mail.imaplib, "IMAP4_SSL", FakeIMAP)
+    page1 = mail.search_headers(Config(), "me@gmail.com", "pw", "", limit=2)
+    assert [(r["message_id"], r["f"], r["uid"]) for r in page1] == [("<c>", 0, 103), ("<b>", 0, 102)]
+    page2 = mail.search_headers(Config(), "me@gmail.com", "pw", "", limit=2, after={"f": 0, "u": 102})
+    assert [(r["message_id"], r["f"], r["spam"]) for r in page2] == [("<a>", 0, False), ("<b>", 1, True)]
+    page3 = mail.search_headers(Config(), "me@gmail.com", "pw", "", limit=2, after={"f": 1, "u": 8})
+    assert [r["message_id"] for r in page3] == ["<s>"]

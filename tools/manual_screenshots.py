@@ -212,7 +212,7 @@ class FakeDiscord:
 def patch():
     rows = [{"account": a, "message_id": f"<inbox{i}@demo>", "sender": s, "subject": subj, "date": d,
              "spam": i == 5} for i, (a, s, subj, d, _) in enumerate(INBOX)]
-    inbox.search = lambda config, query, limit=50: (rows, [])
+    inbox.search = lambda config, query, limit=50, after=None: (rows, [], None)
     body = ("Hi Alex,\n\nGood news: your order C01234567 has shipped.\n\nAir Jordan 1 Retro High OG  x2   $360.00\n\n"
             "Carrier: UPS\nTracking number: 1Z999AA10123456784\nEstimated delivery: Fri, Oct 24\n\n"
             "Shipping to:\n123 Demo St\nAustin, TX 78701\n\nThanks for shopping with us.")

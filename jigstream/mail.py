@@ -319,30 +319,38 @@ def _header_rows(imap, uids, address, spam):
                                 "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID FROM SUBJECT DATE)])")
         if status != "OK":
             continue
-        for part in data:
+        for i, part in enumerate(data):
             if not isinstance(part, tuple):
                 continue
             msg = parse_message(part[1])
+            after = data[i + 1] if i + 1 < len(data) and isinstance(data[i + 1], bytes) else b""
+            uid = re.search(rb"UID (\d+)", part[0]) or re.search(rb"UID (\d+)", after)
             rows.append({"message_id": msg.message_id, "sender": msg.sender, "subject": msg.subject,
-                         "date": msg.date, "account": address, "spam": spam})
+                         "date": msg.date, "account": address, "spam": spam, "uid": int(uid.group(1)) if uid else 0})
     return rows
 
 
-def search_headers(config, address, password, query="", limit=50):
-    """Newest emails matching a Gmail search (headers only, nothing downloaded), All Mail then Spam."""
+def search_headers(config, address, password, query="", limit=50, after=None):
+    """Newest emails matching a Gmail search (headers only, nothing downloaded), All Mail then Spam.
+    after = {"f": folder (0 All Mail, 1 Spam), "u": uid} continues below the last email already shown.
+    Each row carries its folder ("f") and "uid" so the caller can say where the next page starts."""
     imap = imaplib.IMAP4_SSL(config.imap_host, timeout=30)
+    after = after or {"f": 0, "u": None}
     try:
         imap.login(address, password)
         rows = []
-        for folder, spam in ((config.mailbox, False), (spam_folder(imap), True)):
-            if len(rows) >= limit or imap.select(folder, readonly=True)[0] != "OK":
+        for f, (folder, spam) in enumerate(((config.mailbox, False), (spam_folder(imap), True))):
+            if f < after["f"] or len(rows) >= limit or imap.select(folder, readonly=True)[0] != "OK":
                 continue
             q = (query or "in:anywhere").strip()
             status, data = imap.uid("SEARCH", "X-GM-RAW", _quote(q))
             if status != "OK":
                 continue
-            uids = data[0].split()[::-1][: limit - len(rows)]
-            rows += _header_rows(imap, uids, address, spam)
+            uids = sorted((int(u) for u in data[0].split()), reverse=True)
+            if f == after["f"] and after.get("u"):
+                uids = [u for u in uids if u < after["u"]]
+            found = _header_rows(imap, [str(u).encode() for u in uids[: limit - len(rows)]], address, spam)
+            rows += sorted((dict(r, f=f) for r in found), key=lambda r: -r["uid"])
         return rows
     finally:
         try:

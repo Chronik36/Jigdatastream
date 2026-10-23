@@ -617,18 +617,29 @@ def create_app(db_path=None):
         filt = request.args.get("f", "Purchases" if "q" not in request.args else "")
         query = request.args.get("q", "").strip() or inbox.QUICK_FILTERS.get(filt) or ""
         store = Store(con())
+        try:
+            after = json.loads(request.args.get("after") or "null")
+        except ValueError:
+            after = None
         if filt == inbox.SKIPPED and not request.args.get("q", "").strip():
-            rows, errors = inbox.skipped(store), []
+            rows, nxt = inbox.skipped(store, offset=after if isinstance(after, int) else 0)
+            errors = []
+        elif config.accounts:
+            rows, errors, nxt = inbox.search(config, query, after=after if isinstance(after, dict) else None)
         else:
-            rows, errors = inbox.search(config, query) if config.accounts else ([], [])
+            rows, errors, nxt = [], [], None
         ids = [r["message_id"] for r in rows]
-        decided = {}
+        decided, marked = {}, {}
         for i in range(0, len(ids), 500):  # only the emails on screen, not every email ever read
             chunk = ids[i:i + 500]
+            marks = ",".join("?" * len(chunk))
             decided.update(store.db.execute("SELECT message_id, kind FROM emails WHERE message_id IN (%s)"
-                                            % ",".join("?" * len(chunk)), chunk).fetchall())
-        return render_template("_inbox_rows.html", rows=rows, errors=errors, labels=inbox.LABELS,
-                               marked=store.inbox_labels(), decided=decided, configured=bool(config.accounts))
+                                            % marks, chunk).fetchall())
+            marked.update((r["message_id"], dict(r)) for r in store.db.execute(
+                "SELECT * FROM inbox_labels WHERE message_id IN (%s)" % marks, chunk))
+        return render_template("_inbox_rows.html", rows=rows, errors=errors, labels=inbox.LABELS, marked=marked,
+                               decided=decided, configured=bool(config.accounts), more=nxt is not None,
+                               next=json.dumps(nxt), first=after is None)
 
     @app.get("/inbox/view")
     def inbox_view():
