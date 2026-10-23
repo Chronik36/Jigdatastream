@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
 {% set tabs = [("stuck", "Stuck", counts.stuck), ("emailed", "Order email, no cancel", counts.emailed), ("no_email", "No email found", counts.no_email), ("cancelled", "Cancelled", counts.cancelled), ("all", "All successful", counts.all)] %}
-<h2>Stuck</h2>
+{% set tab = "stuck" %}{% include "_drop_tabs.html" %}
 <p class="muted">Every successful checkout from your bot webhooks, checked against your order emails. A checkout stuck when no cancel email and no bank refund came after it. It's matched to an email by order number, or by the same site and profile within a few days when the webhook has no order number.</p>
 <div class="stats"><div class="card">Successful checkouts <b>{{counts.all}}</b></div><div class="card ok">Stuck <b>{{counts.stuck}}</b></div>
 <div class="card bad">Cancelled <b>{{counts.cancelled}}</b></div><div class="card">No email found <b>{{counts.no_email}}</b></div></div>
