@@ -37,28 +37,38 @@ def sign_in(c, password=PASSWORD):
 
 
 def csrf(c, path):
-    return re.search(r'name="csrf" value="([^"]+)"', c.get(path).get_data(as_text=True)).group(1)
+    page = c.get(path).get_data(as_text=True)
+    return re.search(r'name="csrf" (?:value|content)="([^"]+)"', page).group(1)
 
 
-def test_phone_must_sign_in_and_never_reaches_desktop_pages(app):
+def test_phone_must_sign_in_and_never_reaches_mac_only_pages(app):
     c = phone(app)
-    assert c.get("/m/orders").headers["Location"].endswith("/m/login")
+    assert c.get("/orders").headers["Location"].endswith("/m/login")
     assert c.get("/setup").headers["Location"].endswith("/m/login")
     assert sign_in(c, "wrong password").status_code == 401
-    assert sign_in(c).headers["Location"].endswith("/m/orders")
-    assert c.get("/m/orders").status_code == 200
-    for path in ("/setup", "/logs", "/logs/download", "/api/orders"):
-        assert c.get(path).headers["Location"].endswith("/m/orders"), path
-    assert c.post("/update/install").status_code in (302, 400)  # never runs the desktop route
-    assert c.post("/m/setup", data={"on": "1", "csrf": csrf(c, "/m/app")}).status_code == 404
+    assert sign_in(c).headers["Location"] == "/"
+    for path in ("/", "/orders", "/expenses", "/expenses/ledger", "/profiles", "/stock", "/training", "/products",
+                 "/inbox", "/keywords", "/cards", "/checkouts", "/manual", "/m/app"):
+        assert c.get(path).status_code == 200, path
+    for path in ("/setup", "/logs", "/logs/download", "/bank/plaid"):
+        assert c.get(path).headers["Location"] == "/", path
+    page = c.get("/", follow_redirects=True).get_data(as_text=True)
+    t = csrf(c, "/orders")
+    assert c.post("/update/rollback", data={"csrf": t}).status_code == 403
+    assert c.post("/profiles/export", data={"csrf": t}).status_code == 403
+    assert c.get("/cards/1/reveal").status_code == 403
+    assert c.post("/m/setup", data={"on": "1", "csrf": t}).status_code == 404
+    page = c.get("/orders").get_data(as_text=True)
+    assert 'href="/setup" title="Setup"' not in page and 'href="/logs" title' not in page and 'href="/m/app"' in page
 
 
 def test_the_mac_window_needs_no_sign_in(app):
     c = app.test_client()
     assert c.get("/setup").status_code == 200
-    assert c.get("/m/orders").status_code == 200
+    page = c.get("/orders").get_data(as_text=True)
+    assert 'href="/setup" title="Setup"' in page and "ptabs" not in page  # the Mac keeps its own layout
     # a proxy on this Mac (like tailscale serve) is treated as a phone
-    assert c.get("/m/orders", headers={"X-Forwarded-For": "1.2.3.4"}).status_code == 302
+    assert c.get("/orders", headers={"X-Forwarded-For": "1.2.3.4"}).status_code == 302
     assert c.get("/setup", base_url="http://bottrack.tail1234.ts.net").status_code == 302
 
 
@@ -94,52 +104,28 @@ def test_saving_setup_lifts_a_lockout_and_can_switch_it_off(app):
 def test_changing_the_password_signs_phones_out(app):
     c = phone(app)
     sign_in(c)
-    assert c.get("/m/orders").status_code == 200
+    assert c.get("/orders").status_code == 200
     os.environ["PHONE_PASSWORD_HASH"] = generate_password_hash("a brand new password")
-    assert c.get("/m/orders").status_code == 302
+    assert c.get("/orders").status_code == 302
 
 
 def test_posts_need_the_page_token(app):
     c = phone(app)
     sign_in(c)
-    assert c.post("/m/orders/new", data={"retailer": "Nike"}).status_code == 400
-    token = csrf(c, "/m/orders/new")
-    assert c.post("/m/orders/new", data={"retailer": "Nike", "csrf": token}).status_code == 302
+    page = c.get("/orders").get_data(as_text=True)
+    assert "ptabs" in page and 'name="csrf"' in page  # phone layout, and forms get the token
+    assert c.post("/expenses/new", data={"vendor": "X", "amount": "5"}).status_code == 400
+    t = csrf(c, "/orders")
+    assert c.post("/expenses/new", data={"csrf": t, "vendor": "X", "amount": "5"}).status_code in (200, 302)
+    assert c.post("/expenses/new", data={"vendor": "Y", "amount": "5"}, headers={"X-CSRF-Token": t}).status_code in (200, 302)
 
 
-def test_add_edit_delete_from_a_phone(app):
+def test_old_phone_pages_open_the_real_ones(app):
     c = phone(app)
     sign_in(c)
-    t = csrf(c, "/m/orders/new")
-    c.post("/m/orders/new", data={"csrf": t, "retailer": "Nike", "order_number": "C123", "total": "$1,210.50",
-                                  "items": "Dunk Low x2\nSocks", "shipping_status": "ordered"})
-    page = c.get("/m/orders").get_data(as_text=True)
-    assert "Nike" in page and "Dunk Low x2" in page and "$1,210.50" in page
-    oid = int(re.search(r"/m/orders/(\d+)", page).group(1))
-    c.post(f"/m/orders/{oid}", data={"csrf": t, "retailer": "Nike", "order_number": "C123",
-                                     "tracking_number": "1Z999AA10123456784", "shipping_status": "delivered"})
-    o = appmod.Store(appmod.db.connect(app.config["DB_PATH"])).order(oid)
-    assert o["shipping_status"] == "delivered" and o["status_manual"] == 1 and o["tracking_number"].startswith("1Z")
-    assert "ups.com" in c.get(f"/m/orders/{oid}").get_data(as_text=True)
-    assert c.get("/m/orders?status=delivered").get_data(as_text=True).count("/m/orders/") >= 1
-    c.post(f"/m/orders/{oid}/delete", data={"csrf": t})
-    assert "No orders yet" in c.get("/m/orders").get_data(as_text=True)
-
-    c.post("/m/expenses/new", data={"csrf": t, "vendor": "Some Proxies", "amount": "45", "category": "proxy",
-                                    "billing_period": "monthly"})
-    page = c.get("/m/expenses").get_data(as_text=True)
-    assert "Some Proxies" in page and "$45.00" in page
-    eid = int(re.search(r"/m/expenses/(\d+)", page).group(1))
-    c.post(f"/m/expenses/{eid}", data={"csrf": t, "vendor": "Some Proxies", "amount": "50", "category": "proxy"})
-    assert "$50.00" in c.get("/m/expenses").get_data(as_text=True)
-
-    c.post("/m/profiles/new", data={"csrf": t, "name": "Main", "first_name": "Jo", "bill_city": "Austin", "same": "on"})
-    assert "Austin" in c.get("/m/profiles/Main/edit").get_data(as_text=True)
-    c.post("/m/profiles/Main/edit", data={"csrf": t, "name": "Main", "ship_city": "Dallas", "bill_city": "Austin"})
-    row = appmod.db.connect(app.config["DB_PATH"]).execute("SELECT * FROM profiles").fetchone()
-    assert (row["ship_city"], row["bill_city"]) == ("Dallas", "Austin")
-    c.post("/m/profiles/Main/delete", data={"csrf": t})
-    assert "No profiles yet" in c.get("/m/profiles").get_data(as_text=True)
+    assert c.get("/m/orders").headers["Location"] == "/orders"
+    assert c.get("/m/profiles").headers["Location"] == "/profiles"
+    assert c.get("/m/nope").status_code == 404
 
 
 def test_setup_turns_phone_access_on(app):
@@ -176,8 +162,8 @@ def test_update_from_the_phone(app, monkeypatch):
     c = phone(app)
     sign_in(c)
     monkeypatch.setitem(updater.state, "available", True)
-    page = c.get("/m/orders").get_data(as_text=True)
-    assert "A new version of BotTrack is ready" in page
+    page = c.get("/orders").get_data(as_text=True)
+    assert "A new version of BotTrack is ready" in page and 'action="/m/update"' in page
     calls = []
     monkeypatch.setattr(updater, "can_self_update", lambda: True)
     monkeypatch.setattr(updater, "install", lambda: calls.append("install"))
@@ -198,10 +184,10 @@ def test_android_app_is_offered_its_update(app, monkeypatch):
     monkeypatch.setitem(updater.state, "apk_url", "https://example.com/BotTrack-android-3.apk")
     c = phone(app)
     sign_in(c)
-    assert "Android app is ready" not in c.get("/m/orders").get_data(as_text=True)  # a browser, not the app
-    old = c.get("/m/orders", headers={"User-Agent": "Mozilla/5.0 BotTrackApp/2"}).get_data(as_text=True)
-    assert "Android app is ready" in old and "BotTrack-android-3.apk" in old
-    assert "Android app is ready" not in c.get("/m/orders", headers={"User-Agent": "x BotTrackApp/3"}).get_data(as_text=True)
+    assert "Android app" not in c.get("/m/app").get_data(as_text=True)  # a browser, not the app
+    old = c.get("/m/app", headers={"User-Agent": "Mozilla/5.0 BotTrackApp/2"}).get_data(as_text=True)
+    assert "Version 3 is ready" in old and "BotTrack-android-3.apk" in old
+    assert "Version 3 is ready" not in c.get("/m/app", headers={"User-Agent": "x BotTrackApp/3"}).get_data(as_text=True)
 
 
 def test_release_check_finds_the_android_app(monkeypatch):

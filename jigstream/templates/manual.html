@@ -541,7 +541,7 @@ each one agreed with you and how many seconds each email took. You need at least
   "Also allow phones on the same Wi-Fi without Tailscale. Less private, because Wi-Fi traffic isn't encrypted."]) }}{% endif %}
 </section>
 
-{% if "mobile.orders" in pages %}<section id="phone" data-title="Using BotTrack on your phone">
+{% if "mobile.login" in pages %}<section id="phone" data-title="Using BotTrack on your phone">
 <h2>Using BotTrack on your phone <span class="tag">iPhone &amp; Android</span></h2>
 <p>Your phone talks straight to BotTrack on your Mac, so nothing goes through anyone's server and it's free. It only works while BotTrack
 is open on the Mac.</p>
@@ -552,10 +552,12 @@ is open on the Mac.</p>
 <li>Add it to your home screen. iPhone: tap <b>Share</b> → <b>Add to Home Screen</b>. Android: tap <b>⋮</b> → <b>Add to Home screen</b>, or install the BotTrack Android app and type the address in.</li>
 </ol>
 {{ fig("phone-login", "Signing in on the phone.", phone=True) }}
-{{ fig("phone-orders", "Orders on the phone. Tap an order to edit it, or + Add for a new one.", phone=True) }}
+<p>Once you're signed in, the phone has the whole app: Dashboard, Orders, Inbox, Expenses, Stock, Training, Products and the rest. The bar at the bottom jumps to the main pages, and <b>More</b> opens the full menu. Long lists show 40 rows at a time, with <b>Show more</b> below, and searching looks through all of them. Anything changed on the Mac or another phone shows up within a few seconds.</p>
+{{ fig("phone-orders", "Orders on the phone.", phone=True) }}
 {{ fig("phone-expenses", "Expenses on the phone.", phone=True) }}
 {{ fig("phone-profiles", "Profiles on the phone.", phone=True) }}
-<div class="warn">Phones stay signed in for 30 days. Changing the password signs every phone out. Setup, Logs and updates can only be opened on the Mac.</div>
+<p><b>Updates from the phone:</b> when a new version is out, the phone shows <span class="ui">Update now</span>. It updates BotTrack on the Mac, which updates the phone too. More → <b>App &amp; updates</b> also checks for updates and, in the Android app, offers a newer app when there is one.</p>
+<div class="warn">Phones stay signed in for 30 days. Changing the password signs every phone out. Setup, Logs, bank linking, profile exports and full card numbers only open on the Mac, since that's where your passwords and bank access live.</div>
 </section>{% endif %}
 
 <section id="training" data-title="Training">
