@@ -280,11 +280,18 @@ def main():
     app = create_app()
     app.config["AI_STATE"] = ai_state
     port = free_port(int(os.environ.get("PORT", 8765)))
-    # Phones can only connect when phone access is on; jigstream/mobile.py checks every request.
-    host = "0.0.0.0" if os.environ.get("PHONE_ACCESS") == "1" else "127.0.0.1"
-    app.config.update(PORT=port, BIND_HOST=host)
+    # Phones come in through the phone link, which connects to 127.0.0.1; only phones on the same
+    # Wi-Fi need BotTrack listening on the network. jigstream/mobile.py checks every request.
+    phones = os.environ.get("PHONE_ACCESS") == "1"
+    host = "0.0.0.0" if phones and os.environ.get("PHONE_ALLOW_LAN") == "1" else "127.0.0.1"
+    app.config.update(PORT=port, BIND_HOST=host, PHONE_LINK=True)
     threading.Thread(target=lambda: app.run(host=host, port=port, debug=False, use_reloader=False),
                      daemon=True).start()
+    from . import tunnel
+    if phones:
+        tunnel.ensure(port)  # reuses the link left running by an update restart, so its address stays
+    else:
+        tunnel.stop()
 
     def timers():
         """Sync every few hours (first once the AI is ready) and check for updates every few hours."""
@@ -319,6 +326,8 @@ def main():
     try:
         open_window(f"http://127.0.0.1:{port}", bundle / "Contents/Resources/AppIcon.icns", restarted=restarted)
     finally:
+        if not RESTART_MARK.exists():
+            tunnel.stop()  # closing BotTrack closes the phone link too
         engines.stop_mlx()
         ai.terminate()
         try:

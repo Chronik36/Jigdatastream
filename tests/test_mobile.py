@@ -7,7 +7,6 @@ from werkzeug.security import generate_password_hash
 import jigstream.app as appmod
 from jigstream import mobile
 
-PHONE = {"REMOTE_ADDR": "100.101.102.103"}  # a Tailscale address
 PASSWORD = "correct horse battery"
 
 
@@ -28,8 +27,16 @@ def client(app, addr):
     return c
 
 
-def phone(app):
-    return client(app, PHONE["REMOTE_ADDR"])
+def phone(app, ip="198.51.100.7"):
+    """A phone on the internet, through the phone link: cloudflared on the Mac passes its requests to
+    127.0.0.1 with the phone's own address in Cf-Connecting-Ip."""
+    c = client(app, "127.0.0.1")
+    c.environ_base["HTTP_CF_CONNECTING_IP"] = ip
+    return c
+
+
+def pair(c):
+    return c.get("/m/pair?k=" + os.environ["PHONE_PAIR_KEY"])
 
 
 def sign_in(c, password=PASSWORD):
@@ -72,8 +79,10 @@ def test_the_mac_window_needs_no_sign_in(app):
     assert c.get("/setup", base_url="http://bottrack.tail1234.ts.net").status_code == 302
 
 
-def test_blocked_when_off_or_from_outside_the_tailnet(app):
+def test_blocked_when_off_or_not_through_the_phone_link(app):
+    assert phone(app).get("/m/login").status_code == 200
     assert client(app, "203.0.113.9").get("/m/login").status_code == 404
+    assert client(app, "100.101.102.103").get("/m/login").status_code == 404  # Tailscale isn't used any more
     assert client(app, "192.168.1.20").get("/m/login").status_code == 404
     os.environ["PHONE_ALLOW_LAN"] = "1"
     assert client(app, "192.168.1.20").get("/m/login").status_code == 200
@@ -86,19 +95,29 @@ def test_sign_in_locks_after_repeated_failures(app):
     for _ in range(mobile.LOCK_AFTER):
         assert sign_in(c, "nope").status_code == 401
     assert sign_in(c).status_code == 429
-    os.environ["PHONE_LOCKOUT"] = "0"  # the Setup switch for testing
-    assert sign_in(c).status_code == 302
+    assert pair(c).status_code == 429  # the QR code waits too
+    assert sign_in(phone(app, ip="198.51.100.8")).status_code == 302  # by the phone's address, not the link's
+    os.environ["PHONE_LOCKOUT"] = "0"  # the Setup switch for testing...
+    assert sign_in(c).status_code == 429  # ...never applies to the internet-facing link
+    os.environ["PHONE_ALLOW_LAN"] = "1"
+    wifi = client(app, "192.168.1.20")
+    for _ in range(mobile.LOCK_AFTER + 1):
+        assert sign_in(wifi, "nope").status_code == 401
+    assert sign_in(wifi).status_code == 302
 
 
 def test_saving_setup_lifts_a_lockout_and_can_switch_it_off(app):
     for _ in range(mobile.LOCK_AFTER):
         sign_in(phone(app), "nope")
+    assert sign_in(phone(app)).status_code == 429
     mac = app.test_client()
-    mac.post("/m/setup", data={"csrf": csrf(mac, "/setup"), "on": "1", "email": "me@example.com", "no_lockout": "1"})
+    mac.post("/m/setup", data={"csrf": csrf(mac, "/setup"), "on": "1", "email": "me@example.com",
+                               "no_lockout": "1", "allow_lan": "1"})
     assert os.environ["PHONE_LOCKOUT"] == "0" and not mobile.failures
-    for _ in range(mobile.LOCK_AFTER + 2):
-        assert sign_in(phone(app), "nope").status_code == 401
     assert sign_in(phone(app)).status_code == 302
+    for _ in range(mobile.LOCK_AFTER + 2):
+        assert sign_in(client(app, "192.168.1.20"), "nope").status_code == 401
+    assert sign_in(client(app, "192.168.1.20")).status_code == 302
 
 
 def test_changing_the_password_signs_phones_out(app):
@@ -129,19 +148,27 @@ def test_old_phone_pages_open_the_real_ones(app):
 
 
 def test_setup_turns_phone_access_on(app):
-    os.environ.pop("PHONE_PASSWORD_HASH")
+    for k in ("PHONE_PASSWORD_HASH", "PHONE_EMAIL", "PHONE_PAIR_KEY", "PHONE_PAIR_TOPIC"):
+        os.environ.pop(k, None)
     os.environ["PHONE_ACCESS"] = "0"
     c = app.test_client()
     t = csrf(c, "/setup")
-    assert c.post("/m/setup", data={"on": "1", "email": "me@example.com", "password": "x"}).status_code == 404
+    assert c.post("/m/setup", data={"on": "1"}).status_code == 404
     r = c.post("/m/setup", data={"csrf": t, "on": "1", "email": "me@example.com", "password": "short"}, follow_redirects=True)
     assert "at least 10" in r.get_data(as_text=True)
+    c.post("/m/setup", data={"csrf": t, "on": "1"})  # no email or password needed: phones pair by QR code
+    env = open(".env").read()
+    assert "PHONE_ACCESS=1" in env and "PHONE_SECRET_KEY=" in env and "PHONE_PAIR_KEY=" in env and "PHONE_PAIR_TOPIC=bottrack-" in env
+    page = c.get("/setup").get_data(as_text=True)
+    assert "Restart BotTrack" not in page and "Starting the phone link" in page  # no restart, the link starts right away
+    assert pair(phone(app)).headers["Location"] == "/"
+    assert "Sign in" not in phone(app).get("/m/login").get_data(as_text=True)  # no password set
     c.post("/m/setup", data={"csrf": t, "on": "1", "email": "Me@example.com", "password": PASSWORD})
     env = open(".env").read()
-    assert "PHONE_ACCESS=1" in env and "PHONE_EMAIL=me@example.com" in env and PASSWORD not in env
-    assert "PHONE_SECRET_KEY=" in env
-    assert "Restart BotTrack to turn phone access on" in c.get("/setup").get_data(as_text=True)
+    assert "PHONE_EMAIL=me@example.com" in env and PASSWORD not in env
     assert sign_in(phone(app)).status_code == 302
+    c.post("/m/setup", data={"csrf": t, "on": "1", "allow_lan": "1"})
+    assert "Restart BotTrack to allow Wi-Fi" in c.get("/setup").get_data(as_text=True)
 
 
 def test_pages_see_changes_from_anywhere(app):
@@ -154,7 +181,7 @@ def test_pages_see_changes_from_anywhere(app):
     assert c.get("/m/api/changes").get_json()["n"] == n + 1
     appmod.Store(con).add_expense({"vendor": "Proxies", "amount": 5.0})
     assert c.get("/m/api/changes").get_json()["n"] == n + 2
-    assert client(app, "100.64.0.9").get("/m/api/changes").status_code == 302  # signed out: no data
+    assert phone(app).get("/m/api/changes").status_code == 302  # signed out: no data
 
 
 def test_update_from_the_phone(app, monkeypatch):
@@ -198,3 +225,81 @@ def test_release_check_finds_the_android_app(monkeypatch):
     monkeypatch.setattr(updater, "_get", lambda *a, **k: __import__("json").dumps(rel).encode())
     updater._latest_release(updater.settings())
     assert updater.state["apk_version"] == 4 and updater.state["apk_url"].endswith("-4.apk")
+
+
+def test_scanning_the_qr_code_pairs_a_phone(app, monkeypatch):
+    from jigstream import tunnel
+    monkeypatch.setitem(tunnel.state, "url", "https://quiet-river-words.trycloudflare.com")
+    monkeypatch.setitem(tunnel.state, "status", "on")
+    mac = app.test_client()
+    page = mac.get("/setup").get_data(as_text=True)
+    key, topic = os.environ["PHONE_PAIR_KEY"], os.environ["PHONE_PAIR_TOPIC"]
+    qr = f"https://quiet-river-words.trycloudflare.com/m/pair?k={key}&amp;t={topic}"
+    assert qr in page and "qrcode.js" in page
+    assert mac.get("/m/api/link").get_json()["pair_url"] == qr.replace("&amp;", "&")
+    c = phone(app)
+    assert c.get("/m/pair?k=nope").status_code == 401
+    assert pair(c).headers["Location"] == "/"
+    assert c.get("/orders").status_code == 200
+    assert c.get("/m/api/link").headers["Location"] == "/"  # the QR code itself stays on the Mac
+    manifest = c.get("/m/manifest.webmanifest").get_json()
+    assert manifest["start_url"] == "/m/pair?k=" + key  # an iPhone home screen app pairs itself on launch
+    assert phone(app).get("/m/manifest.webmanifest").get_json()["start_url"] == "/"
+    # Forget all phones: a new code, and the paired phone is signed out
+    mac.post("/m/setup/forget", data={"csrf": csrf(mac, "/setup")})
+    assert os.environ["PHONE_PAIR_KEY"] != key and os.environ["PHONE_PAIR_TOPIC"] != topic
+    assert c.get("/orders").status_code == 302
+    assert c.get("/m/pair?k=" + key).status_code == 401
+
+
+def test_setup_starts_and_stops_the_phone_link(app, monkeypatch):
+    from jigstream import tunnel
+    calls = []
+    monkeypatch.setattr(tunnel, "ensure", lambda port: calls.append(("ensure", port)))
+    monkeypatch.setattr(tunnel, "stop", lambda: calls.append("stop"))
+    mac = app.test_client()
+    mac.post("/m/setup", data={"csrf": csrf(mac, "/setup"), "on": "1"})
+    assert calls == []  # only the Mac app runs the link
+    app.config.update(PHONE_LINK=True, PORT=8765)
+    mac.post("/m/setup", data={"csrf": csrf(mac, "/setup"), "on": "1"})
+    mac.post("/m/setup", data={"csrf": csrf(mac, "/setup")})
+    assert calls == [("ensure", 8765), "stop"]
+
+
+def test_phone_link_reads_its_address_and_checks_its_download(tmp_path, monkeypatch):
+    import hashlib
+    import io
+    import tarfile
+    from jigstream import tunnel
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "logs").mkdir()
+    tunnel.LOG.write_text("INF Requesting new quick Tunnel on trycloudflare.com...\n"
+                          "ERR failed to reach https://api.trycloudflare.com/tunnel\n"
+                          "INF |  https://quiet-river-words.trycloudflare.com  |\n")
+    assert tunnel.url_in_log() == "https://quiet-river-words.trycloudflare.com"
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        info = tarfile.TarInfo("cloudflared")
+        info.size = 4
+        tar.addfile(info, io.BytesIO(b"exe!"))
+    data = buf.getvalue()
+    monkeypatch.setattr(tunnel.shutil, "which", lambda name: None)
+    get = lambda url, timeout: io.BytesIO(data)
+    with pytest.raises(RuntimeError, match="checksum"):
+        tunnel.binary(get)
+    assert not tunnel.BIN.exists()
+    monkeypatch.setitem(tunnel.SHA256, tunnel._arch(), hashlib.sha256(data).hexdigest())
+    assert tunnel.binary(get) == str(tunnel.BIN) and tunnel.BIN.read_bytes() == b"exe!"
+
+
+def test_phone_link_address_goes_to_the_private_topic(monkeypatch):
+    from jigstream import tunnel
+    sent = []
+
+    class Done:
+        def close(self):
+            pass
+    monkeypatch.setenv("PHONE_PAIR_TOPIC", "bottrack-abc123")
+    tunnel.announce("https://a-b.trycloudflare.com", post=lambda req, timeout: sent.append(req) or Done())
+    assert sent[0].full_url == "https://ntfy.sh/bottrack-abc123" and sent[0].data == b"https://a-b.trycloudflare.com"

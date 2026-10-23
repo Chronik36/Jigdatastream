@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- BotTrack runs on the tester's own Mac at a Tailscale or Wi-Fi address, which has no HTTPS
-     certificate. Tailscale encrypts the connection itself. -->
+<!-- The phone link is https. Plain http is still allowed for phones on the same Wi-Fi as the Mac,
+     which has no certificate for its local address. -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true" />
 </network-security-config>
