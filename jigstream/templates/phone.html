@@ -1,0 +1,94 @@
+<style>
+/* Phone layout: a tab bar for the main pages (More opens the full menu), long tables become cards
+   and show 40 rows at a time. Only pages opened from a phone get this. */
+.ptabs{display:none}
+@media (max-width:900px){
+  body{padding-bottom:calc(66px + env(safe-area-inset-bottom,0px))}
+  .top{padding-top:env(safe-area-inset-top,0px);height:calc(var(--top) + env(safe-area-inset-top,0px))}
+  .ptabs{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(10,18,48,.97);backdrop-filter:blur(14px);
+    border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+  .ptabs a,.ptabs button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0 10px;color:var(--muted);font-size:11px;
+    font-weight:600;background:none;border:0;box-shadow:none;border-radius:0;letter-spacing:0}
+  .ptabs svg.i{width:22px;height:22px}
+  .ptabs .on{color:var(--accent)}.ptabs .on svg{filter:drop-shadow(0 0 6px rgba(61,216,239,.5))}
+  .ptabs button:hover{filter:none;box-shadow:none}
+  main input,main select,main textarea{font-size:16px}  /* stops iOS zooming into fields */
+  button,a.btn{min-height:40px}
+}
+@media (max-width:700px){
+  table.cardy,table.cardy tbody{display:block;border:0;background:none;overflow:visible}
+  table.cardy thead{display:none}
+  table.cardy tr{display:block;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px}
+  table.cardy td{display:flex;gap:12px;justify-content:space-between;align-items:baseline;border:0;padding:5px 0;text-align:right;white-space:normal}
+  table.cardy td:first-child{white-space:normal}
+  table.cardy td:before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:600;text-align:left;flex:none;max-width:40%}
+  table.cardy td[data-label=""]:before{display:none}
+  table.cardy td[data-label=""]{justify-content:flex-start;text-align:left}
+}
+tr.pg-more{display:none !important}
+.pg-btn{display:block;width:100%;margin:-12px 0 24px}
+</style>
+<nav class="ptabs" aria-label="Main pages">
+{% for href, label, ic in [("/", "Home", "dash"), ("/orders", "Orders", "orders"), ("/expenses", "Expenses", "expenses"), ("/stock", "Stock", "stock")] %}
+<a href="{{href}}" class="{{'on' if (path == href if href == '/' else path.startswith(href))}}">{{ icon(ic) }}{{label}}</a>{% endfor %}
+<button type="button" onclick="document.documentElement.classList.toggle('open')">{{ icon("menu") }}More</button>
+</nav>
+<script>
+(function () {
+  // Every form and script request from a phone carries this page's token (see mobile.token_ok).
+  var token = document.querySelector('meta[name=csrf]').content;
+  function stamp(form) {
+    if ((form.method || '').toLowerCase() !== 'post' || form.querySelector('input[name=csrf]')) return;
+    var i = document.createElement('input');
+    i.type = 'hidden'; i.name = 'csrf'; i.value = token;
+    form.appendChild(i);
+  }
+  document.querySelectorAll('form').forEach(stamp);
+  new MutationObserver(function () { document.querySelectorAll('form').forEach(stamp); })
+    .observe(document.body, {childList: true, subtree: true});
+  var submit = HTMLFormElement.prototype.submit;
+  HTMLFormElement.prototype.submit = function () { stamp(this); return submit.call(this); };
+  var origFetch = window.fetch;
+  window.fetch = function (url, opts) {
+    opts = opts || {};
+    if ((opts.method || 'GET').toUpperCase() !== 'GET') {
+      var h = new Headers(opts.headers || {}); h.set('X-CSRF-Token', token); opts.headers = h;
+    }
+    return origFetch.call(this, url, opts);
+  };
+  var send = XMLHttpRequest.prototype.send, open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (m) { this._m = m; return open.apply(this, arguments); };
+  XMLHttpRequest.prototype.send = function () {
+    if ((this._m || 'GET').toUpperCase() !== 'GET') this.setRequestHeader('X-CSRF-Token', token);
+    return send.apply(this, arguments);
+  };
+
+  // Tables: label each cell with its column so rows read as cards on a narrow screen,
+  // and show long tables 40 rows at a time.
+  var PAGE = 40;
+  document.querySelectorAll('main table').forEach(function (t) {
+    var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) { return th.textContent.trim(); });
+    if (heads.length >= 3 && !t.classList.contains('nocard')) {
+      t.querySelectorAll('tbody tr').forEach(function (tr) {
+        Array.prototype.forEach.call(tr.children, function (td, i) { td.setAttribute('data-label', td.colSpan > 1 ? '' : (heads[i] || '')); });
+      });
+      t.classList.add('cardy');
+    }
+    var rows = t.querySelectorAll('tbody tr');
+    if (rows.length <= PAGE + 10) return;
+    var shown = PAGE, btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'ghost pg-btn';
+    function draw() {
+      rows.forEach(function (r, i) { r.classList.toggle('pg-more', i >= shown); });
+      btn.hidden = shown >= rows.length;
+      btn.textContent = 'Show more (' + (rows.length - shown) + ' left)';
+    }
+    btn.onclick = function () { shown += PAGE; draw(); };
+    t.after(btn); draw();
+    // Searching or filtering looks through every row, not just the ones shown.
+    document.querySelectorAll('main input[type=search], main #q, main select#f, main [data-filter]').forEach(function (el) {
+      el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', function () { shown = rows.length; draw(); });
+    });
+  });
+})();
+</script>

@@ -1,5 +1,9 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BotTrack</title><link rel="icon" href="{{url_for('static', filename='icon.png')}}">
+{% if on_phone %}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#0a1230">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BotTrack"><link rel="manifest" href="{{url_for('mobile.manifest')}}"><link rel="apple-touch-icon" href="{{url_for('static', filename='icon.png')}}">
+<meta name="csrf" content="{{csrf_token()}}">{% endif %}
 <script>try { if (localStorage.getItem('bt-mini') === '1') document.documentElement.classList.add('mini'); } catch (e) {}</script>
 <style>
 @font-face{font-family:Inter;font-weight:400;font-display:swap;src:url("{{url_for('static', filename='fonts/inter-400.woff2')}}") format("woff2")}
@@ -205,10 +209,11 @@ body .fl{color:#7884b3}
   ("Tracking", [("/orders", "Orders", "orders"), ("/profile-orders", "Profile orders", "profiles"), ("/inbox", "Inbox", "inbox"), ("/expenses", "Expenses", "expenses"), ("/bank", "Bank", "bank"), ("/training", "Training", "training")]),
   ("Bot tools", [("/checkouts", "Checkouts", "checkouts"), ("/profiles", "Profiles", "profiles"), ("/cards", "Cards", "cards"), ("/emails", "Emails", "emails"), ("/stock", "Stock", "stock"), ("/keywords", "Keywords", "keywords"), ("/products", "Products", "products")]),
 ] %}
-{% set footer = [("/manual", "Manual", "manual"), ("/logs", "Logs", "logs"), ("/setup", "Setup", "setup")] %}
+{% set footer = [("/manual", "Manual", "manual"), ("/m/app", "App & updates", "setup")] if on_phone else [("/manual", "Manual", "manual"), ("/logs", "Logs", "logs"), ("/setup", "Setup", "setup")] %}
+{% set update_url = "/m/update" if on_phone else "/update/install" %}
 {% macro icon(name) %}<svg class="i" viewBox="0 0 24 24" aria-hidden="true">{{ icons[name]|safe }}</svg>{% endmacro %}
 {% macro item(href, label, ic) %}<a class="it{{' on' if (path == href if href == '/' else path.startswith(href))}}" href="{{href}}" title="{{label}}">{{ icon(ic) }}<span class="lbl">{{label}}</span>
-{%- if href == "/setup" and update and update.available %}<span class="dot" title="Update ready"></span>{% endif %}</a>{% endmacro %}
+{%- if href in ("/setup", "/m/app") and update and update.available %}<span class="dot" title="Update ready"></span>{% endif %}</a>{% endmacro %}
 {% set ns = namespace(sec="", page="", icon="") %}
 {% for sec, links in sections + [("BotTrack", footer)] %}{% for href, label, ic in links %}
 {% if (path == href if href == '/' else path.startswith(href)) %}{% set ns.sec = sec %}{% set ns.page = label %}{% set ns.icon = ic %}{% endif %}{% endfor %}{% endfor %}
@@ -230,12 +235,12 @@ body .fl{color:#7884b3}
   <button class="menu" type="button" onclick="document.documentElement.classList.toggle('open')" aria-label="Menu">{{ icon("menu") }}</button>
   <div class="crumb">{% if ns.page %}{{ icon(ns.icon) }}<span>{{ns.sec}}</span><span>/</span><b>{{ns.page}}</b>{% else %}<b>BotTrack</b>{% endif %}</div>
   <span class="grow"></span>
-  {% if update and update.available %}<a class="chip upd" href="/setup#updates"><i></i>Update ready</a>{% endif %}
+  {% if update and update.available %}<a class="chip upd" href="{{'/m/app' if on_phone else '/setup#updates'}}"><i></i>Update ready</a>{% endif %}
   {% if ai and ai.ready and not ai.error %}<span class="chip ai"><i></i>AI ready</span>{% endif %}
 </header>
 <main>
 {% if update and update.available and not path.startswith('/setup') %}<div class="banner"><span>A new version of BotTrack is ready{% if update.message %}: <span class="muted">{{update.message}}</span>{% endif %}</span><span class="grow" style="flex:1"></span>
-<form method="post" action="/update/install" data-loader="Installing the update"><button>Update now</button></form></div>{% endif %}
+<form method="post" action="{{update_url}}" data-loader="Installing the update"><button>Update now</button></form></div>{% endif %}
 {% if ai and ai.error %}<div class="banner" style="border-color:rgba(255,107,122,.45);background:rgba(255,107,122,.08)">{{ai.error}}</div>
 {% elif ai and not ai.ready %}<div class="banner" id="aibar"><span><span id="aimsg">{{ai.message}}</span> · <b id="aipct">{{ai.percent ~ "%" if ai.percent is not none else ""}}</b>
 <span class="muted">Syncing starts when it's ready. The first time, this downloads about 9 GB.</span></span>
@@ -269,4 +274,5 @@ function mini() {
 }
 </script>
 {% if path in ("/orders", "/expenses", "/profiles") %}{% include "live.html" %}{% endif %}
+{% if on_phone %}{% include "phone.html" %}{% endif %}
 </body></html>
