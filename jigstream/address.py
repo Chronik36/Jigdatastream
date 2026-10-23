@@ -84,3 +84,31 @@ def suggest(a1, a2, city, state, zip_):
         "state": (state or "").strip() if state_code(state) else (state or "").strip().upper()[:2],
         "zip": zip5(zip_) or (zip_ or "").strip(),
     }
+
+
+JIG_UNIT = re.compile(r"\b(APT|STE|UNIT|BLDG|FL|RM|LOT|SPC|SPACE|TRLR|DEPT|PMB|BOX)\b.*$")
+
+
+def base_line1(text):
+    """The street address under a jigged one: house number and street, without the unit (Apt, Suite, Unit, #4B),
+    letters or codes put in front of the number, or anything after the street type. Takes a line 1 or a whole
+    one-line address ("Ana Lopez, XJ 9 Oak Avenue Apt 4, Dallas, TX 75201" -> "9 OAK AVE"). "" if there's none."""
+    for part in re.split(r"[,\n]", text or ""):
+        line = norm_line(part)
+        line = JIG_UNIT.sub("", re.sub(r"#\s*\S*", " ", line))
+        words = line.split()
+        start = next((i for i, w in enumerate(words) if re.fullmatch(r"\d+[A-Z]?", w)
+                      and i + 1 < len(words) and re.search(r"[A-Z]{2}|^[NSEW]$", words[i + 1])), None)
+        if start is None:
+            continue
+        words = words[start:]
+        words[0] = re.match(r"\d+", words[0]).group(0)
+        types = set(SUFFIX.values())
+        # The last street type ends it: "4500 W PARKWAY BLVD" is a boulevard named Parkway.
+        end = max((i for i, w in enumerate(words) if i and w in types), default=None)
+        if end is None:
+            return " ".join(words[:4])
+        if end + 1 < len(words) and words[end + 1] in DIRECTION.values():
+            end += 1  # "100 MAIN ST NW"
+        return " ".join(words[:end + 1])
+    return ""
