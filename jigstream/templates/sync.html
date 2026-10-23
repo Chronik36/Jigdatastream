@@ -1,3 +1,4 @@
 <div style="display:flex;align-items:center;flex-wrap:wrap;gap:0;margin-bottom:8px"><form method="post" action="/sync/gmail"><button {{"disabled" if sync.running}}>{{"Syncing..." if sync.running else "Sync now"}}</button></form>
+{% if sync.running %}<form class="ghost" method="post" action="/sync/stop"><button {{"disabled" if sync.stop.is_set()}}>{{"Stopping..." if sync.stop.is_set() else "Stop sync"}}</button></form>{% endif %}
 <form class="ghost" method="post" action="/sync/gmail" onsubmit="return confirm('Search every inbox\'s whole mailbox? This can take hours.')"><input type="hidden" name="full" value="1"><button {{"disabled" if sync.running}}>Backfill whole inboxes</button></form>
 <span class="muted" style="margin-bottom:12px">{{sync.last or ""}}</span></div>

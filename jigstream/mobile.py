@@ -420,13 +420,14 @@ def update_install():
     if not updater.can_self_update():
         flash("This copy of BotTrack runs from a developer checkout, so it doesn't update itself.")
         return redirect(url_for("mobile.app_page"))
-    if getattr(current_app, "sync_state", {}).get("running"):
-        flash("BotTrack is syncing your inboxes. Try again when it finishes.")
-        return redirect(url_for("mobile.app_page"))
+    if hasattr(current_app, "pause_sync_for_update"):
+        current_app.pause_sync_for_update()  # a running sync carries on after the restart
     try:
         updater.install()
     except Exception as e:
         logger.exception("update from a phone failed")
+        if hasattr(current_app, "start_sync"):
+            current_app.start_sync()
         flash(f"The update failed and nothing was changed: {e}")
         return redirect(url_for("mobile.app_page"))
     logger.info("update started from a phone")

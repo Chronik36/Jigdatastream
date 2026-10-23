@@ -104,6 +104,51 @@ def test_update_shows_the_loading_screen(tmp_path, monkeypatch):
         assert c.get(f"/static/loader/{name}").status_code == 200
 
 
+def test_stop_sync_and_update_pauses_a_running_sync(tmp_path, monkeypatch):
+    import threading
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GMAIL_ACCOUNTS", "a@gmail.com:x")
+    monkeypatch.setattr(appmod.updater, "can_self_update", lambda: True)
+    monkeypatch.setattr(appmod.updater, "restart_soon", lambda: None)
+    reading, release = threading.Event(), threading.Event()
+
+    def slow_sync(config, store, log=None, progress=None, stop=None):
+        reading.set()
+        release.wait(5)  # the email being read when Stop is pressed
+        return {"order": 0, "botting_expense": 0, "other": 0, "skipped": 0, "error": 0,
+                "failed_inboxes": [], "stopped": stop()}
+
+    monkeypatch.setattr(appmod, "run_sync", slow_sync)
+    app = appmod.create_app(str(tmp_path / "s.db"))
+    c = app.test_client()
+    sync = app.config["SYNC_STATE"]
+
+    assert app.start_sync() and reading.wait(5)
+    assert "Stop sync" in c.get("/orders").get_data(as_text=True)
+    c.post("/sync/stop")
+    assert sync["stop"].is_set() and "Stopping..." in c.get("/orders").get_data(as_text=True)
+    release.set()
+    for _ in range(50):
+        if not sync["running"]:
+            break
+        threading.Event().wait(0.1)
+    assert not sync["running"] and sync["last"].startswith("Sync stopped.")
+    assert "Stop sync" not in c.get("/orders").get_data(as_text=True)
+
+    # Update now while a backfill runs: the sync stops, the update installs, and the backfill resumes after.
+    installed = []
+    monkeypatch.setattr(appmod.updater, "install", lambda: installed.append(sync["running"]))
+    reading.clear(), release.clear()
+    assert app.start_sync(full=True) and reading.wait(5)
+    threading.Timer(0.3, release.set).start()
+    assert "Updated" in c.post("/update/install").get_data(as_text=True)
+    assert installed == [False]  # it waited for the sync to stop
+    assert (tmp_path / "resume-sync").read_text() == "full"
+    reading.clear()
+    assert app.start_sync() and sync["full"] and not (tmp_path / "resume-sync").exists()
+    release.set()
+
+
 def test_window_splash_is_self_contained():
     from jigstream.window import splash
 
