@@ -352,7 +352,9 @@ def capture(app):
     with sync_playwright() as p:
         browser = p.chromium.launch(executable_path=os.environ.get("CHROMIUM_PATH") or None)
         desktop = browser.new_page(viewport=DESKTOP)
-        phone = browser.new_page(viewport=PHONE, device_scale_factor=2, is_mobile=True, has_touch=True)
+        # Phones reach BotTrack through the phone link, which passes the phone's own address along.
+        phone = browser.new_page(viewport=PHONE, device_scale_factor=2, is_mobile=True, has_touch=True,
+                                 extra_http_headers={"Cf-Connecting-Ip": "203.0.113.7"})
         for page in (desktop, phone):
             page.on("console", lambda m: print("  ", m.text) if "missing" in m.text else None)
             page.on("dialog", lambda d: d.dismiss())
@@ -418,11 +420,9 @@ def has_bank():
     return has_module("bank")
 
 
-def phone_login(page):
-    page.goto(BASE + "/m/login")
-    page.fill("input[name=email]", PHONE_EMAIL)
-    page.fill("input[name=password]", PHONE_PASSWORD)
-    page.click("button")
+def phone_pair(page):
+    # What scanning the QR code on Setup opens.
+    page.goto(BASE + "/m/pair?k=" + PHONE_PAIR_KEY)
     page.wait_for_load_state("networkidle")
 
 
@@ -523,22 +523,25 @@ shot("products", "/products", [("textarea[name=query]", 1), ("input[name=pick]:n
                                ("#tracked table.pr-table tbody tr td:nth-child(2)", 4), ("form[action='/products/update-all']", 5),
                                ("form[action='/products/sources/test']", 6)],
      viewport={"width": 1360, "height": 1500}, full=True, needs=lambda: has_module("products"))
-shot("setup-phone", "/setup", [("input[name=on]", 1), ("input[name=email][type=email]", 2),
-                               ("input[name=allow_lan]", 3)], scroll="h3@Phone access", needs=has_phone)
+shot("setup-phone", "/setup", [("#phone ~ form input[name=on]", 1), ("#phoneqr", 2), ("#phonelink ol", 3),
+                               ("button@Forget all phones", 4), ("#phone ~ form summary", 5)],
+     scroll="h3@Phone access", needs=has_phone)
 shot("phone-login", "/m/login", phone=True, needs=has_phone)
-shot("phone-orders", "/m/orders", phone=True, needs=has_phone, page_setup=phone_login)
-shot("phone-expenses", "/m/expenses", phone=True, needs=has_phone)
-shot("phone-profiles", "/m/profiles", phone=True, needs=has_phone)
+shot("phone-orders", "/orders", phone=True, needs=has_phone, page_setup=phone_pair)
+shot("phone-expenses", "/expenses", phone=True, needs=has_phone)
+shot("phone-profiles", "/profiles", phone=True, needs=has_phone)
 
 
-PHONE_EMAIL, PHONE_PASSWORD = "demo@example.com", "demo-password-123"
+PHONE_PAIR_KEY = "demo-pairing-key"
 
 
 def main():
     if has_phone():
-        from werkzeug.security import generate_password_hash
-        os.environ.update({"PHONE_ACCESS": "1", "PHONE_EMAIL": PHONE_EMAIL,
-                           "PHONE_PASSWORD_HASH": generate_password_hash(PHONE_PASSWORD)})
+        # Paired by QR code, with a made-up phone link (no tunnel is started).
+        from jigstream import tunnel
+        os.environ.update({"PHONE_ACCESS": "1", "PHONE_PAIR_KEY": PHONE_PAIR_KEY, "PHONE_PAIR_TOPIC": "bottrack-demo"})
+        tunnel.state.update(status="on", url="https://sample-phone-link.trycloudflare.com", error="")
+        tunnel.announce = lambda url: None
     patch()
     path = str(WORK / "demo.db")
     seed(path)
