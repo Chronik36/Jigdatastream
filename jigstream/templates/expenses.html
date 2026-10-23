@@ -21,6 +21,9 @@
 .card .mtext{display:block;margin-top:6px;text-transform:none;letter-spacing:0;font-weight:500;font-size:12px}
 </style>
 {% include "_expense_tabs.html" %}
+{% if missing or amounts.running or amounts.last %}<form method="post" action="/expenses/fill-amounts" class="flash" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+<span style="flex:1">{% if amounts.running %}Reading expense emails for their totals...{% elif amounts.last %}{{amounts.last}}{% else %}{{missing}} receipt(s) have no amount yet.{% endif %}</span>
+{% if not amounts.running and missing %}<button type="submit">Find missing amounts</button>{% endif %}</form>{% endif %}
 {% set look = (counts.charge_only or 0) + (counts.receipt_only or 0) + (counts.close or 0) %}
 <div class="stats">
 <div class="card{{' bad' if month.state == 'over'}}">Spent in {{o.month_name}} <b>{{o.this_month|money}}</b>
