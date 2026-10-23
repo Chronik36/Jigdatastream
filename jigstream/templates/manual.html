@@ -593,7 +593,12 @@ each one agreed with you and how many seconds each email took. You need at least
 
 {% if "mobile.login" in pages %}<h4 id="setup-phone">Phone access</h4>
 <p>Lets your iPhone or Android phone see and edit orders, expenses and profiles. See <a href="#phone">Using BotTrack on your phone</a>.</p>
-{{ fig("setup-phone", "Setup → Phone access, with the QR code your phone scans.") }}
+{{ fig("setup-phone", "Setup → Phone access, with the QR code your phone scans.", [
+  "Let my phones connect: tick it and press Save to turn phone access on.",
+  "The QR code. Scan it with the BotTrack Android app, or with the iPhone Camera.",
+  "What to do on each kind of phone.",
+  "Forget all phones: signs every phone out and makes a new code.",
+  "More options: an optional email and password, and Wi-Fi connections."]) }}
 <p>Tick <b>Let my phones connect</b> and press Save; the QR code appears a few seconds later. <b>Forget all phones</b> signs every phone out
 and makes a new code. Under <b>More options</b> you can add an email and password (10 or more characters) for signing in without scanning,
 and let phones on the same Wi-Fi connect directly.</p>{% endif %}
