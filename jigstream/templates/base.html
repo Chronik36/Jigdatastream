@@ -180,7 +180,6 @@ body .fl{color:#7884b3}
   .shell{margin-left:0}.menu{display:inline-flex}.top{padding:0 16px}main{padding:20px 16px 40px}
   .top .chip.ai{display:none}
   body .playout{grid-template-columns:1fr}body .gside{position:static}
-  table{display:block;overflow-x:auto}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stats .card{padding:14px 16px}.card b{font-size:22px}
   input,select{max-width:100%}
 }
@@ -283,6 +282,7 @@ function mini() {
 }
 </script>
 {% with watch_data=path in ("/orders", "/expenses", "/profiles") %}{% if watch_data or on_phone %}{% include "live.html" %}{% endif %}{% endwith %}
+{% include "_responsive.html" %}
 {% if whats_new %}{% include "_whats_new.html" %}{% endif %}
 {% if on_phone %}{% include "phone.html" %}{% endif %}
 </body></html>
