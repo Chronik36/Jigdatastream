@@ -7,6 +7,7 @@ that is reported as-is; nothing here tries to get around it.
 import json
 import logging
 import re
+import unicodedata
 import urllib.error
 import urllib.request
 from collections import Counter
@@ -225,8 +226,13 @@ def _ld_products(blobs):
     return found, others
 
 
+def fold(text):
+    """"Pokémon" -> "pokemon": accents off, lowercase."""
+    return "".join(c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c))
+
+
 def words(text):
-    return [w for w in (t.strip(".'-") for t in WORD.findall(text.lower().replace("’", "'"))) if w]
+    return [w for w in (t.strip(".'-") for t in WORD.findall(fold(text).replace("’", "'"))) if w]
 
 
 def _meaningful(w):
@@ -282,13 +288,25 @@ VARIANT_TERMS = {
     "renewed": "not new", "replica": "not genuine", "custom": "customised, not retail", "digital": "digital edition",
     "bundle": "bundle, not the item alone", "gift": "gift card or gift set", "sample": "sample",
 }
+# Trading cards and toys: the same set or line comes as many different boxes. Kept apart from VARIANT_TERMS
+# (Products uses that to reject resale listings, where "pack" or "set" is normal).
+PRODUCT_TYPES = {
+    "etb": "a different box (Elite Trainer Box)", "elite": "a different box (Elite Trainer Box)",
+    "booster": "a different box or pack", "pack": "a different box or pack", "packs": "a different box or pack",
+    "display": "a whole display/case, not one box", "tin": "a tin, not this box", "tins": "a tin, not this box",
+    "blister": "a blister pack", "collection": "a collection box", "premium": "a premium version",
+    "center": "the Pokémon Center exclusive version", "exclusive": "an exclusive version", "sleeved": "a single sleeved pack",
+    "binder": "an accessory", "sleeves": "an accessory", "plush": "a plush toy", "figure": "a figure",
+    "mini": "a smaller version", "jumbo": "a bigger version", "mega": "a bigger version", "set": "a set of several",
+}
+VERSION_WORDS = {**VARIANT_TERMS, **PRODUCT_TYPES}
 # Always worth excluding unless the product itself is one of these.
 CATCH_ALLS = ["gs", "ps", "td", "used", "replica"]
 
 
 def strip_site(name):
     """"Air Jordan 1 Low | Nike.com" -> "Air Jordan 1 Low"."""
-    return re.split(r"\s+[|–—]\s+|\s+-\s+(?=[^-]*$)", unescape(name or "").strip())[0].strip()
+    return re.split(r"\s+[|–—]\s+|\s+[-:]\s+(?=[^-:]*$)", unescape(name or "").strip())[0].strip()
 
 
 def name_variants(p, ld):
@@ -306,7 +324,7 @@ def site_words(p, url):
     """The store's own name ("ToyTime", "gotoytime"), which shows up next to every item it sells."""
     out = set(words(p.meta.get("og:site_name", "")))
     for title in (p.title, p.meta.get("og:title", "")):
-        parts = re.split(r"\s+[|–—]\s+|\s+-\s+(?=[^-]*$)", unescape(title or "").strip())
+        parts = re.split(r"\s+[|–—]\s+|\s+[-:]\s+(?=[^-:]*$)", unescape(title or "").strip())
         if len(parts) > 1:
             out |= set(words(parts[-1]))
     host = urlparse(url).netloc.lower().split(":")[0]
@@ -343,32 +361,64 @@ def spaced_form(word, text):
     return ""
 
 
-def positive_keywords(name, similar, brand="", codes=(), top=8, page_text="", skip=()):
+# Short forms stores use for a phrase: a negative is never the target's own phrase shortened.
+ABBREVIATIONS = {"tcg": {"trading", "card", "game"}, "etb": {"elite", "trainer", "box"}, "wmns": {"womens"},
+                 "sv": {"scarlet", "violet"}, "og": {"original"}, "ltd": {"limited"}}
+
+
+def name_segments(name):
+    """"Pokémon TCG: Scarlet & Violet—Prismatic Evolutions ETB" -> the series parts, then the item itself."""
+    parts = [x for x in re.split(r"\s*[:—–|]\s*|\s+-\s+", name) if words(x)]
+    return parts or [name]
+
+
+def positive_keywords(name, similar, brand="", codes=(), top=6, page_text="", skip=()):
     """[(word, reason, in_line)]: words a monitor should require. in_line=False ones are shown but not put
-    in the +/- line (a style code only matches where the site lists it)."""
+    in the +/- line (a style code only matches where the site lists it).
+
+    Every + word has to be in a listing's title, and stores word the same item differently, so fewer,
+    sharper words beat the whole name: the item's own words come first, the series/brand prefix
+    ("Pokémon Trading Card Game: Scarlet & Violet") only fills spare room."""
     brand_words = set(words(brand))
-    out = []
-    for w in dict.fromkeys(words(name)):
-        if w in GENERIC or w in skip or not (_meaningful(w) or w.isdigit() or w in VARIANT_TERMS):
+    segments = name_segments(name)
+    specific = set(words(segments[-1]))
+    raw = name.lower()
+    picked = {}
+    for i, w in enumerate(dict.fromkeys(words(name))):
+        if w in GENERIC or w in skip or not (_meaningful(w) or w.isdigit() or w in VERSION_WORDS):
             continue
         shared = sum(w in toks for _, toks in similar)
         spaced = spaced_form(w, page_text) if len(w) >= 5 and not w.isdigit() else ""
         if spaced:
-            reason = f"product line; the site also writes it “{spaced}”, so those words are never negatives"
-        elif w in brand_words:
-            reason = "brand"
-        elif w.isdigit():
-            reason = "model number"
-        elif w in VARIANT_TERMS:
-            reason = "says which version this is, so other versions don't match"
+            # Monitors match text inside the title, so pick the part both spellings contain:
+            # "doh" is in "NeeDoh" and in "Nee Doh"; "needoh" would miss every "Nee Doh" item.
+            part = max(reversed([t for t in words(spaced) if t not in STOPWORDS]), key=len, default="")
+            if len(part) >= 3:
+                picked.setdefault(part, (0, i, f"product line written both “{w}” and “{spaced}”; "
+                                               f"+{part} matches both spellings", True))
+            continue
+        if w.isdigit():
+            rank, reason = 0, "model number"
+        elif w in VERSION_WORDS:
+            rank, reason = 0, "says which version this is, so other versions don't match"
         elif similar and not shared:
-            reason = "only this item has it, the best word for telling it apart"
+            rank, reason = 0, "only this item has it, the best word for telling it apart"
+        elif w in brand_words:
+            rank, reason = 1, "brand"
         elif similar and shared == len(similar):
-            reason = "shared with every similar item, so it needs the other words too"
+            rank, reason = 1, "shared with every similar item, so it needs the other words too"
         else:
-            reason = "in the product name"
-        out.append((w, reason, True))
-    out = out[:top]
+            rank, reason = 1, "in the product name"
+        if w not in specific and not w.isdigit():
+            rank, reason = 2, reason + " (series name, so it's only used when the item's own name is too short)"
+        in_line = w in raw or not w.isascii()
+        if not in_line:  # the site writes it with an accent ("Pokémon")
+            reason = "the site writes it with an accent, which many monitors won't match to the plain spelling"
+        picked.setdefault(w, (rank, i, reason, in_line))
+    best = sorted(picked.items(), key=lambda kv: (not kv[1][3], kv[1][0], kv[1][1]))[:top]
+    if sum(rank < 2 for _, (rank, *_) in best) >= 3:  # the item's own words are enough on their own
+        best = [kv for kv in best if kv[1][0] < 2]
+    out = [(w, reason, in_line) for w, (_, _, reason, in_line) in sorted(best, key=lambda kv: kv[1][1])]
     for code in list(codes)[:1]:
         out.append((code.lower(), "style code / SKU, an exact match where the site shows it", False))
     return out
@@ -394,7 +444,9 @@ def negative_keywords(name, related, top=20, similar=None, also=(), site=(), hos
     for text, _ in similar if similar is not None else similar_items(name, related):
         toks, counted = words(text), set()
         for i, w in enumerate(toks):
-            if w in target or is_store(w) or not (_meaningful(w) or w in VARIANT_TERMS):
+            if w in target or is_store(w) or not (_meaningful(w) or w in VERSION_WORDS):
+                continue
+            if ABBREVIATIONS.get(w, {None}) <= target:  # "TCG" when the item says "Trading Card Game"
                 continue
             # Half of a target word written with a space ("Nee Doh" when the item is "NeeDoh").
             if (i + 1 < len(toks) and w + toks[i + 1] in joined_target) or (i and toks[i - 1] + w in joined_target):
@@ -404,12 +456,12 @@ def negative_keywords(name, related, top=20, similar=None, also=(), site=(), hos
                 seen[w] += 1
                 similar_name.setdefault(w, text)
     out = []
-    for w, n in sorted(seen.items(), key=lambda kv: (kv[0] not in VARIANT_TERMS, -kv[1], kv[0])):
-        reason = VARIANT_TERMS.get(w, "on a similar item")
+    for w, n in sorted(seen.items(), key=lambda kv: (kv[0] not in VERSION_WORDS, -kv[1], kv[0])):
+        reason = VERSION_WORDS.get(w, "on a similar item")
         out.append((w, f"{reason}: “{similar_name[w][:70]}”" + (f" and {n - 1} more" if n > 1 else "")))
     for w in CATCH_ALLS:
         if w not in target and all(w != o for o, _ in out):
-            out.append((w, VARIANT_TERMS[w] + " (common wrong match)"))
+            out.append((w, VERSION_WORDS[w] + " (common wrong match)"))
     return out[:top]
 
 
@@ -418,6 +470,52 @@ def monitor_line(positives, negatives):
     pos = [w for w, _, in_line in positives if in_line]
     negs = list(dict.fromkeys(w.lower() for w, _ in negatives))
     return ",".join([f"+{w}" for w in pos] + [f"-{w}" for w in negs if w not in pos])
+
+
+def line_verdict(pos, neg, text):
+    """How a monitor treats an item name: ("match", ""), ("blocked", "-word") or ("missed", "+word").
+    Monitors look for each keyword anywhere in the lowercased name, so "+doh" matches "NeeDoh"."""
+    low = text.lower()
+    for w in pos:
+        if w not in low:
+            return "missed", "+" + w
+    for w in neg:
+        if w in low:
+            return "blocked", "-" + w
+    return "match", ""
+
+
+def tidy_negatives(negatives, positives, targets):
+    """Drop negatives that would also block the product itself (a monitor sees "-ice" inside "Nice")."""
+    pos = {w for w, *_ in positives}
+    names = [t.lower() for t in targets if t]
+    out = [(w, r) for w, r in negatives if w not in pos and not any(w in n for n in names)]
+    # "-ice" already blocks everything "-nice" would.
+    return [(w, r) for w, r in out if not any(o != w and o in w for o, _ in out)]
+
+
+def drop_unneeded(negatives, positives, similar):
+    """Keep a negative only if it blocks something the + words would otherwise let through. ("-surging"
+    adds nothing when "+prismatic" already rules out "Surging Sparks".) Version words and catch-alls stay:
+    they guard against items this page doesn't show."""
+    pos = [w for w, _, in_line in positives if in_line]
+    caught = [t.lower() for t, _ in similar if line_verdict(pos, [], t)[0] == "match"]
+    return [(w, r) for w, r in negatives if w in VERSION_WORDS or any(w in t for t in caught)]
+
+
+def cover_lookalikes(positives, negatives, similar, targets, top=20):
+    """Every similar item the line would still match gets a negative of its own, so none slips through."""
+    pos = [w for w, _, in_line in positives if in_line]
+    negatives = negatives[:top]
+    names = " ".join(targets).lower()
+    for text, _ in similar:
+        if line_verdict(pos, [w for w, _ in negatives], text)[0] != "match":
+            continue
+        extra = [w for w in words(text) if (_meaningful(w) or w in VERSION_WORDS) and w not in names]
+        if extra:
+            best = max(extra, key=lambda w: (w in VERSION_WORDS, len(w)))
+            negatives.insert(0, (best, f"keeps out “{text[:70]}”, which your + words would also match"))
+    return negatives
 
 
 def analyze(html, url=""):
@@ -439,8 +537,11 @@ def analyze(html, url=""):
     site, host_labels = site_words(p, url)
     page_text = " ".join([title, body, *related, *name_variants(p, ld)])
     positives = positive_keywords(name, similar, ld.get("brand", ""), codes, page_text=page_text, skip=site)
-    negatives = negative_keywords(name, related, similar=similar, also=name_variants(p, ld)[1:], site=site,
+    targets = name_variants(p, ld)
+    negatives = negative_keywords(name, related, top=40, similar=similar, also=targets[1:], site=site,
                                   host_labels=host_labels)
+    negatives = cover_lookalikes(positives, drop_unneeded(tidy_negatives(negatives, positives, targets), positives, similar),
+                                 similar, targets)
     return {
         "url": url, "host": urlparse(url).netloc, "title": title,
         "description": p.meta.get("description") or p.meta.get("og:description", ""),
@@ -450,8 +551,11 @@ def analyze(html, url=""):
         "thin": total < 60, "name": name, "positives": positives, "negatives": negatives,
         # Words that are part of the product's own name, however the page spells it: never negatives.
         "protected": sorted(set().union(*(words(n) for n in name_variants(p, ld))) | {
-            t for w, *_ in positives for t in words(spaced_form(w, page_text))}),
+            t for w in words(name) if len(w) >= 5 for t in words(spaced_form(w, page_text))}),
         "related": [text for text, _ in similar][:30],
+        # What the line is checked against on the page: the product itself, then its look-alikes.
+        "check": [{"text": t, "target": True} for t in dict.fromkeys(targets)][:3]
+                 + [{"text": text, "target": False} for text, _ in similar][:30],
     }
 
 

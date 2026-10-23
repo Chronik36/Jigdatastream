@@ -181,12 +181,12 @@ def test_shop_page_keeps_to_the_product():
     for chrome in ("iconstrade", "books", "bruder", "calico", "expand", "express", "refund", "toys", "sorry", "stock"):
         assert chrome not in top
     pos = {w: reason for w, reason, _ in r["positives"]}
-    assert "needoh" in pos and "nee doh" in pos["needoh"].lower()
+    assert "doh" in pos and "nee doh" in pos["doh"].lower() and "needoh" not in pos
     negs = [w for w, _ in r["negatives"]]
     for bad in ("nee", "doh", "toytime", "gotoytime", "sorry", "stock", "item", "hat", "pin", "pants", "backpack",
                 "sticker", "default", "title"):
         assert bad not in negs, bad
-    for good in ("mini", "ice", "cube", "baby"):
+    for good in ("mini",):  # "Nice Ice Baby" etc. already miss +dig,+pig, so they need no negative
         assert good in negs, good
     assert r["codes"] == ["0019649520008"]  # not "Green", "Kits" or "Glow"
     assert "Nice Ice Baby NeeDoh" in r["related"] and not any("Sorry" in x for x in r["related"])
@@ -204,7 +204,7 @@ def test_corrections_are_remembered_and_taught(tmp_path, monkeypatch):
     monkeypatch.setattr(keywords, "fetch", lambda url: (url, TOY_PAGE))
     url = "https://gotoytime.com/products/nee-doh-dig-it-pig"
     html = client.post("/keywords", data={"url": url}).get_data(as_text=True)
-    assert 'data-word="mini"' in html and "+dig,+pig,+needoh" in html
+    assert 'data-word="mini"' in html and "+dig,+pig,+doh" in html
 
     page = keywords.page_summary(keywords.analyze(TOY_PAGE, url))
     base = {"url": url, "host": "gotoytime.com", "brand": "SCHYLLING", "product": "Dig It Pig NeeDoh", "page": page,
@@ -278,3 +278,69 @@ def test_saving_waits_for_a_busy_database(tmp_path, monkeypatch):
     r = client.post("/keywords/feedback", json={"url": "u", "host": "shop.example", "kind": "+", "word": "nee",
                                                 "action": "remove"})
     assert r.get_json()["ok"]
+
+
+# Modeled on a Target trading-card page: one set, sold as many different boxes.
+TCG_PAGE = """<!doctype html><html><head>
+<title>Pokémon Trading Card Game: Scarlet &amp; Violet—Prismatic Evolutions Elite Trainer Box : Target</title>
+<meta property="og:site_name" content="Target">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Product",
+ "name": "Pokémon Trading Card Game: Scarlet &amp; Violet—Prismatic Evolutions Elite Trainer Box",
+ "brand": {"@type": "Brand", "name": "Pokémon"}, "sku": "94300072"}</script></head><body>
+<header><a href="/c/toys">Toys</a><a href="/c/video-games">Video Games</a></header>
+<main><h1>Pokémon Trading Card Game: Scarlet &amp; Violet—Prismatic Evolutions Elite Trainer Box</h1>
+<p>Item Number (DPCI): 087-35-0498. Includes 9 booster packs and a full-art promo card. TCIN: 94300072</p>
+<h2>Related items</h2>
+<a href="/p/1">Pokémon TCG: Scarlet &amp; Violet—Prismatic Evolutions Booster Bundle</a>
+<a href="/p/2">Pokémon Trading Card Game: Scarlet &amp; Violet—Prismatic Evolutions Surprise Box</a>
+<a href="/p/3">Pokémon TCG: Scarlet &amp; Violet—Prismatic Evolutions Super-Premium Collection</a>
+<a href="/p/4">Pokémon TCG: Scarlet &amp; Violet—Prismatic Evolutions Binder Collection</a>
+<a href="/p/5">Pokémon TCG: Scarlet &amp; Violet—Prismatic Evolutions Pokémon Center Elite Trainer Box</a>
+<a href="/p/6">Pokémon TCG: Scarlet &amp; Violet—Surging Sparks Elite Trainer Box</a>
+<a href="/p/7">Pokémon TCG: Prismatic Evolutions Elite Trainer Box Sleeves</a>
+</main><footer>Target Circle · Help · Returns</footer></body></html>"""
+
+
+def _line_verdicts(r):
+    line = keywords.monitor_line(r["positives"], r["negatives"]).split(",")
+    pos = [t[1:] for t in line if t.startswith("+")]
+    neg = [t[1:] for t in line if t.startswith("-")]
+    return line, {c["text"]: keywords.line_verdict(pos, neg, c["text"])[0] for c in r["check"]}
+
+
+def test_the_line_catches_the_product_and_nothing_else_on_the_page():
+    for page, url in ((PAGE, "https://kicks.example/p"), (TOY_PAGE, "https://gotoytime.com/products/nee-doh-dig-it-pig"),
+                      (TCG_PAGE, "https://www.target.com/p/prismatic-etb/-/A-94300072")):
+        r = keywords.analyze(page, url)
+        line, verdicts = _line_verdicts(r)
+        for c in r["check"]:
+            want = "match" if c["target"] else ("missed", "blocked")
+            assert verdicts[c["text"]] in want, (line, c["text"], verdicts[c["text"]])
+
+
+def test_product_line_spelled_two_ways_uses_the_part_both_contain():
+    r = keywords.analyze(TOY_PAGE, "https://gotoytime.com/products/nee-doh-dig-it-pig")
+    line = keywords.monitor_line(r["positives"], r["negatives"])
+    assert "+doh" in line and "+needoh" not in line and "+nee," not in line
+    pos, neg = [t[1:] for t in line.split(",") if t[0] == "+"], [t[1:] for t in line.split(",") if t[0] == "-"]
+    assert keywords.line_verdict(pos, neg, "Nee Doh Dig It Pig")[0] == "match"
+    assert keywords.line_verdict(pos, neg, "Dig It Pig NeeDoh")[0] == "match"
+
+
+def test_negatives_never_block_the_product_itself():
+    negs = keywords.tidy_negatives([("ice", "x"), ("nice", "x"), ("pig", "x"), ("cube", "x")], [("dig", "", True)],
+                                   ["Dig It Piglet NeeDoh"])
+    assert [w for w, _ in negs] == ["ice", "cube"]  # "pig" is inside "Piglet"; "-ice" already covers "nice"
+
+
+def test_trading_card_boxes():
+    r = keywords.analyze(TCG_PAGE, "https://www.target.com/p/prismatic-etb/-/A-94300072")
+    line = keywords.monitor_line(r["positives"], r["negatives"])
+    pos = [w for w, _, in_line in r["positives"] if in_line]
+    for w in ("prismatic", "evolutions", "elite", "trainer"):
+        assert w in pos, line
+    negs = [w for w, _ in r["negatives"]]
+    for w in ("bundle", "center", "sleeves"):
+        assert w in negs, line
+    for w in ("target", "box", "pok", "mon", "pokémon", "elite"):
+        assert w not in negs, line
