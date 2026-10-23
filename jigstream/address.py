@@ -15,7 +15,6 @@ DIRECTION = {"NORTH": "N", "SOUTH": "S", "EAST": "E", "WEST": "W",
              "NORTHEAST": "NE", "NORTHWEST": "NW", "SOUTHEAST": "SE", "SOUTHWEST": "SW"}
 UNIT = {"APARTMENT": "APT", "SUITE": "STE", "UNIT": "UNIT", "BUILDING": "BLDG",
         "FLOOR": "FL", "ROOM": "RM", "NUMBER": "#"}
-UNIT_RE = re.compile(r"^(.*?)[\s,]+(APT|STE|UNIT|BLDG|FL|RM|#)\.?\s*#?\s*([A-Z0-9-]+)$")
 STATE_NAMES = {
     "ALABAMA": "AL", "ALASKA": "AK", "ARIZONA": "AZ", "ARKANSAS": "AR", "CALIFORNIA": "CA", "COLORADO": "CO",
     "CONNECTICUT": "CT", "DELAWARE": "DE", "DISTRICT OF COLUMBIA": "DC", "FLORIDA": "FL", "GEORGIA": "GA",
@@ -44,15 +43,6 @@ def norm_line(s):
         w = UNIT.get(w, DIRECTION.get(w, SUFFIX.get(w, w)))
         words.append(w)
     return " ".join(words)
-
-
-def split_unit(line1, line2=""):
-    """Return (street, unit) with a unit hiding in line1 moved out."""
-    street, unit = norm_line(line1), norm_line(line2)
-    m = UNIT_RE.match(street)
-    if m and not unit:
-        street, unit = m.group(1).strip(), f"{m.group(2)} {m.group(3)}"
-    return street, unit
 
 
 def zip5(z):
