@@ -1,18 +1,47 @@
 {% extends "base.html" %}{% block body %}
-<h2>Dashboard</h2><div class="stats"><div class="card">Checkouts <b>{{tot.n}}</b></div><div class="card ok">Success <b>{{tot.s or 0}}</b></div><div class="card bad">Not successful <b>{{tot.f or 0}}</b></div></div>
-<h3>Import</h3><div class="panel">
-<form method="post" action="/upload/webhooks" enctype="multipart/form-data">Webhook JSON <input type="file" name="files" multiple><button>Import</button></form>
-<form method="post" action="/upload/profiles" enctype="multipart/form-data">Profiles (.json/.csv) <input name="bot" list="botnames" placeholder="Bot name" size="12" required><datalist id="botnames"><option>Valor</option><option>Stellar</option><option>Hayha</option><option>Polar</option><option>AYCD</option><option>Cybersole</option><option>Wrath</option></datalist><input type="file" name="files" multiple><button>Import</button></form>
+<style>
+.dhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}.dhead h2{margin:0;flex:1}
+.dgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+@media (max-width:1000px){.dgrid{grid-template-columns:minmax(0,1fr)}}
+.panel h4{margin:0 0 12px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}.panel h4 .sp{flex:1}.panel h4 a{font-weight:500;font-size:12.5px}
+.card small{display:block;margin-top:6px;text-transform:none;letter-spacing:0;font-weight:500;font-size:12px}
+.brow{display:grid;grid-template-columns:minmax(0,130px) minmax(0,1fr) 64px;gap:10px;align-items:center;padding:7px 0;font-size:13px;color:var(--text)}
+.brow:hover{color:var(--accent)}.brow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.brow .stack{display:flex;height:9px;border-radius:999px;background:var(--line);overflow:hidden}
+.brow .stack i{display:block;height:100%}.dgrid .g{background:var(--green)}.dgrid .c{background:var(--orange)}.dgrid .f{background:var(--red)}
+.brow .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.key{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}.key i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.crow{display:grid;grid-template-columns:minmax(0,120px) minmax(0,1fr) 92px;gap:10px;align-items:center;padding:7px 0;font-size:13px}
+.crow .track{height:8px;border-radius:999px;background:var(--line);overflow:hidden}.crow .track span{display:block;height:100%;border-radius:inherit}
+.crow .v{text-align:right;font-variant-numeric:tabular-nums}
+</style>
+<div class="dhead"><h2>Dashboard</h2>
+<form method="get"><select name="year" onchange="this.form.submit()" aria-label="Year">{% for y in years %}<option {{"selected" if y == s.year}}>{{y}}</option>{% endfor %}</select></form></div>
+<div class="stats">
+<a class="card" href="/orders" title="Orders that stuck plus botting expenses. Cancelled, refunded and returned orders aren't counted.">Spent in {{s.year}} <b>{{s.total_out|money}}</b><small>{{s.spend|money}} on orders · {{s.expenses|money}} on botting</small></a>
+<a class="card" href="/orders">Orders <b>{{s.orders}}</b><small>{% if s.orders_dropped %}{{s.orders_dropped}} cancelled or refunded not counted{% else %}orders that stuck{% endif %}</small></a>
+<a class="card ok" href="/drop">Successful checkouts <b>{{s.good}}</b><small>{{s.rate}}% of {{s.checkouts}} checkouts</small></a>
+<a class="card bad" href="/drop">Failures <b>{{s.failed + s.cancelled}}</b><small>{{s.failed}} declined or failed · {{s.cancelled}} cancelled later</small></a>
 </div>
-<h3>Failing profiles &amp; suggested address fixes</h3>
-<table><tr><th>Profile</th><th>OK</th><th>Declined</th><th>Failed</th><th>Rate</th><th>Issues</th><th>Suggested</th></tr>
-{% for r in report %}<tr><td>{{r.profile}}</td><td>{{r.success}}</td><td>{{r.decline}}</td><td>{{r.failure}}</td><td>{{r.rate}}%</td>
-<td>{{r.issues|join("; ") or "none found"}}</td>
-<td>{% if r.suggested %}{{r.suggested.address1}} {{r.suggested.address2}}, {{r.suggested.city}} {{r.suggested.state}} {{r.suggested.zip}}{% endif %}</td></tr>{% endfor %}</table>
-{% if unmatched %}<p class="bad">Checkouts reference profiles not imported: {{unmatched|join(", ")}}</p>{% endif %}
-<h3>By site</h3><table><tr><th>Site</th><th>Success</th><th>Declined</th><th>Failed</th><th>Total</th></tr>
-{% for r in sites %}<tr><td>{{r.k}}</td><td>{{r.s}}</td><td>{{r.d}}</td><td>{{r.f}}</td><td>{{r.n}}</td></tr>{% endfor %}</table>
-<h3>By bot</h3><table><tr><th>Bot</th><th>Success</th><th>Declined</th><th>Failed</th><th>Total</th></tr>
-{% for r in bots %}<tr><td>{{r.k}}</td><td>{{r.s}}</td><td>{{r.d}}</td><td>{{r.f}}</td><td>{{r.n}}</td></tr>{% endfor %}</table>
-{% if cancelled %}<h3>Cancelled after "success"</h3><table>{% for r in cancelled %}<tr><td>{{r.site}}</td><td>{{r.product}}</td><td>{{r.profile}}</td><td>{{r.order_number}}</td></tr>{% endfor %}</table>{% endif %}
+<div class="dgrid">
+<div class="panel"><h4>Checkouts by site<span class="sp"></span><a href="/drop">Drops →</a></h4>
+{% for r in s.sites %}<a class="brow" href="/drop?site={{r.name|urlencode}}"><span class="nm">{{r.name}}</span>
+<span class="stack" title="{{r.good}} good, {{r.cancelled}} cancelled, {{r.failed}} failed"><i class="g" style="width:{{r.good / r.n * 100}}%"></i><i class="c" style="width:{{r.cancelled / r.n * 100}}%"></i><i class="f" style="width:{{r.failed / r.n * 100}}%"></i></span>
+<span class="v">{{r.rate}}% · {{r.n}}</span></a>
+{% else %}<p class="muted">No checkouts in {{s.year}} yet. Connect your Discord webhooks on Setup, or import webhook files on <a href="/imports">Imports</a>.</p>{% endfor %}
+{% if s.sites %}<div class="key"><span><i class="g"></i>Good</span><span><i class="c"></i>Cancelled later</span><span><i class="f"></i>Declined or failed</span></div>{% endif %}
+</div>
+<div class="panel"><h4>Checkouts by bot</h4>
+{% for r in s.bots %}<div class="brow"><span class="nm">{{r.name}}</span>
+<span class="stack" title="{{r.good}} good, {{r.cancelled}} cancelled, {{r.failed}} failed"><i class="g" style="width:{{r.good / r.n * 100}}%"></i><i class="c" style="width:{{r.cancelled / r.n * 100}}%"></i><i class="f" style="width:{{r.failed / r.n * 100}}%"></i></span>
+<span class="v">{{r.rate}}% · {{r.n}}</span></div>
+{% else %}<p class="muted">No checkouts in {{s.year}} yet.</p>{% endfor %}
+</div>
+<div class="panel"><h4>Botting expenses in {{s.year}}<span class="sp"></span><a href="/expenses">Expenses →</a></h4>
+{% set top = s.categories[0].total if s.categories else 0 %}
+{% for c in s.categories %}<div class="crow"><span>{{c.category|replace("_", " ")|capitalize}}</span>
+<div class="track"><span style="width:{{((c.total or 0) / top * 100) if top else 0}}%;background:{{c.color}}"></span></div><span class="v">{{c.total|money}}</span></div>
+{% else %}<p class="muted">No botting receipts in {{s.year}} yet.</p>{% endfor %}
+</div>
+</div>
 {% endblock %}

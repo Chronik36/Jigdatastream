@@ -155,3 +155,28 @@ def test_window_splash_is_self_contained():
     page = splash("Starting BotTrack", "Getting things <ready>.")
     assert page.count("data:image/png;base64,") == 2 and "/static/" not in page
     assert "Getting things &lt;ready&gt;." in page and 'class="loader on"' in page
+
+
+def test_dashboard_shows_the_year_and_imports_have_their_own_page(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = appmod.create_app(str(tmp_path / "s.db"))
+    c = app.test_client()
+    page = c.get("/").get_data(as_text=True)
+    assert "Spent in" in page and "Successful checkouts" in page and "/upload/profiles" not in page
+    imports = c.get("/imports").get_data(as_text=True)
+    assert 'action="/upload/profiles"' in imports and 'action="/upload/webhooks"' in imports
+    assert c.post("/upload/webhooks").headers["Location"].endswith("/imports")
+    assert 'action="/sync/all"' in page  # Sync everything is on every page
+
+
+def test_sync_everything_starts_each_source(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = appmod.create_app(str(tmp_path / "s.db"))
+    started = []
+    app.start_sync = lambda full=False: started.append("email") or True
+    app.config["SYNC_ALL"] = [("linked banks", lambda: started.append("banks") or True)]
+    monkeypatch.setattr(appmod.carriers, "available", lambda env: False)
+    c = app.test_client()
+    c.post("/sync/all")
+    assert started == ["email", "banks"]
+    assert "Syncing everything: email and Discord, linked banks." in c.get("/").get_data(as_text=True)

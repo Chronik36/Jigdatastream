@@ -65,6 +65,8 @@ html.mini .collapse svg{transform:rotate(180deg)}
 .crumb{display:flex;align-items:center;gap:8px;color:var(--muted);font-weight:500}.crumb b{color:var(--text);font-weight:600}
 .crumb svg{color:var(--accent)}
 .top .grow{flex:1}
+.top .syncall button{min-height:0;padding:5px 12px;font-size:12.5px;border-radius:999px}.top .syncall svg.i{width:15px;height:15px}
+@media (max-width:700px){.top .syncall .lbl{display:none}.top .syncall button{padding:7px}}
 .top .chip{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);border:1px solid var(--line-2);border-radius:999px;padding:5px 11px;white-space:nowrap}
 .top .chip i{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
 .top .chip.upd{color:var(--orange);border-color:rgba(255,138,61,.4)}.top .chip.upd i{background:var(--orange);box-shadow:0 0 8px var(--orange)}
@@ -205,10 +207,12 @@ body .fl{color:#7884b3}
   "drop": '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/><path d="M9.5 15a2.5 2.5 0 0 0 2.5 2.5"/>',
   "chev": '<path d="m15 18-6-6 6-6"/>',
   "menu": '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  "sync": '<path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/>',
+  "upload": '<path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
 } %}
 {% set sections = [
   ("Overview", [("/", "Dashboard", "dash")]),
-  ("Tracking", [("/orders", "Orders", "orders"), ("/profile-orders", "Profile orders", "profiles"), ("/inbox", "Inbox", "inbox"), ("/expenses", "Expenses", "expenses"), ("/bank", "Bank", "bank"), ("/training", "Training", "training")]),
+  ("Tracking", [("/orders", "Orders", "orders"), ("/profile-orders", "Profile orders", "profiles"), ("/inbox", "Inbox", "inbox"), ("/expenses", "Expenses", "expenses"), ("/bank", "Bank", "bank"), ("/imports", "Imports", "upload"), ("/training", "Training", "training")]),
   ("Bot tools", [("/drop", "Drops", "drop"), ("/profiles", "Profiles", "profiles"), ("/cards", "Cards", "cards"), ("/emails", "Emails", "emails"), ("/stock", "Stock", "stock"), ("/keywords", "Keywords", "keywords"), ("/products", "Products", "products")]),
 ] %}
 {% set footer = [("/manual", "Manual", "manual"), ("/m/app", "App & updates", "setup")] if on_phone else [("/manual", "Manual", "manual"), ("/logs", "Logs", "logs"), ("/setup", "Setup", "setup")] %}
@@ -237,6 +241,7 @@ body .fl{color:#7884b3}
   <button class="menu" type="button" onclick="document.documentElement.classList.toggle('open')" aria-label="Menu">{{ icon("menu") }}</button>
   <div class="crumb">{% if ns.page %}{{ icon(ns.icon) }}<span>{{ns.sec}}</span><span>/</span><b>{{ns.page}}</b>{% else %}<b>BotTrack</b>{% endif %}</div>
   <span class="grow"></span>
+  {% if syncing %}<form method="post" action="/sync/all" class="syncall"><button type="submit" class="ghost" {{"disabled" if syncing.running}} title="Email, Discord, linked banks and package tracking">{{ icon("sync") }}<span class="lbl">{{"Syncing..." if syncing.running else "Sync everything"}}</span></button></form>{% endif %}
   {% if update and update.available %}<a class="chip upd" href="{{'/m/app' if on_phone else '/setup#updates'}}"><i></i>Update ready</a>{% endif %}
   {% if ai and ai.ready and not ai.error %}<span class="chip ai"><i></i>AI ready</span>{% endif %}
 </header>
