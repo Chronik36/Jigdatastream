@@ -143,6 +143,9 @@ def _key(s):
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
+CANCEL_WINDOW_DAYS = 60  # store + To address matching; an order number matches at any age
+
+
 class Store:
     def __init__(self, con):
         from . import db
@@ -237,12 +240,17 @@ class Store:
         return picks
 
     def _order_for_cancel(self, result, email):
-        """A cancel email with no order number we already know: the one open order from the same store
-        sent to the same address (the To address) from two weeks before it to a day after (the cancel
-        can land before the confirmation). None when that isn't clear."""
+        """A cancel email with no order number we already know: the open order from the same store sent to
+        the same address (the To address) from CANCEL_WINDOW_DAYS before it to a day after (the cancel can land
+        before the confirmation, or a month later for drops like Pokemon Center). With several, the one whose
+        items the cancel names; None when that isn't clear."""
         picks = [r for r, gap in self._same_buyer_orders(
             result, email, "COALESCE(shipping_status, '') NOT IN ('cancelled', 'refunded', 'returned', 'delivered')")
-            if -timedelta(days=1) <= gap <= timedelta(days=14)]
+            if -timedelta(days=1) <= gap <= timedelta(days=CANCEL_WINDOW_DAYS)]
+        if len(picks) > 1:
+            names = {_key(i.get("name"))[:40] for i in result.get("items") or [] if i.get("name")}
+            picks = [r for r in picks if names & {_key(i.get("name"))[:40] for i in json.loads(r["items"] or "[]")
+                                                  if isinstance(i, dict) and i.get("name")}]
         return picks[0] if len(picks) == 1 else None
 
     def _cancel_for_order(self, result, email):
