@@ -12,6 +12,11 @@
   .ptabs svg.i{width:22px;height:22px}
   .ptabs .on{color:var(--accent)}.ptabs .on svg{filter:drop-shadow(0 0 6px rgba(61,216,239,.5))}
   .ptabs button:hover{filter:none;box-shadow:none}
+  /* The open menu sits above the tab bar and scrolls as one piece, so every page in it can be reached. */
+  .side{z-index:45;height:100vh;height:100dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+    padding-top:env(safe-area-inset-top,0px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 12px)}
+  .side .snav{flex:none;overflow:visible}
+  .side .aicard,.side .collapse{display:none}
   main input,main select,main textarea{font-size:16px}  /* stops iOS zooming into fields */
   button,a.btn{min-height:40px}
 }

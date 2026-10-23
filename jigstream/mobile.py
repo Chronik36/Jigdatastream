@@ -15,6 +15,7 @@ import socket
 import subprocess
 import time
 from datetime import timedelta
+from urllib.parse import quote
 
 from flask import (Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request,
                    session, url_for)
@@ -147,7 +148,10 @@ def init_app(app):
         up, app_version = updater.state, android_app_version()
         return {"on_phone": not from_this_mac(), "update": up, "app_version": app_version,
                 "phone_password": bool(os.environ.get("PHONE_PASSWORD_HASH")),
-                "apk_update": bool(app_version and up.get("apk_url") and up.get("apk_version", 0) > app_version)}
+                "apk_update": bool(app_version and up.get("apk_url") and up.get("apk_version", 0) > app_version),
+                # Version 5 and later download and install their own update; older ones get the file in the browser.
+                "apk_install_url": ("bottrack://update?url=" + quote(up.get("apk_url") or "", safe="")
+                                    if app_version >= 5 else up.get("apk_url") or "")}
 
     @app.before_request
     def guard():
