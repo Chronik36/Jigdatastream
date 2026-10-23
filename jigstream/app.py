@@ -9,7 +9,7 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import (analysis, bankpages, cardcheck, browsertrack, carriers, db, discord, drop, emailbook, engines, expensepages, export,
+from . import (analysis, bankpages, cardcheck, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
                stock, stuck, tasks, training, updater, wallet)
 from .config import Config, format_accounts, save_env
@@ -139,6 +139,11 @@ def create_app(db_path=None):
         carrier = next((c for c in TRACK_URLS if c.lower() in given), None) or carrier_for(number)
         return TRACK_URLS.get(carrier or "", ANY_CARRIER_URL).format(quote(number))
 
+    @app.template_filter("address_label")
+    def address_label(order):
+        """The base address an order shipped to, for linking to everything at that address."""
+        return lookup.label_of(drop.order_address(dict(order)))
+
     @app.template_filter("status_label")
     def status_label(status):
         status = status or "unknown"
@@ -259,6 +264,13 @@ def create_app(db_path=None):
         logger.info("order %s profile set to %r by hand", order_id, choice)
         return redirect(request.form.get("back") or url_for("orders") + f"#order-{order_id}")
 
+    @app.get("/address")
+    def address_page():
+        store = Store(con())
+        profilematch.match_orders(store.db)
+        r = lookup.address(store.db, request.args.get("name", ""), store.orders())
+        return render_template("address.html", r=r, name=request.args.get("name", ""))
+
     @app.get("/profile-orders")
     def profile_orders():
         store = Store(con())
@@ -275,7 +287,11 @@ def create_app(db_path=None):
         if group is not None:
             used = [h for h in used if (h["profile"].get("group_name") or "") == group]
         used.sort(key=lambda h: (-len(h["orders"]), h["profile"]["name"].lower()))
-        return render_template("profile_orders.html", hist=hist, used=used, pick=hist.get(pick), pick_name=pick,
+        extra = {}
+        if pick in hist:
+            extra = {"pick_checkouts": lookup.profile_checkouts(store.db, pick),
+                     "pick_address": lookup.profile_address(store.db, pick)}
+        return render_template("profile_orders.html", hist=hist, used=used, pick=hist.get(pick), pick_name=pick, **extra,
                                sites=sites, groups=groups, site=site, group=group,
                                unmatched=[o for o in rows if not o["profile_name"]], total_profiles=len(hist))
 
@@ -371,7 +387,8 @@ def create_app(db_path=None):
         profilematch.match_orders(Store(c).db)
         order_counts = dict(c.execute("SELECT profile_name, COUNT(*) FROM tracked_orders WHERE profile_name IS NOT NULL"
                                       " GROUP BY profile_name").fetchall())
-        return render_template("profiles.html", order_counts=order_counts, email_groups=emailbook.groups(c)[0], rows=rows, bots=sorted(export.templates(c)), groups=groups,
+        addr_labels = {n: lookup.label_of(w) for n, w in drop.profile_addresses(c).items()}
+        return render_template("profiles.html", order_counts=order_counts, addr_labels=addr_labels, email_groups=emailbook.groups(c)[0], rows=rows, bots=sorted(export.templates(c)), groups=groups,
                                ungrouped=ungrouped, group=group, site=site, sites=sites, total=c.execute("SELECT COUNT(*) FROM profiles").fetchone()[0],
                                fields=profilebook.DISTRIBUTE_FIELDS, addresses=profilebook.saved_addresses(c),
                                states=sorted(A.STATE_NAMES.items()), profiles_json=[dict(p) for p, _, _ in rows],
