@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
 {% set labels = {"confirmed": ("Good", "s-delivered", "An order email or the bot's follow-up confirmed it (or you marked it good), and nothing cancelled it"), "no_email": ("Unsure", "s-ordered", "The bot checked out and nothing cancelled it, but no order email has matched yet"), "cancelled": ("Cancelled", "s-cancelled", "A cancel email, a bank refund or the bot's follow-up said it was cancelled"), "decline": ("Declined", "s-cancelled", "The site declined it at checkout"), "failure": ("Failed", "s-unknown", "The bot reported a failure")} %}
-{% set kinds = {"group": "Proxy group", "proxy": "Proxy", "profile": "Profile"} %}
+{% set kinds = {"group": "Proxy group", "proxy": "Proxy", "profile": "Profile", "address": "Address"} %}
 {% macro board(title, rows, what, kind=None) %}<div class="panel" style="flex:1 1 380px;min-width:0;overflow-x:auto">
 <h3 style="margin-top:0">{{title}}</h3>
 <table><thead><tr><th>{{what}}</th><th title="Good + unsure: checked out and not cancelled">Real</th><th>Good</th><th title="Real checkouts out of every webhook">Rate</th><th>Cancelled</th><th>Declined</th><th>Tries</th></tr></thead><tbody>
@@ -10,7 +10,7 @@
 {% macro counts(t) %}<span class="ok" title="Good">{{t.confirmed}} good</span> · <span style="color:var(--orange)">{{t.no_email}} unsure</span>{% if t.cancelled %} · <span class="bad">{{t.cancelled}} cancelled</span>{% endif %}{% if t.declines %} · <span class="bad">{{t.declines}} declined</span>{% endif %}{% endmacro %}
 <style>.droprow{cursor:pointer}.droprow:hover td{background:rgba(61,216,239,.06)}</style>
 {% set tab = "drops" %}{% include "_drop_tabs.html" %}
-<p class="muted">Every checkout webhook by retail site and drop date. Click a drop to open every checkout in it with the proxy and profile each ran on, then click a proxy group, proxy or profile to see just those:
+<p class="muted">Every checkout webhook by retail site and drop date. Click a drop to open every checkout in it with the proxy and profile each ran on, then click a proxy group, proxy, profile or address to see just those (addresses are grouped by street, with jigged units and prefixes removed):
 <span class="ok">Good</span> (an order email or the bot's follow-up confirmed it), <span style="color:var(--orange)">Unsure</span> (checked out and nothing cancelled it, but no order email matched yet), <span class="bad">Cancelled</span> (a cancel email, bank refund or the bot's follow-up said so) or Declined.
 If one is wrong, pick Good or Cancelled next to it: it sticks, and when the checkout has an order email the AI learns from it. Good and unsure count as real checkouts. Sync your inboxes first. Proxy logins and passwords are never shown, only the host.</p>
 <div class="stats"><div class="card">Webhooks <b>{{r.tally.tries}}</b></div><div class="card ok">Good <b>{{r.tally.confirmed}}</b></div>
@@ -18,8 +18,8 @@ If one is wrong, pick Good or Cancelled next to it: it sticks, and when the chec
 {% if day or by %}
 <div class="toolbar"><a class="pill" href="{{ link(day=None, by=None, name=None) }}">← All dates</a><b style="margin:0 8px">{{day or "Every date"}}</b>
 {% if by %}<a class="pill s-shipped" href="{{ link(by=None, name=None) }}" title="Show every checkout{{' on ' ~ day if day}}">{{kinds[by]}}: {{name}} ✕</a>{% endif %}
-<span class="muted">Sort by</span><a class="pill{{' s-shipped' if sort == 'proxy'}}" href="{{ link(sort='proxy') }}">Proxy</a><a class="pill{{' s-shipped' if sort == 'profile'}}" href="{{ link(sort='profile') }}">Profile</a></div>
-<div class="panel" style="margin:14px 0">{% for kind, label in [("group", "Proxy groups"), ("proxy", "Proxies"), ("profile", "Profiles")] %}
+<span class="muted">Sort by</span><a class="pill{{' s-shipped' if sort == 'proxy'}}" href="{{ link(sort='proxy') }}">Proxy</a><a class="pill{{' s-shipped' if sort == 'profile'}}" href="{{ link(sort='profile') }}">Profile</a><a class="pill{{' s-shipped' if sort == 'address'}}" href="{{ link(sort='address') }}">Address</a></div>
+<div class="panel" style="margin:14px 0">{% for kind, label in [("group", "Proxy groups"), ("proxy", "Proxies"), ("profile", "Profiles"), ("address", "Addresses")] %}
 <div style="margin:4px 0"><span class="muted" style="display:inline-block;min-width:110px">{{label}}</span>{% for t in r.chips[kind] %}
 <a class="pill{{' s-shipped' if by == kind and name == t.name}}" href="{{ link(by=kind, name=t.name) }}" title="{{t.confirmed}} good, {{t.no_email}} unsure, {{t.cancelled}} cancelled, {{t.declines}} declined">{{t.name}} <b class="{{'ok' if t.real}}">{{t.real}}/{{t.tries}}</b></a>{% endfor %}</div>{% endfor %}
 <div class="muted" style="font-size:12px;margin-top:6px">Click a group to see only its checkouts. The numbers are real checkouts out of tries.</div></div>
@@ -27,7 +27,7 @@ If one is wrong, pick Good or Cancelled next to it: it sticks, and when the chec
 <h3 style="margin-top:0">{{s.site}} · {{d.day or "No date"}}{% if d.products %} <span class="muted" style="font-weight:400;font-size:14px">· {{d.products|join(", ")|truncate(160)}}</span>{% endif %}</h3>
 <p style="margin:6px 0">{{ counts(d.tally) }}</p>
 {% if d.card %}<p style="margin:6px 0" title="From your card charges and refunds (Card check tab)">Cards say <b class="ok">{{d.card.went_through}} went through</b>: {{d.card.charged}} charged{% if d.card.refunded %}, <span class="bad">{{d.card.refunded}} refunded</span>{% endif %}, for {{d.card.bot}} bot checkout{{'s' if d.card.bot != 1}}{% if d.card.never_charged %}, <span style="color:var(--orange)">{{d.card.never_charged}} never charged</span>{% endif %}. <a href="/drop/cards">Card check</a></p>{% endif %}
-<table><thead><tr><th>Result</th><th>Correct it</th><th>Proxy group</th><th>Proxy</th><th>Profile</th><th>Time</th><th>Bot</th><th>Product / order #</th></tr></thead><tbody>
+<table><thead><tr><th>Result</th><th>Correct it</th><th>Proxy group</th><th>Proxy</th><th>Profile / address</th><th>Time</th><th>Bot</th><th>Product / order #</th></tr></thead><tbody>
 {% for c in d.checkouts %}{% set l = labels[c.outcome] %}<tr>
 <td>{% if c.order %}<a href="/orders#order-{{c.order.id}}" title="{{l[2]}}"><span class="pill {{l[1]}}">{{l[0]}}</span></a>{% else %}<span class="pill {{l[1]}}" title="{{l[2]}}">{{l[0]}}</span>{% endif %}
 {% if c.outcome in ("decline", "failure") and c.reason %}<div class="muted" style="font-size:12px">{{c.reason[:80]}}</div>{% endif %}
@@ -36,7 +36,7 @@ If one is wrong, pick Good or Cancelled next to it: it sticks, and when the chec
 {% if c.bot_update %}<div class="muted" style="font-size:12px">{{c.bot_update.bot or "Bot"}} says {{c.bot_update.verdict}}</div>{% endif %}</td>
 <td>{% if c.status == "success" %}<form method="post" action="/drop/{{c.id}}/verdict" style="margin:0"><select name="verdict" onchange="this.form.submit()" title="Correct this result; it sticks">
 <option value="auto"{{' selected' if not c.verdict}}>{{'Auto' if not c.verdict else 'Back to auto'}}</option><option value="good"{{' selected' if c.verdict == 'good'}}>Good</option><option value="cancelled"{{' selected' if c.verdict == 'cancelled'}}>Cancelled</option></select></form>{% if c.verdict %}<div class="muted" style="font-size:12px">Set by you</div>{% endif %}{% endif %}</td>
-<td><a href="{{ link(by='group', name=c.proxy_group or 'No group') }}">{{c.proxy_group or "-"}}</a></td><td class="muted"><a class="muted" href="{{ link(by='proxy', name=c.proxy or 'No proxy') }}">{{c.proxy or "-"}}</a></td><td><a href="{{ link(by='profile', name=c.profile or 'No profile') }}"><b>{{c.profile or "-"}}</b></a>{% if c.email %}<div class="muted" style="font-size:12px">{{c.email}}</div>{% endif %}</td>
+<td><a href="{{ link(by='group', name=c.proxy_group or 'No group') }}">{{c.proxy_group or "-"}}</a></td><td class="muted"><a class="muted" href="{{ link(by='proxy', name=c.proxy or 'No proxy') }}">{{c.proxy or "-"}}</a></td><td><a href="{{ link(by='profile', name=c.profile or 'No profile') }}"><b>{{c.profile or "-"}}</b></a>{% if c.address %}<div style="font-size:12px"><a class="muted" href="{{ link(by='address', name=c.address) }}" title="Every checkout to this address, whatever the jig">{{c.address}}</a></div>{% endif %}{% if c.email %}<div class="muted" style="font-size:12px">{{c.email}}</div>{% endif %}</td>
 <td class="muted" style="white-space:nowrap">{{(c.ts or "")[:10] if not day}} {{(c.ts or "")[11:16]}}</td><td>{{c.bot or "-"}}</td>
 <td>{{c.product or "-"}}{% if c.size %} <span class="muted">· {{c.size}}</span>{% endif %}{% if c.order_number %}<div class="muted">{{c.order_number}}</div>{% endif %}</td></tr>{% endfor %}
 </tbody></table></section>{% endfor %}{% else %}<p class="muted">No checkouts here.</p>{% endfor %}
@@ -58,5 +58,5 @@ If one is wrong, pick Good or Cancelled next to it: it sticks, and when the chec
 {% endif %}
 <div style="display:flex;flex-wrap:wrap;gap:14px;margin:14px 0">
 {{ board("Proxy groups", r.groups, "Group", "group") }}{{ board("Proxies", r.proxies, "Proxy", "proxy") }}
-{{ board("Profiles", r.profiles, "Profile", "profile") }}{{ board("Best proxy + profile", r.combos, "Proxy + profile") }}</div>
+{{ board("Profiles", r.profiles, "Profile", "profile") }}{{ board("Addresses", r.addresses, "Address (jig removed)", "address") }}{{ board("Best proxy + profile", r.combos, "Proxy + profile") }}</div>
 {% endblock %}

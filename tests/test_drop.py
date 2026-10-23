@@ -5,6 +5,7 @@ from jigstream.app import create_app
 from jigstream.orderstore import Store
 
 from test_stuck import mail, setup
+from test_profile_match import profile
 
 
 def hook(c, fp, site, profile, group, proxy, color=0x3DDC84, ts="2026-10-20T15:00:00Z", number="", reason=""):
@@ -218,3 +219,32 @@ def test_tidy_product_names_and_odd_proxies(tmp_path):
     assert "Pokémon Trading Card" in page and "&amp;#233;" not in page and "target.com/p" not in page
     assert 'class="droprow"' in page and "Open ›" in page
     assert "Pokémon Trading Card" in client.get("/checkouts").get_data(as_text=True)
+
+
+def test_base_street_under_a_jig():
+    from jigstream.address import base_line1
+    assert base_line1("XJ3 123 Main Street Apt 4") == base_line1("123 main st., #7B") == "123 MAIN ST"
+    assert base_line1("Ana Lopez, 9 Oak Avenue Unit 7, Dallas, TX 75201") == "9 OAK AVE"
+    assert base_line1("4500 W Parkway Blvd Suite 210") == "4500 W PKWY BLVD"
+    assert base_line1("100 N Main St NW Apt 2") == "100 N MAIN ST NW"
+    assert base_line1("Dallas, TX 75201") == ""
+
+
+def test_group_checkouts_by_address(tmp_path):
+    c, store = setup(tmp_path)  # Jacob 1 ships to 123 Main Street, Ana to 9 Oak Ave
+    profile(c, "Jacob 2", "Jacob", "Smith", "j2@gmail.com", "QZ 123 Main St Apt 9")
+    hook(c, "a", "Target", "Jacob 1", "ISP A", "isp.example.net:8000", number="1")
+    hook(c, "b", "Target", "Jacob 2", "ISP A", "isp.example.net:8000", number="2")
+    hook(c, "c", "Target", "Ana", "ISP A", "isp.example.net:8000", number="3")
+    hook(c, "d", "Target", "Nobody", "ISP A", "isp.example.net:8000", number="4")
+    mail(store, "m4", "Target", "cancelled", "2026-10-20T16:00:00+00:00", "4", address="Bo, 77 Elm Rd Ste 5, Austin, TX 78701")
+    addr = {x["profile"]: x["address"] for x in drop.rows(Store(c).db)}
+    assert addr["Jacob 1"] == addr["Jacob 2"] and addr["Jacob 1"].startswith("123 MAIN ST")
+    assert addr["Nobody"] == "77 ELM RD · 78701"  # from its order email
+    r = drop.report(Store(c).db)
+    board = {t["name"]: t for t in r["addresses"]}
+    assert board[addr["Jacob 1"]]["tries"] == 2 and board["77 ELM RD · 78701"]["cancelled"] == 1
+    only = drop.report(Store(c).db, by="address", name=addr["Jacob 1"])
+    assert sorted(x["profile"] for s in only["drops"] for d in s["days"] for x in d["checkouts"]) == ["Jacob 1", "Jacob 2"]
+    page = create_app(str(tmp_path / "m.db")).test_client().get("/drop").get_data(as_text=True)
+    assert "by=address" in page and "Addresses" in page
