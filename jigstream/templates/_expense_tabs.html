@@ -1,0 +1,16 @@
+<style>
+body .xtabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:-4px 0 22px;overflow-x:auto}
+body .xtabs a{position:relative;padding:10px 16px;border-radius:10px 10px 0 0;color:var(--muted);font-weight:500;white-space:nowrap}
+body .xtabs a:hover{color:var(--text)}
+body .xtabs a.on{color:var(--text);background:linear-gradient(180deg,rgba(61,216,239,.14),transparent)}
+body .xtabs a.on:after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;background:linear-gradient(90deg,var(--accent),var(--green))}
+body .xtabs .n{display:inline-block;margin-left:6px;font-size:11px;padding:0 7px;border-radius:999px;background:rgba(255,138,61,.13);color:var(--orange)}
+body .xtabs .side-link{margin-left:auto;font-size:13px}
+</style>
+{% set look = (counts.charge_only or 0) + (counts.receipt_only or 0) + (counts.close or 0) %}
+<div class="phead"><h2>Expenses</h2><button type="button" onclick="openExpense()">+ Add expense</button></div>
+<nav class="xtabs">
+<a href="/expenses" class="{{'on' if tab == 'overview'}}">Overview</a>
+<a href="/expenses/ledger" class="{{'on' if tab == 'ledger'}}">Ledger{% if look %}<span class="n" title="Charges with no receipt, receipts with no charge, and close amounts">{{look}}</span>{% endif %}</a>
+<a href="/bank" class="side-link muted">Bank &amp; card imports →</a>
+</nav>
