@@ -1,0 +1,57 @@
+<style>
+/* Every page fits its window, however narrow: grid columns may shrink, wide tables scroll inside their own box
+   instead of widening the page, and under 700px tables with several columns turn into cards. */
+.shell,main{min-width:0}
+main .playout>*,main .cols>*,main .grid>*,main .xgrid>*,main .dgrid>*,main .igrid>*{min-width:0}
+main textarea,main input,main select{max-width:100%;box-sizing:border-box}
+main svg:not(.i),main img{max-width:100%}
+main img{height:auto}
+.pwide{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.pwide>table{margin-bottom:0}
+@media (max-width:900px){
+  body .playout{grid-template-columns:minmax(0,1fr)}
+  main svg:not(.i){height:auto}
+}
+@media (max-width:700px){
+  main{max-width:100vw;overflow-x:clip}
+  table.cardy,table.cardy tbody{display:block;border:0;background:none;overflow:visible}
+  table.cardy thead{display:none}
+  table.cardy tr{display:block;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px}
+  table.cardy td{display:flex;flex-wrap:wrap;gap:6px 12px;justify-content:space-between;align-items:baseline;border:0;padding:5px 0;text-align:right;white-space:normal}
+  table.cardy td>*{min-width:0;max-width:100%;overflow-wrap:anywhere}
+  table.cardy td>form,table.cardy td>select{margin-left:auto}
+  table.cardy td:first-child{white-space:normal}
+  table.cardy td:before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:600;text-align:left;flex:none;max-width:40%}
+  table.cardy td[data-label=""]:before{display:none}
+  table.cardy td[data-label=""]{justify-content:flex-start;text-align:left}
+}
+</style>
+<script>
+(function () {
+  function scrolls(el) {
+    for (var p = el.parentElement; p && p.tagName !== 'MAIN'; p = p.parentElement) {
+      var o = getComputedStyle(p).overflowX;
+      if (o === 'auto' || o === 'scroll') return true;
+    }
+    return false;
+  }
+  document.querySelectorAll('main table').forEach(function (t) {
+    // Label each cell with its column, so a narrow window can show the rows as cards.
+    var first = t.querySelector('tbody tr');
+    if (!t.tHead && first && first.children.length && Array.prototype.every.call(first.children, function (c) { return c.tagName === 'TH'; })) {
+      t.createTHead().appendChild(first);  // a header row written inside the body still names the columns
+    }
+    var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) { return th.textContent.trim(); });
+    if (heads.length >= 3 && !t.classList.contains('nocard')) {
+      t.querySelectorAll('tbody tr').forEach(function (tr) {
+        Array.prototype.forEach.call(tr.children, function (td, i) { td.setAttribute('data-label', td.colSpan > 1 ? '' : (heads[i] || '')); });
+      });
+      t.classList.add('cardy');
+    }
+    if (!scrolls(t)) {  // too wide for the window: it scrolls sideways on its own, the page doesn't
+      var box = document.createElement('div');
+      box.className = 'pwide'; t.before(box); box.appendChild(t);
+    }
+  });
+})();
+</script>
