@@ -26,6 +26,10 @@ dl.kw-meta{display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 12px;m
 button.kw-x{background:transparent;border:1px solid var(--line-2);color:var(--muted);box-shadow:none;padding:0 9px;line-height:24px;font-size:15px}
 button.kw-x:hover{color:var(--red);border-color:var(--red)}
 button.kw-undo{background:transparent;border:0;box-shadow:none;color:var(--accent);padding:0 0 0 4px;font-size:12px;font-weight:500}
+.kw-check{margin-bottom:6px;overflow-wrap:anywhere}
+.kw-verdict{display:inline-block;min-width:92px;font-size:11px;font-weight:600;border-radius:6px;padding:1px 6px;margin-right:4px}
+.kw-verdict.ok{color:var(--green);background:rgba(61,214,140,.12)}
+.kw-verdict.bad{color:var(--red);background:rgba(255,93,93,.12)}
 </style>
 <h2>Keyword finder</h2>
 <p class="muted">Paste a product or store page. BotTrack loads it once, the same way your browser would, and lists the words the page is built around,
@@ -80,6 +84,11 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
     <div class="chips" id="kwremovedlist">{% for r in result.removed %}<span class="chip" data-rule="{{r.id}}">{{r.kind}}{{r.word}} <small>{{r.where}}</small> <button class="kw-undo" type="button" title="Suggest it again">undo</button></span>{% endfor %}</div>
   </div>
 </div>
+{% if result.check %}<div class="panel">
+    <div class="kw-head"><h3>Line check</h3></div>
+    <p class="muted" style="font-size:12px">How a monitor running the line above treats this product and the look-alikes on the page. Updates as you edit the line.</p>
+    <div id="kwcheck">{% for c in result.check %}<div class="kw-check" data-text="{{c.text}}" data-target="{{1 if c.target else 0}}"><span class="kw-verdict"></span> {{c.text}}</div>{% endfor %}</div>
+  </div>{% endif %}
 <script id="kwdata" type="application/json">{{ {"url": result.url, "host": result.host, "brand": result.product.brand or "", "product": result.name, "page": summary}|tojson }}</script>
 
 <div class="kw-grid">
@@ -111,11 +120,7 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
     <div class="kw-head"><h3>Headings</h3></div>
     {% for t, h in result.headings %}<div style="margin-bottom:4px"><span class="pill" style="font-size:11px">{{t|upper}}</span> {{h}}</div>{% endfor %}
   </div>{% endif %}
-  {% if result.related %}<div class="panel">
-    <div class="kw-head"><h3>Similar items on the page</h3></div>
-    <p class="muted" style="font-size:12px">Negative keywords above come from these</p>
-    {% for r in result.related %}<div style="margin-bottom:4px">{{r}}</div>{% endfor %}
-  </div>{% endif %}
+
 </div>
 {% endif %}
 <script>
@@ -135,6 +140,7 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
       document.querySelector(`#${id} .kw-empty`).hidden = !!document.querySelector(`#${id} tr[data-word]`);
     });
     document.getElementById('kwremoved').hidden = !document.querySelector('#kwremovedlist .chip');
+    if (typeof check === 'function') check();
   }
   function send(kind, word, action) {
     return fetch('/keywords/feedback', {method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -225,6 +231,24 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
     });
   }
   line.addEventListener('change', applyLine);
+  // Line check: a monitor looks for each keyword anywhere in the lowercased name.
+  function check() {
+    const toks = line.value.split(/[,\n]/).map(t => t.trim().toLowerCase()).filter(Boolean);
+    const pos = toks.filter(t => t[0] !== '-').map(t => t.replace(/^\++/, '').trim()).filter(Boolean);
+    const neg = toks.filter(t => t[0] === '-').map(t => t.replace(/^-+/, '').trim()).filter(Boolean);
+    document.querySelectorAll('.kw-check').forEach(el => {
+      const text = el.dataset.text.toLowerCase(), target = el.dataset.target === '1';
+      const miss = pos.find(w => !text.includes(w)), block = neg.find(w => text.includes(w));
+      const v = el.querySelector('.kw-verdict');
+      let label;
+      if (target) label = miss ? `missed: needs +${miss}` : block ? `blocked by -${block}` : 'this product ✓';
+      else label = miss ? `skipped: no +${miss}` : block ? `skipped: -${block}` : 'would match ✗';
+      v.textContent = label;
+      v.className = 'kw-verdict ' + ((target ? !miss && !block : miss || block) ? 'ok' : 'bad');
+    });
+  }
+  line.addEventListener('input', check);
+  check();
   line.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); line.blur(); } });
 })();
 document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => {
