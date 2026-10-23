@@ -9,8 +9,8 @@ android {
         targetSdk 34
         // Raise versionCode whenever anything in android/ changes: phones running an older number are
         // offered the new app (the release asset is named BotTrack-android-<versionCode>.apk).
-        versionCode 2
-        versionName "1.1"
+        versionCode 3
+        versionName "1.2"
     }
     // A fixed key lets testers install updates over the old app. CI passes it from repository
     // secrets; without them the build falls back to the debug key, which can't update older installs.
@@ -36,4 +36,10 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    // Google's QR scanner: its camera screen comes from Google Play services, so the app needs no
+    // camera permission. Phones without Play services paste the link instead.
+    implementation "com.google.android.gms:play-services-code-scanner:16.1.0"
 }

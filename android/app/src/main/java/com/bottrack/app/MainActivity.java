@@ -9,11 +9,11 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
-import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -22,9 +22,22 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.google.mlkit.vision.barcode.common.Barcode;
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanner;
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions;
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+
 /**
- * BotTrack for Android: the phone pages served by BotTrack on the tester's own Mac, in an app.
- * The first time it opens, it asks for the address shown on the Mac's Setup page, Phone access.
+ * BotTrack for Android: the BotTrack pages served by the tester's own Mac, in an app.
+ * The first time it opens it scans the QR code on the Mac's Setup page, Phone access. The code
+ * holds the Mac's phone link, a key that pairs this phone, and a private topic on ntfy.sh where
+ * the Mac posts its new link whenever the old one stops working, so the app follows it by itself.
  * Links to anywhere else (carrier tracking pages) open in the browser.
  */
 public class MainActivity extends Activity {
@@ -33,9 +46,12 @@ public class MainActivity extends Activity {
     private static final int TEXT = Color.parseColor("#e8eeff");
     private static final int MUTED = Color.parseColor("#8e9bc6");
     private static final int ACCENT = Color.parseColor("#3dd8ef");
+    private static final String LINK = "^https://[a-z0-9-]+\\.trycloudflare\\.com$";
 
     private SharedPreferences prefs;
     private WebView web;
+    private Uri home;
+    private boolean lookedForNewLink;
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -43,24 +59,61 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("bottrack", MODE_PRIVATE);
         String address = prefs.getString("address", "");
         if (address.isEmpty()) {
-            showSetup("", null);
+            showSetup(null);
         } else {
-            showWeb(address);
+            showWeb(firstPage());
         }
     }
 
-    /** Turn what the tester typed into the /m/ address: "100.1.2.3" becomes "http://100.1.2.3:8765/m/". */
-    static String normalize(String typed) {
-        String s = typed.trim();
-        if (s.isEmpty()) return "";
-        if (!s.startsWith("http://") && !s.startsWith("https://")) s = "http://" + s;
-        Uri u = Uri.parse(s);
-        if (u.getHost() == null || u.getHost().isEmpty()) return "";
-        String port = u.getPort() == -1 && "http".equals(u.getScheme()) ? ":8765" : (u.getPort() == -1 ? "" : ":" + u.getPort());
-        return u.getScheme() + "://" + u.getHost() + port + "/m/";
+    /** The Mac's address ending in "/", e.g. "https://quiet-words.trycloudflare.com/". */
+    private String address() {
+        return prefs.getString("address", "");
     }
 
-    private void showSetup(String current, String problem) {
+    /** Where to open BotTrack: through the pairing link when we have the key, so a new link signs in too. */
+    private String firstPage() {
+        String key = prefs.getString("key", "");
+        return key.isEmpty() ? address() : address() + "m/pair?k=" + Uri.encode(key);
+    }
+
+    /**
+     * Read the QR code (or a pasted link). "https://x.trycloudflare.com/m/pair?k=KEY&t=TOPIC" pairs;
+     * a plain address like "192.168.1.20:8765" works for a phone on the same Wi-Fi.
+     */
+    private boolean use(String scanned) {
+        String s = scanned == null ? "" : scanned.trim();
+        if (s.isEmpty()) return false;
+        if (!s.startsWith("http://") && !s.startsWith("https://")) s = "http://" + s;
+        Uri u = Uri.parse(s);
+        if (u.getHost() == null || u.getHost().isEmpty()) return false;
+        String port = u.getPort() == -1 ? ("http".equals(u.getScheme()) ? ":8765" : "") : ":" + u.getPort();
+        SharedPreferences.Editor e = prefs.edit().putString("address", u.getScheme() + "://" + u.getHost() + port + "/");
+        if ("/m/pair".equals(u.getPath()) && u.getQueryParameter("k") != null) {
+            e.putString("key", u.getQueryParameter("k"));
+            e.putString("topic", u.getQueryParameter("t") == null ? "" : u.getQueryParameter("t"));
+        }
+        e.apply();
+        return true;
+    }
+
+    private void scan() {
+        GmsBarcodeScannerOptions options = new GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE).build();
+        GmsBarcodeScanner scanner = GmsBarcodeScanning.getClient(this, options);
+        scanner.startScan()
+                .addOnSuccessListener(code -> {
+                    if (use(code.getRawValue())) {
+                        lookedForNewLink = false;
+                        showWeb(firstPage());
+                    } else {
+                        showSetup("That isn't BotTrack's QR code. Scan the one on your Mac's Setup page, Phone access.");
+                    }
+                })
+                .addOnFailureListener(err -> showSetup("Couldn't open the scanner (" + err.getMessage()
+                        + "). Try again in a minute, or paste the link from your Mac below."));
+    }
+
+    private void showSetup(String problem) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setBackgroundColor(NAVY);
@@ -70,8 +123,7 @@ public class MainActivity extends Activity {
         TextView title = text("BotTrack", 30, TEXT);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         box.addView(title);
-        TextView help = text("On your Mac, open BotTrack, go to Setup, Phone access, and type the address it shows. "
-                + "Your phone and Mac both need the free Tailscale app, signed in to the same account.", 15, MUTED);
+        TextView help = text("On your Mac, open BotTrack, go to Setup, Phone access, turn it on, and scan the QR code.", 15, MUTED);
         help.setPadding(0, dp(10), 0, dp(20));
         box.addView(help);
         if (problem != null) {
@@ -80,9 +132,15 @@ public class MainActivity extends Activity {
             box.addView(err);
         }
 
+        Button scan = button("Scan QR code", true);
+        box.addView(scan, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)));
+        scan.setOnClickListener(v -> scan());
+
+        TextView or = text("Or paste the link shown under the code:", 14, MUTED);
+        or.setPadding(0, dp(32), 0, dp(8));
+        box.addView(or);
         EditText input = new EditText(this);
-        input.setHint("http://100.x.x.x:8765/m/");
-        input.setText(current);
+        input.setHint("https://….trycloudflare.com");
         input.setSingleLine(true);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         input.setTextColor(TEXT);
@@ -90,30 +148,24 @@ public class MainActivity extends Activity {
         input.setBackgroundColor(SURFACE);
         input.setPadding(dp(14), dp(14), dp(14), dp(14));
         box.addView(input, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        Button go = new Button(this);
-        go.setText("Connect");
-        go.setAllCaps(false);
-        go.setTextColor(Color.parseColor("#04122a"));
-        go.setBackgroundColor(ACCENT);
+        Button go = button("Connect", false);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52));
-        lp.topMargin = dp(16);
+        lp.topMargin = dp(12);
         box.addView(go, lp);
         go.setOnClickListener(v -> {
-            String address = normalize(input.getText().toString());
-            if (address.isEmpty()) {
-                input.setError("Type the address from BotTrack's Setup page");
+            if (!use(input.getText().toString())) {
+                input.setError("Paste the link from BotTrack's Setup page");
                 return;
             }
-            prefs.edit().putString("address", address).apply();
-            showWeb(address);
+            lookedForNewLink = false;
+            showWeb(firstPage());
         });
         web = null;
         setContentView(box);
     }
 
-    private void showWeb(String address) {
-        final Uri home = Uri.parse(address);
+    private void showWeb(String page) {
+        home = Uri.parse(address());
         web = new WebView(this);
         web.setBackgroundColor(NAVY);
         WebSettings s = web.getSettings();
@@ -122,7 +174,7 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setSaveFormData(false);  // profile fields hold personal details
-        // Tells the phone pages this is the app and which version, for "Change Mac address" and app updates.
+        // Tells the pages this is the app and which version, for "Scan a new QR code" and app updates.
         s.setUserAgentString(s.getUserAgentString() + " BotTrackApp/" + BuildConfig.VERSION_CODE);
         CookieManager.getInstance().setAcceptCookie(true);
 
@@ -131,7 +183,7 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
                 if ("bottrack".equals(u.getScheme())) {
-                    showSetup(address, null);
+                    scan();
                     return true;
                 }
                 if (sameServer(u, home)) return false;
@@ -141,23 +193,100 @@ public class MainActivity extends Activity {
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError error) {
-                if (req.isForMainFrame()) {
-                    showSetup(address, "Couldn't reach BotTrack at that address. Check that BotTrack is open on your Mac, "
-                            + "phone access is on, and Tailscale is connected on both.");
-                }
+                if (view == web && req.isForMainFrame()) unreachable();
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest req, WebResourceResponse resp) {
+                // Cloudflare answers 530 (or 502) once the Mac's old link has closed.
+                int code = resp.getStatusCode();
+                if (view == web && req.isForMainFrame() && (code == 530 || code == 502) && sameServer(req.getUrl(), home)) unreachable();
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 CookieManager.getInstance().flush();  // stay signed in after the app is closed
+                if (view == web) lookedForNewLink = false;  // reached the Mac, so look again next time it's gone
             }
         });
         setContentView(web);
-        web.loadUrl(address);
+        web.loadUrl(page);
+    }
+
+    /** The Mac didn't answer: ask its private topic for a newer link, once, before giving up. */
+    private void unreachable() {
+        web.stopLoading();
+        web = null;  // ignore anything more from this page
+        String topic = prefs.getString("topic", "");
+        if (topic.isEmpty() || lookedForNewLink) {
+            showOffline();
+            return;
+        }
+        lookedForNewLink = true;
+        new Thread(() -> {
+            String link = latestLink(topic);
+            runOnUiThread(() -> {
+                if (link != null && !(link + "/").equals(address())) {
+                    prefs.edit().putString("address", link + "/").apply();
+                    showWeb(firstPage());
+                } else {
+                    showOffline();
+                }
+            });
+        }).start();
+    }
+
+    /** The newest link the Mac posted to ntfy.sh (kept there for 12 hours; the Mac posts again every 6). */
+    static String latestLink(String topic) {
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL("https://ntfy.sh/" + Uri.encode(topic) + "/raw?poll=1&since=all").openConnection();
+            c.setConnectTimeout(10000);
+            c.setReadTimeout(10000);
+            String last = null;
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8))) {
+                for (String line; (line = r.readLine()) != null; ) {
+                    if (line.trim().matches(LINK)) last = line.trim();
+                }
+            }
+            return last;
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    private void showOffline() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackgroundColor(NAVY);
+        int pad = dp(24);
+        box.setPadding(pad, dp(72), pad, pad);
+        TextView title = text("Can't reach your Mac", 26, TEXT);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        box.addView(title);
+        TextView help = text("Check that your Mac is awake, online, and BotTrack is open with phone access on. "
+                + "If you pressed Forget all phones, scan the new QR code.", 15, MUTED);
+        help.setPadding(0, dp(10), 0, dp(24));
+        box.addView(help);
+        Button retry = button("Try again", true);
+        box.addView(retry, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)));
+        retry.setOnClickListener(v -> {
+            lookedForNewLink = false;
+            showWeb(firstPage());
+        });
+        Button scan = button("Scan QR code", false);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52));
+        lp.topMargin = dp(12);
+        box.addView(scan, lp);
+        scan.setOnClickListener(v -> scan());
+        web = null;
+        setContentView(box);
     }
 
     static boolean sameServer(Uri a, Uri b) {
-        return a.getHost() != null && a.getHost().equalsIgnoreCase(b.getHost()) && a.getPort() == b.getPort()
+        return a.getHost() != null && b != null && a.getHost().equalsIgnoreCase(b.getHost()) && a.getPort() == b.getPort()
                 && String.valueOf(a.getScheme()).equals(b.getScheme());
     }
 
@@ -165,11 +294,21 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         if (web != null && web.canGoBack()) {
             web.goBack();
-        } else if (web == null && !prefs.getString("address", "").isEmpty()) {
-            showWeb(prefs.getString("address", ""));
+        } else if (web == null && !address().isEmpty()) {
+            showWeb(firstPage());
         } else {
             super.onBackPressed();
         }
+    }
+
+    private Button button(String label, boolean primary) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(16);
+        b.setTextColor(primary ? Color.parseColor("#04122a") : TEXT);
+        b.setBackgroundColor(primary ? ACCENT : SURFACE);
+        return b;
     }
 
     private TextView text(String s, int sp, int color) {
