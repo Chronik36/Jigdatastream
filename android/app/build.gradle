@@ -9,8 +9,8 @@ android {
         targetSdk 34
         // Raise versionCode whenever anything in android/ changes: phones running an older number are
         // offered the new app (the release asset is named BotTrack-android-<versionCode>.apk).
-        versionCode 3
-        versionName "1.2"
+        versionCode 4
+        versionName "1.3"
     }
     // A fixed key lets testers install updates over the old app. CI passes it from repository
     // secrets; without them the build falls back to the debug key, which can't update older installs.

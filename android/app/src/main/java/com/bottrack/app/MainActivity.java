@@ -7,6 +7,8 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.ViewGroup;
@@ -19,6 +21,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -52,6 +55,8 @@ public class MainActivity extends Activity {
     private WebView web;
     private Uri home;
     private boolean lookedForNewLink;
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private static final int CONNECT_TIMEOUT_MS = 30000;
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -60,6 +65,9 @@ public class MainActivity extends Activity {
         String address = prefs.getString("address", "");
         if (address.isEmpty()) {
             showSetup(null);
+        } else if (prefs.getString("key", "").isEmpty() && address.startsWith("http://100.")) {
+            // Saved by version 2 for Tailscale, which BotTrack no longer uses.
+            showSetup("BotTrack now connects with a QR code instead of Tailscale. Scan the one on your Mac's Setup page, Phone access.");
         } else {
             showWeb(firstPage());
         }
@@ -166,6 +174,10 @@ public class MainActivity extends Activity {
 
     private void showWeb(String page) {
         home = Uri.parse(address());
+        final FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(NAVY);
+        final TextView connecting = text("Connecting to your Mac…", 16, MUTED);
+        final boolean[] loaded = {false};
         web = new WebView(this);
         web.setBackgroundColor(NAVY);
         WebSettings s = web.getSettings();
@@ -204,13 +216,31 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onPageCommitVisible(WebView view, String url) {
+                if (view != web) return;  // the Mac answered: stop the connect timer and the "Connecting" note
+                loaded[0] = true;
+                frame.removeView(connecting);
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 CookieManager.getInstance().flush();  // stay signed in after the app is closed
-                if (view == web) lookedForNewLink = false;  // reached the Mac, so look again next time it's gone
+                if (view != web) return;
+                lookedForNewLink = false;  // reached the Mac, so look again next time it's gone
+                loaded[0] = true;
+                frame.removeView(connecting);
             }
         });
-        setContentView(web);
+        frame.addView(web);
+        frame.addView(connecting, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        setContentView(frame);
         web.loadUrl(page);
+        // An address that never answers (no error, just waiting) would leave a blank screen.
+        final WebView started = web;
+        main.postDelayed(() -> {
+            if (web == started && !loaded[0]) unreachable();
+        }, CONNECT_TIMEOUT_MS);
     }
 
     /** The Mac didn't answer: ask its private topic for a newer link, once, before giving up. */
