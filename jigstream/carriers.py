@@ -235,3 +235,4 @@ def run(con, env):
         state["last"] = f"Tracking check failed: {e}"
     finally:
         state["running"] = False
+        browsertrack.release()
