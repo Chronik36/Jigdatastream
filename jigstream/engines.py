@@ -8,6 +8,7 @@ Two free engines, both inside the app:
 The comparison runs every corrected training example (from the Inbox page or order corrections)
 through each model and reports how often it matched your answer and how long each email took.
 """
+import functools
 import json
 import logging
 import os
@@ -34,6 +35,7 @@ _mlx = {"proc": None}
 compare_state = {"running": False, "progress": "", "results": [], "error": None, "finished_at": None}
 
 
+@functools.lru_cache(maxsize=None)  # a failed import is retried on every call otherwise, and Setup asks each visit
 def mlx_available():
     try:
         import mlx_lm  # noqa: F401  (Apple Silicon only)
@@ -95,16 +97,23 @@ def unload(engine, model):
 
 
 _found = {}
+_failed_at = {}  # query -> when the last search failed, so an offline Mac doesn't wait 15 s on every Setup visit
 
 
 def find_mlx_models(query="qwen3 abliterated", limit=30):
     """Abliterated Qwen3 builds converted for MLX on Hugging Face, smallest first (looked up once)."""
     if query in _found:
         return _found[query]
+    if time.monotonic() - _failed_at.get(query, -1e9) < 600:
+        raise OSError("Hugging Face search failed recently; trying again in a few minutes")
     url = "https://huggingface.co/api/models?" + urllib.parse.urlencode(
         {"search": query, "filter": "mlx", "sort": "downloads", "direction": "-1", "limit": limit})
-    with urllib.request.urlopen(url, timeout=15) as r:
-        ids = [m["id"] for m in json.load(r)]
+    try:
+        with urllib.request.urlopen(url, timeout=15) as r:
+            ids = [m["id"] for m in json.load(r)]
+    except Exception:
+        _failed_at[query] = time.monotonic()
+        raise
     picks = [i for i in ids if "abliterat" in i.lower() and re.search(r"\b(4|8|14)b\b", i.lower().replace("-", " "))]
 
     def size(i):
