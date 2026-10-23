@@ -179,9 +179,9 @@ AI saw and to teach it by labelling emails.</p>
   "A green ✓ pill is your label. A grey AI: pill shows what the AI decided when it synced."]) }}
 <h4 id="labels">The labels</h4>
 <p><b>Order placed</b>, <b>Shipped / In transit</b>, <b>Out for delivery</b>, <b>Delivered</b>, <b>Cancelled</b>, <b>Returned / refunded</b>,
-<b>Botting expense</b> and <b>Not an order</b>. When you label an email the AI re-reads it, compares its answer to yours, and saves the pair
-as a training example. The label is also applied: a <i>Delivered</i> label updates that order, and a <i>Botting expense</i> label adds
-the receipt to Expenses. Give it a minute, then refresh.</p>
+<b>Botting expense</b>, <b>Sale / payout</b> and <b>Not an order</b>. When you label an email the AI re-reads it, compares its answer to yours, and saves the pair
+as a training example. The label is also applied: a <i>Delivered</i> label updates that order, a <i>Botting expense</i> label adds
+the receipt to Expenses, and a <i>Sale / payout</i> label adds the sale to the Profit goal tab. Use the <span class="ui">Sales</span> filter to find sale emails. Give it a minute, then refresh.</p>
 <div class="tip">Label a handful of emails from your usual retailers and vendors early on. Five or more labelled emails also unlock
 <a href="#setup-compare">Compare models</a>.</div>
 </section>
@@ -235,6 +235,18 @@ A budget change applies from the current month on; earlier months are compared w
   "Each category against its budget. The lighter part of a bar is renewals still due; orange is close, red is over.",
   "The last 12 months: bars are what you spent, the dashed line is your budget.",
   "Set a monthly budget per category. Export saves the month's expenses (or all of them) as a CSV file."]) }}
+<h4 id="expense-profit">Profit goal</h4>
+<p>What you sold, what each flip made, and whether the month covers your botting expenses. Sales come from sale and payout emails
+(StockX, GOAT, eBay, Tradepost, Mercari, Vinted, Alias, and any marketplace you add), from payout deposits on your bank statements,
+or typed in with <span class="ui">Add sale</span>. A "you sold" email and its later "payout sent" email become one sale.</p>
+<p>Each sale is tied to the order you bought the item with, so its profit is the payout minus what you paid. If there's no order
+(bought in store, or you'd rather use MSRP), type the cost. <b>Break-even</b> is when profit on flips covers the month's botting
+expenses and the renewals still due; your <b>goal</b> is the profit you want on top of that.</p>
+{{ fig("expense-profit", "The Profit goal tab.", [
+  "Profit on flips this month against break-even (the white mark) and your goal, with how many more sales it takes at your average.",
+  "How the month adds up: sales, cost of what you sold, expenses, and net profit.",
+  "Every sale. Edit one to tie it to an order or type its cost. A lump payout of sales already counted is left out; Count it adds it back.",
+  "Selling apps the AI watches for. Add your own here; for anything it still misses, label the email Sale / payout on Inbox."]) }}
 <p>Expenses are found by the same <span class="ui">Sync now</span> as orders, and the Sync buttons are on this page too.
 If a receipt is missing, find it on <a href="#inbox">Inbox</a> and label it <b>Botting expense</b>.</p>
 </section>

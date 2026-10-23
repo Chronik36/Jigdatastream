@@ -5,7 +5,7 @@ from datetime import date
 
 from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, url_for
 
-from . import budget, db, ledger, recurring
+from . import budget, db, ledger, recurring, sales
 from .extract import BILLING_PERIODS, EXPENSE_CATEGORIES
 from .orderstore import Store
 
@@ -14,7 +14,7 @@ pages = Blueprint("expenses", __name__)
 
 
 def _con():
-    return budget.ensure(db.connect(current_app.config["DB_PATH"]))
+    return sales.ensure(db.connect(current_app.config["DB_PATH"]))
 
 
 def _back():
@@ -34,6 +34,7 @@ def overview():
                            counts=ledger.counts(items), recent=[r for r in items if r["kind"] == "expense"][:8],
                            rec=recurring.totals(subs), soon=recurring.upcoming(subs)[:6], sync=_sync(),
                            month=budget.month_view(c, budget.month_of(date.today())),
+                           profit=sales.month_numbers(c, budget.month_of(date.today())),
                            **_dialogs())
 
 
@@ -150,6 +151,93 @@ def export():
     month = month if month and re.fullmatch(r"\d{4}-\d{2}", month) else None
     return Response(budget.export_csv(_con(), month), mimetype="text/csv", headers={
         "Content-Disposition": f"attachment; filename=botting-expenses{'-' + month if month else ''}.csv"})
+
+
+def _month_arg():
+    this = budget.month_of(date.today())
+    month = request.args.get("month", this)
+    return (month if re.fullmatch(r"\d{4}-\d{2}", month) and month <= this else this), this
+
+
+@pages.get("/expenses/profit")
+def profit_page():
+    c = _con()
+    recurring.refresh(c)
+    sales.link_orders(c)
+    month, this = _month_arg()
+    items = ledger.rows(c)
+    return render_template("expense_profit.html", tab="profit", counts=ledger.counts(items),
+                           rec=recurring.totals(recurring.subscriptions(c)), p=sales.month_numbers(c, month),
+                           rows=sales.rows(c, month), hist=sales.history(c, width=380), deposits=sales.deposits(c),
+                           unsold=sales.unsold(c, 8), platforms=sales.platforms(c), custom=sales.custom_platforms(c),
+                           orders=sales.order_choices(c), prev=budget.shift(month, -1),
+                           next=budget.shift(month, 1) if month < this else None, **_dialogs())
+
+
+@pages.post("/expenses/profit/goal")
+def profit_goal():
+    amount = _amount("goal")
+    sales.set_setting(_con(), "monthly_goal", str(amount if amount and amount > 0 else 0))
+    flash("Monthly profit goal saved.")
+    return _back()
+
+
+def _sale_form():
+    order = request.form.get("order_id", type=int)
+    return {"platform": _text("platform"), "item": _text("item"), "size": _text("size"),
+            "sale_price": _amount("sale_price"), "fees": _amount("fees"), "payout": _amount("payout"),
+            "date": _text("date"), "cost": _amount("cost"), "order_id": order or None}
+
+
+@pages.post("/expenses/sales/new")
+def sale_new():
+    f = _sale_form()
+    if not f["platform"] or (f["payout"] is None and f["sale_price"] is None):
+        flash("Enter where you sold it and what you got for it.")
+        return _back()
+    c = _con()
+    if f["order_id"] and f["cost"] is None:
+        f["cost"] = c.execute("SELECT total FROM tracked_orders WHERE id = ?", (f["order_id"],)).fetchone()[0]
+    sales.add(c, f)
+    logger.info("sale added by hand")
+    flash(f"Added your {f['platform']} sale.")
+    return _back()
+
+
+@pages.post("/expenses/sales/<int:sale_id>/<action>")
+def sale_action(sale_id, action):
+    c = _con()
+    if action == "edit":
+        f = _sale_form()
+        if f["order_id"] and f["cost"] is None:
+            f["cost"] = c.execute("SELECT total FROM tracked_orders WHERE id = ?", (f["order_id"],)).fetchone()[0]
+        sales.update(c, sale_id, {k: v for k, v in f.items() if v is not None or k in ("order_id", "cost")})
+        flash("Sale saved.")
+    elif action == "count":
+        sales.update(c, sale_id, {"counted": 1 if request.form.get("counted") == "1" else 0})
+    elif action == "delete":
+        sales.delete(c, sale_id)
+        flash("Sale deleted.")
+    return _back()
+
+
+@pages.post("/expenses/sales/deposit/<int:tx_id>")
+def sale_deposit(tx_id):
+    if sales.add_deposit(_con(), tx_id, _text("platform")):
+        flash("Deposit added to your sales.")
+    return _back()
+
+
+@pages.post("/expenses/platforms")
+def platforms_save():
+    c = _con()
+    if request.form.get("remove"):
+        sales.remove_platform(c, request.form["remove"])
+    else:
+        name = sales.add_platform(c, request.form.get("name"))
+        if name:
+            flash(f"Added {name}. The next sync also looks for its sale and payout emails.")
+    return _back()
 
 
 @pages.post("/expenses/ledger/<int:tx_id>/close")

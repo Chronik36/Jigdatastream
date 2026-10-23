@@ -150,6 +150,19 @@ def seed(path):
     if has_module("budget"):
         from jigstream import budget
         budget.set_budgets(c, {"proxy": 150, "bot": 100, "cook_group": 50, "server": 40, "captcha": 25})
+    if has_module("sales"):
+        from jigstream import sales
+        c.execute("UPDATE tracked_orders SET items = ? WHERE retailer = 'Foot Locker'",
+                  (json.dumps([{"name": "New Balance 9060 Sea Salt", "quantity": 1, "price": 149.99}]),))
+        c.commit()
+        sales.add(c, {"platform": "StockX", "item": "New Balance 9060 Sea Salt", "size": "10.5", "sale_price": 210,
+                      "fees": 21.60, "payout": 188.40, "date": "2026-10-19"})
+        sales.add(c, {"platform": "Mercari", "item": "Kith Box Logo Hoodie", "payout": 240, "cost": 165,
+                      "date": "2026-10-21"})
+        sales.add(c, {"platform": "eBay", "payout": 412.50, "date": "2026-10-20", "counted": 0})
+        c.execute("UPDATE sales SET counted = 0 WHERE item IS NULL")
+        sales.set_setting(c, "monthly_goal", "300")
+        c.commit()
     logs = WORK / "logs"
     logs.mkdir(exist_ok=True)
     (logs / "app.log").write_text(
@@ -372,6 +385,8 @@ shot("expense-recurring", "/expenses/recurring", [(".stats", 1), (".idea", 2), (
 shot("expense-budget", "/expenses/budget", [(".mnav b", 1), (".stats", 2), (".brow", 3), (".chart", 4),
                                             ("button[onclick='budgetdlg.showModal()']", 5)],
      viewport={"width": 1360, "height": 1000})
+shot("expense-profit", "/expenses/profit", [(".big", 1), (".eq", 2), ("table", 3), (".chips", 4)],
+     viewport={"width": 1360, "height": 1350})
 shot("checkouts", "/checkouts", [("main > p", 1), ("tbody tr:nth-child(3) td:nth-child(3), tr:nth-child(3) td:nth-child(3)", 2),
                                  ("tr:nth-child(3) td:last-child", 3)])
 shot("profiles", "/profiles", [(".gside", 1), ("button[onclick='openProfile()']", 2), ("button[onclick*=exportdlg]", 3),

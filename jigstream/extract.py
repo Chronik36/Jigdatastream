@@ -20,6 +20,9 @@ def status_advances(old, new):
     return PROGRESS.index(new) > PROGRESS.index(old)
 EXPENSE_CATEGORIES = ["proxy", "bot", "cook_group", "captcha", "server", "aco_service", "account", "other"]
 BILLING_PERIODS = ["one_time", "weekly", "monthly", "yearly"]
+# Where people resell. Only a hint for the model: a sale from any other marketplace counts too, and you
+# can add your own on the Profit goal tab or teach it with the Inbox's "Sale / payout" label.
+SELL_PLATFORMS = ["StockX", "GOAT", "eBay", "Tradepost", "Mercari", "Vinted", "Alias"]
 
 # Words that point at botting tools in general. There is deliberately no vendor list:
 # new proxy and bot sellers appear all the time, so the model judges from content.
@@ -31,7 +34,8 @@ BOTTING_WORDS = re.compile(
 MONEY = re.compile(r"(?:[$\u00a3\u20ac]\s?\d[\d,]*(?:\.\d{2})?|\b\d[\d,]*\.\d{2}\s?(?:USD|EUR|GBP|CAD)\b)")
 PURCHASE_WORDS = re.compile(
     r"\b(order|receipt|invoice|payment|paid|charged?|subscription|renew(al|ed)?|purchase[ds]?|"
-    r"total|billing|shipped|shipping|delivered|delivery|tracking|cancel+ed|refund(ed)?|return(ed)?)\b",
+    r"total|billing|shipped|shipping|delivered|delivery|tracking|cancel+ed|refund(ed)?|return(ed)?|"
+    r"sold|payouts?|paid out|earnings|cash ?out)\b",
     re.I,
 )
 
@@ -40,13 +44,14 @@ SYSTEM_PROMPT = f"""You read one email and extract purchase data as JSON. Reply 
 Decide "kind":
 - "order": a purchase of physical goods from a store (order confirmation, shipping notice, delivery notice, cancellation, refund, return).
 - "botting_expense": a receipt for tools used for retail botting or reselling automation. Judge from what was bought, not who sent it, because new sellers appear all the time. Examples: proxies (residential, ISP, datacenter, per-GB data plans), bot software licenses, keys or renewals, cook group or Discord memberships (often sold through whop.com), captcha solving credits, servers/VPS, ACO (auto-checkout) services, aged or generated accounts.
+- "sale": you SOLD something on a resale marketplace or selling app ({", ".join(SELL_PLATFORMS)}, or any other) and are being paid: "you sold", "you made the sale", "your item sold", "payout sent", "you've been paid", "cash out". Buying on eBay or similar is an "order", not a sale.
 - "other": anything else: marketing, newsletters, account notices, receipts unrelated to retail or botting. Payment reminders, unpaid or upcoming invoices and "your plan will renew" notices are "other": only money actually charged counts.
 
 For botting expenses, "vendor" is the business that sold the product, not the payment processor. If the receipt comes from Stripe, PayPal, Paddle, Sellix, Shopify, Whop, Gumroad or similar, use the product's or community's own name shown in the receipt (for whop.com, the community or product name). Only use the processor's name if no other seller is named.
 
 JSON keys (use null when unknown, never invent values):
 {{
-  "kind": "order" | "botting_expense" | "other",
+  "kind": "order" | "botting_expense" | "sale" | "other",
   "retailer": store or brand name for orders,
   "order_number": string,
   "order_date": "YYYY-MM-DD",
@@ -62,7 +67,12 @@ JSON keys (use null when unknown, never invent values):
   "vendor": seller name for botting expenses,
   "expense_category": one of {EXPENSE_CATEGORIES},
   "billing_period": one of {BILLING_PERIODS},
-  "description": short description of what was bought (botting expenses)
+  "description": short description of what was bought (botting expenses),
+  "platform": where you sold it, for sales (e.g. "StockX"),
+  "sale_price": number, the price the item sold for (sales),
+  "fees": number, fees the platform took (sales),
+  "payout": number, what you receive after fees (sales),
+  "size": string, the item's size if shown (sales)
 }}"""
 
 TRACKING_PATTERNS = [
@@ -185,7 +195,7 @@ def _str(value):
 def normalize(data, email):
     """Clean the model's output and fill gaps from the email itself."""
     kind = data.get("kind")
-    if kind not in ("order", "botting_expense", "other"):
+    if kind not in ("order", "botting_expense", "sale", "other"):
         kind = "other"
 
     email_day = email.date[:10] if email.date else None
@@ -212,6 +222,26 @@ def normalize(data, email):
             "date": _date(data.get("order_date")) or email_day,
             "order_number": _str(data.get("order_number")),
             "billing_period": period if period in BILLING_PERIODS else None,
+        }
+
+    if kind == "sale":
+        items = [i for i in data.get("items") or [] if isinstance(i, dict) and _str(i.get("name"))]
+        price, fees, payout = _money(data.get("sale_price")), _money(data.get("fees")), _money(data.get("payout"))
+        if payout is None and price is not None and fees is not None:
+            payout = round(price - fees, 2)
+        if price is None and payout is None:
+            payout = total if total is not None else find_total(email.body)
+        return {
+            "kind": "sale",
+            "platform": _str(data.get("platform")) or _str(data.get("retailer")) or _sender_name(email.sender),
+            "item": _str(items[0]["name"]) if items else _str(data.get("description")),
+            "size": _str(data.get("size")),
+            "sale_price": price,
+            "fees": fees,
+            "payout": payout,
+            "currency": currency,
+            "date": _date(data.get("order_date")) or email_day,
+            "order_number": _str(data.get("order_number")),
         }
 
     if kind == "other":
@@ -271,7 +301,14 @@ def _sender_name(sender):
     return m.group(1) if m else (sender or None)
 
 
-def email_prompt(email, max_body_chars=12000):
+def platforms_named(email, platforms=()):
+    """Selling platforms named in the sender or subject, from the built-in list and your own."""
+    head = f"{email.sender}\n{email.subject}"
+    return [p for p in dict.fromkeys([*SELL_PLATFORMS, *platforms])
+            if p and re.search(rf"(?<![a-z0-9]){re.escape(p)}(?![a-z0-9])", head, re.I)]
+
+
+def email_prompt(email, max_body_chars=12000, platforms=()):
     user = (
         f"From: {email.sender}\nSubject: {email.subject}\nDate: {email.date}\n\n"
         f"{email.body[:max_body_chars]}"
@@ -279,15 +316,19 @@ def email_prompt(email, max_body_chars=12000):
     signals = botting_signals(email)
     if signals:
         user += f"\n\n(Botting-related words found: {', '.join(signals)}. Decide from the content.)"
+    named = platforms_named(email, platforms)
+    if named:
+        user += (f"\n\n(This comes from a selling platform: {', '.join(named)}. If it says you sold something or "
+                 "were paid out, kind is \"sale\"; if you bought something, it's an \"order\".)")
     return user
 
 
-def extract_raw(llm, email, max_body_chars=12000, examples=()):
+def extract_raw(llm, email, max_body_chars=12000, examples=(), platforms=()):
     """(the model's raw JSON, the cleaned result)."""
-    user = email_prompt(email, max_body_chars)
+    user = email_prompt(email, max_body_chars, platforms)
     raw = llm.chat_json(SYSTEM_PROMPT, user, examples=examples) if examples else llm.chat_json(SYSTEM_PROMPT, user)
     return raw, normalize(raw, email)
 
 
-def extract(llm, email, max_body_chars=12000, examples=()):
-    return extract_raw(llm, email, max_body_chars, examples)[1]
+def extract(llm, email, max_body_chars=12000, examples=(), platforms=()):
+    return extract_raw(llm, email, max_body_chars, examples, platforms)[1]
