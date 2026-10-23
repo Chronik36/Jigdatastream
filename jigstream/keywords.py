@@ -448,6 +448,9 @@ def analyze(html, url=""):
         "headings": p.headings[:40], "product": ld, "codes": codes,
         "alts": list(dict.fromkeys(p.alts))[:20], "words": single, "phrases": phrases, "word_count": total,
         "thin": total < 60, "name": name, "positives": positives, "negatives": negatives,
+        # Words that are part of the product's own name, however the page spells it: never negatives.
+        "protected": sorted(set().union(*(words(n) for n in name_variants(p, ld))) | {
+            t for w, *_ in positives for t in words(spaced_form(w, page_text))}),
         "related": [text for text, _ in similar][:30],
     }
 
@@ -568,7 +571,12 @@ def merge_ai(result, ai):
         if w.lower() not in have:
             result["positives"].append((w.lower(), "local AI" + (f": {r}" if r else ""), True))
             have.add(w.lower())
+    keep = {w.lower() for w, *_ in result["positives"]} | set(result.get("protected", ()))
     for w, r in ai["negatives"]:
+        toks = words(w)
+        # "nee doh" is needoh written with a space: never exclude a + keyword, however it's spelled.
+        if not toks or with_joins(toks) & keep or "".join(toks) in keep:
+            continue
         if w.lower() not in have:
             result["negatives"].append((w.lower(), "local AI" + (f": {r}" if r else "")))
             have.add(w.lower())
@@ -594,7 +602,7 @@ def keywords_feedback():
         return jsonify(ok=False, error=str(e)), 400
     except Exception as e:
         logger.exception("keyword finder: couldn't save feedback")
-        return jsonify(ok=False, error=f"Couldn't save that ({type(e).__name__})."), 500
+        return jsonify(ok=False, error=f"Couldn't save that ({e})."), 500
     return jsonify(ok=True, word=word, rule_id=rule_id)
 
 

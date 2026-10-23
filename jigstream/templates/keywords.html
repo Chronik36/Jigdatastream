@@ -16,7 +16,8 @@
 .kw-head button{padding:4px 10px;font-size:12px}
 .kw-table td,.kw-table th{padding:7px 12px}
 .kw-table{margin:0}
-.kw-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;word-break:break-all}
+.kw-line{display:block;width:100%;box-sizing:border-box;resize:vertical;min-height:44px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;color:var(--text);background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;word-break:break-all}
+.kw-line:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 dl.kw-meta{display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 12px;margin:0}dl.kw-meta dt{color:var(--muted)}dl.kw-meta dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .kw-table td{overflow-wrap:anywhere}
 .star{color:var(--orange)}
@@ -58,8 +59,8 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
 <div class="panel">
   <div class="kw-head"><h3>Monitor keywords</h3><button class="ghost" data-copy="kwline">Copy</button></div>
   <p class="muted" style="margin-bottom:8px">For <b style="color:var(--text)">{{result.name or "this page"}}</b>.
-  Remove (×) any suggestion that's wrong and add any that's missing. BotTrack remembers it for {{result.host}}{% if result.product.brand %} and {{result.product.brand}} items{% endif %}, and the local AI learns from it (Training → Keyword finder).</p>
-  <div class="kw-line" id="kwline">{{line}}</div>
+  Edit the line, use × to remove a suggestion, or add one below. BotTrack remembers it for {{result.host}}{% if result.product.brand %} and {{result.product.brand}} items{% endif %}, and the local AI learns from it (Training → Keyword finder).</p>
+  <textarea class="kw-line" id="kwline" rows="2" spellcheck="false" aria-label="Monitor keywords, editable">{{line}}</textarea>
   <div class="kw-add">
     <select id="kwkind" aria-label="Keyword type"><option value="+">+ require</option><option value="-">- exclude</option></select>
     <input id="kwword" placeholder="Add a keyword" aria-label="Keyword">
@@ -125,10 +126,11 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
   const msg = document.getElementById('kwmsg');
   const rows = kind => [...document.querySelectorAll(`#${kind === '+' ? 'kwpos' : 'kwneg'} tr[data-word]`)];
   const words = kind => rows(kind).map(r => r.dataset.word);
+  const line = document.getElementById('kwline');
   function refresh() {
     const pos = rows('+').filter(r => r.dataset.line === '1').map(r => '+' + r.dataset.word);
     const neg = words('-').filter(w => !words('+').includes(w)).map(w => '-' + w);
-    document.getElementById('kwline').textContent = pos.concat(neg).join(',');
+    line.value = pos.concat(neg).join(',');
     ['kwpos', 'kwneg'].forEach(id => {
       document.querySelector(`#${id} .kw-empty`).hidden = !!document.querySelector(`#${id} tr[data-word]`);
     });
@@ -150,20 +152,39 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
     tr.querySelector('button').title = 'Remove ' + kind + word;
     return tr;
   }
+  function removeWord(kind, word) {
+    rows(kind).filter(r => r.dataset.word === word).forEach(r => r.remove());
+    refresh();
+    return send(kind, word, 'remove').then(d => {
+      const chip = document.createElement('span');
+      chip.className = 'chip'; chip.dataset.rule = d.rule_id; chip.textContent = kind + word + ' ';
+      const undoBtn = document.createElement('button');
+      undoBtn.className = 'kw-undo'; undoBtn.type = 'button'; undoBtn.textContent = 'undo'; undoBtn.title = 'Suggest it again';
+      chip.appendChild(undoBtn);
+      document.getElementById('kwremovedlist').appendChild(chip); refresh();
+      return `removed ${kind}${word}`;
+    });
+  }
+  function addWord(kind, word) {
+    rows(kind).filter(r => r.dataset.word === word).forEach(r => r.remove());
+    const body = document.getElementById(kind === '+' ? 'kwpos' : 'kwneg');
+    body.insertBefore(row(kind, word, 'you added this'), body.querySelector('.kw-empty'));
+    refresh();
+    return send(kind, word, 'add').then(() => `added ${kind}${word}`);
+  }
+  function report(done, verb) {
+    return Promise.allSettled(done).then(results => {
+      const ok = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+      const bad = results.filter(r => r.status === 'rejected');
+      if (bad.length) say('Not saved: ' + bad[0].reason.message);
+      else if (ok.length) say(`${ok.join(', ')}. Remembered for ${info.host}.`.replace(/^./, c => c.toUpperCase()));
+    });
+  }
   document.addEventListener('click', e => {
     const x = e.target.closest('button.kw-x');
-    if (x) {
-      const tr = x.closest('tr'), kind = tr.dataset.kind, word = tr.dataset.word;
-      tr.remove(); refresh();
-      send(kind, word, 'remove').then(d => {
-        say(`Removed ${kind}${word}. It won't be suggested for ${info.host} again.`);
-        const chip = document.createElement('span');
-        chip.className = 'chip'; chip.dataset.rule = d.rule_id; chip.textContent = kind + word + ' ';
-        const undoBtn = document.createElement('button');
-        undoBtn.className = 'kw-undo'; undoBtn.type = 'button'; undoBtn.textContent = 'undo'; undoBtn.title = 'Suggest it again';
-        chip.appendChild(undoBtn);
-        document.getElementById('kwremovedlist').appendChild(chip); refresh();
-      }).catch(err => say('Not saved: ' + err.message));
+    if (x && x.closest('tr[data-word]')) {
+      const tr = x.closest('tr');
+      report([removeWord(tr.dataset.kind, tr.dataset.word)], 'Removed');
     }
     const undo = e.target.closest('button.kw-undo');
     if (undo) {
@@ -174,22 +195,43 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
   });
   function add() {
     const kind = document.getElementById('kwkind').value;
-    const word = document.getElementById('kwword').value.trim().replace(/^[+-]+/, '').toLowerCase();
+    const word = document.getElementById('kwword').value.trim().replace(/^[+-]+/, '').trim().toLowerCase();
     if (!word) return;
-    rows(kind).filter(r => r.dataset.word === word).forEach(r => r.remove());
-    const body = document.getElementById(kind === '+' ? 'kwpos' : 'kwneg');
-    body.insertBefore(row(kind, word, 'you added this'), body.querySelector('.kw-empty'));
-    document.getElementById('kwword').value = ''; refresh();
-    send(kind, word, 'add').then(() => say(`Added ${kind}${word} for ${info.host}.`)).catch(err => say('Not saved: ' + err.message));
+    document.getElementById('kwword').value = '';
+    report([addWord(kind, word)], 'Added');
   }
   document.getElementById('kwaddbtn').addEventListener('click', add);
   document.getElementById('kwword').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+  // Editing the line itself: whatever was taken out is removed, whatever was typed in is added.
+  function applyLine() {
+    const want = {'+': new Set(), '-': new Set()};
+    line.value.split(/[,\n]/).map(t => t.trim()).filter(Boolean).forEach(t => {
+      const kind = t[0] === '-' ? '-' : '+';
+      const word = t.replace(/^[+-]+/, '').trim().toLowerCase();
+      if (word) want[kind].add(word);
+    });
+    const removed = [], added = [];
+    ['+', '-'].forEach(kind => {
+      const have = rows(kind).filter(r => kind === '-' || r.dataset.line === '1').map(r => r.dataset.word);
+      have.filter(w => !want[kind].has(w)).forEach(w => removed.push(removeWord(kind, w)));
+      [...want[kind]].filter(w => !have.includes(w)).forEach(w => added.push(addWord(kind, w)));
+    });
+    refresh();
+    Promise.allSettled(removed.concat(added)).then(results => {
+      const bad = results.find(r => r.status === 'rejected');
+      const done = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+      if (bad) say('Not saved: ' + bad.reason.message);
+      else if (done.length) say(`${done.join(', ')}. Remembered for ${info.host}.`.replace(/^./, c => c.toUpperCase()));
+    });
+  }
+  line.addEventListener('change', applyLine);
+  line.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); line.blur(); } });
 })();
 document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => {
   const el = document.getElementById(b.dataset.copy);
   const text = el.tagName === 'TBODY'
     ? [...el.querySelectorAll('tr')].map(r => r.cells[0].textContent.replace('★', '').trim()).filter(Boolean).join(', ')
-    : el.textContent.trim();
+    : (el.value !== undefined ? el.value : el.textContent).trim();
   const done = () => { const t = b.textContent; b.textContent = 'Copied'; setTimeout(() => b.textContent = t, 1200); };
   (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(done).catch(() => {
     const ta = Object.assign(document.createElement('textarea'), {value: text});
