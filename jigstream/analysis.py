@@ -23,8 +23,9 @@ def profile_stats(con):
 def failure_report(con):
     """One row per profile with failures: stats, address issues, suggested fix."""
     stats = profile_stats(con)
-    rows = []
+    rows, names = [], set()
     for p in con.execute("SELECT * FROM profiles"):
+        names.add(p["name"])
         s = stats.get(p["name"])
         if not s:
             continue
@@ -40,7 +41,7 @@ def failure_report(con):
             "suggested": A.suggest(p["ship_address1"], p["ship_address2"], p["ship_city"],
                                    p["ship_state"], p["ship_zip"]) if issues else None,
         })
-    unmatched = [n for n in stats if n and not con.execute("SELECT 1 FROM profiles WHERE name=?", (n,)).fetchone()]
+    unmatched = [n for n in stats if n and n not in names]
     return sorted(rows, key=lambda r: r["rate"]), unmatched
 
 
