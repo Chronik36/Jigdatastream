@@ -196,13 +196,14 @@ body .fl{color:#7884b3}
   "setup": '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   "stock": '<path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/>',
   "keywords": '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  "products": '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
   "chev": '<path d="m15 18-6-6 6-6"/>',
   "menu": '<path d="M4 6h16M4 12h16M4 18h16"/>',
 } %}
 {% set sections = [
   ("Overview", [("/", "Dashboard", "dash")]),
   ("Tracking", [("/orders", "Orders", "orders"), ("/profile-orders", "Profile orders", "profiles"), ("/inbox", "Inbox", "inbox"), ("/expenses", "Expenses", "expenses"), ("/bank", "Bank", "bank"), ("/training", "Training", "training")]),
-  ("Bot tools", [("/checkouts", "Checkouts", "checkouts"), ("/profiles", "Profiles", "profiles"), ("/cards", "Cards", "cards"), ("/emails", "Emails", "emails"), ("/stock", "Stock", "stock"), ("/keywords", "Keywords", "keywords")]),
+  ("Bot tools", [("/checkouts", "Checkouts", "checkouts"), ("/profiles", "Profiles", "profiles"), ("/cards", "Cards", "cards"), ("/emails", "Emails", "emails"), ("/stock", "Stock", "stock"), ("/keywords", "Keywords", "keywords"), ("/products", "Products", "products")]),
 ] %}
 {% set footer = [("/manual", "Manual", "manual"), ("/logs", "Logs", "logs"), ("/setup", "Setup", "setup")] %}
 {% macro icon(name) %}<svg class="i" viewBox="0 0 24 24" aria-hidden="true">{{ icons[name]|safe }}</svg>{% endmacro %}

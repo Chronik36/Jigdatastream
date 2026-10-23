@@ -404,6 +404,35 @@ version of the same shoe.</p>
 the same site. If very little text comes back, the page builds itself with JavaScript and the list may be incomplete.</p>
 </section>{% endif %}
 
+{% if "products.products_page" in pages %}<section id="products" data-title="Products">
+<h2>Products</h2>
+<div class="where">Sidebar → Bot tools → <b>Products</b></div>
+<p>Helps you decide what to buy. Describe the kind of product you're after and the local AI suggests matching products with their type,
+SKU, MSRP and where they're sold. For each product you track, BotTrack looks up what it resells for on your selling sites and works out
+the profit: the market price minus what the product costs at each store (its MSRP, or what you actually pay there). When stores charge
+different prices, all of them are listed and the cheapest one is recommended.</p>
+<ol class="steps">
+<li>Type what you're looking for in <span class="ui">Research</span> and press it. A 14B model can take a minute or two.</li>
+<li>Tick the products you want and press <span class="ui">Track selected</span>.</li>
+<li>Press <span class="ui">Update</span> on a product (or <span class="ui">Update all prices</span>) to look up resale prices.</li>
+<li>Open <span class="ui">Details</span> to add store prices from a product link, type in prices for sites that can't be read, or find similar products.</li>
+</ol>
+{{ fig("products", "The Products page with sample products.", [
+  "Describe the kind of product you want. The AI's MSRPs and SKUs come from its training, so check them with a store link.",
+  "Pick which suggestions to track. Products already tracked can't be picked again.",
+  "Focus on these: the tracked products with the most profit per item that are still being made, with where to buy and where to sell.",
+  "Buy at: the cheapest store, with the other stores' prices under it.",
+  "Update all prices: looks up every tracked product on every selling site that's on. With Local AI reads pages ticked, the AI reads pages that have no price data BotTrack understands.",
+  "Test sources: one sample search on each selling site, to show which ones answer from your Mac."]) }}
+<p><b>Selling sites.</b> StockX, GOAT, eBay, Tradepost, Mercari, Vinted and Alias are built in. eBay's sold listings are read from its search
+page; if eBay blocks that, a free eBay developer key gives current listing prices instead. Tradepost and Alias are phone apps, so you type
+their prices in. To add another site, search it in your browser, copy the results link, and put <code>{q}</code> where your search words were.</p>
+<p><b>Training it.</b> When the local AI read a site's prices and you correct them on a product's details, the correction is saved as an
+example on the <a href="#training">Training</a> page (task “Read resale prices”), so it reads that site better next time.</p>
+<div class="warn">Prices are looked up only when you click, a few seconds apart. A site that refuses or shows a bot check is reported and left
+alone for 15 minutes; BotTrack never tries to get around a block.</div>
+</section>{% endif %}
+
 {% if "stock.stock_page" in pages %}<section id="stock" data-title="In-store stock">
 <h2>In-store stock</h2>
 <div class="where">Sidebar → Bot tools → <b>In-store stock</b></div>

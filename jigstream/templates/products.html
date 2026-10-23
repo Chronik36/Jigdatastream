@@ -1,0 +1,218 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.pr-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
+.pr-head h3{margin:0;flex:1}
+.pr-head form{margin:0}
+.pr-form{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px;margin:0}
+.pr-form textarea{flex:1;min-width:280px;min-height:64px;font:inherit;background:var(--surface-2);color:var(--text);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;outline:none;resize:vertical}
+.pr-form textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.pr-form input,.pr-form select{margin:0}
+.pr-form label{color:var(--muted);display:flex;align-items:center;gap:6px}
+.pr-table{margin:0}
+.pr-table td,.pr-table th{padding:9px 12px}
+.pr-sub{font-size:12px;color:var(--muted)}
+.money{font-variant-numeric:tabular-nums;font-weight:600}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.focus{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.fc{background:linear-gradient(180deg,#12204d,var(--surface));border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;position:relative}
+.fc:before{content:"";position:absolute;left:16px;top:0;width:28px;height:3px;border-radius:0 0 3px 3px;background:var(--green);box-shadow:0 0 12px var(--green)}
+.fc .rank{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.fc b{display:block;margin:4px 0 6px;line-height:1.3}
+.fc .big{font-size:22px;font-weight:700;color:var(--green);font-variant-numeric:tabular-nums}
+.fc p{font-size:12.5px;color:var(--muted);margin:6px 0 0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:999px;padding:2px 10px;font-size:12.5px;white-space:nowrap}
+.chip.best{border-color:rgba(61,220,132,.45);color:var(--green)}
+.chip.err{border-color:rgba(255,107,122,.35);color:var(--muted)}
+.s-ok{color:var(--green);background:var(--green-soft);border-color:rgba(61,220,132,.3)}
+.s-blocked,.s-error{color:var(--red);background:rgba(255,107,122,.08);border-color:rgba(255,107,122,.28)}
+.s-app{color:var(--orange);background:rgba(255,138,61,.1);border-color:rgba(255,138,61,.3)}
+.s-off,.s-untested{color:var(--muted)}
+tr.detail>td{background:var(--surface-2)}
+.det{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px}
+.det h4{margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.det table{margin:0}.det td,.det th{padding:6px 10px;background:var(--surface)}
+.det .pr-form input{padding:6px 10px}
+.mini-btn{padding:3px 10px;font-size:12px;line-height:1.4}
+.acts{display:flex;gap:6px;flex-wrap:wrap}.acts form{margin:0}
+details>summary{cursor:pointer;color:var(--accent)}
+</style>
+
+<h2>Products</h2>
+<p class="muted">Tell the local AI what kind of product you're after. It suggests products with their type, SKU and MSRP; BotTrack then looks up what
+they resell for on your selling sites and works out the profit: the going market price minus what it costs at each store. When stores charge
+different prices, all of them are listed and the cheapest one is recommended. Prices are looked up only when you click, with requests spaced out;
+a site that blocks automated visits is reported and you can type its price in.</p>
+
+{% if error %}<div class="banner" style="border-color:rgba(255,107,122,.45);background:rgba(255,107,122,.08)"><span>{{error}}</span></div>{% endif %}
+{% if note %}<div class="banner"><span>{{note}}</span></div>{% endif %}
+
+{% if focus %}
+<div class="panel">
+  <div class="pr-head"><h3>Focus on these</h3><span class="muted" style="font-size:12px">Most profit per item, still in production</span></div>
+  <div class="focus">{% for f in focus %}<div class="fc">
+    <div class="rank">#{{loop.index}}{% if f.product.type %} · {{f.product.type}}{% endif %}</div>
+    <b><a href="#p-{{f.product.id}}">{{f.product.name}}</a></b>
+    <span class="big">+${{'{:,.2f}'.format(f.a.profit)}}</span> <span class="muted">each{% if f.a.margin is not none %} · {{f.a.margin}}%{% endif %}</span>
+    <p>{{f.reason}}</p>
+  </div>{% endfor %}</div>
+</div>
+{% endif %}
+
+<div class="panel" id="research">
+  <div class="pr-head"><h3>Research</h3></div>
+  <form class="pr-form" method="post" action="/products/research" data-loader="Asking the local AI" data-loader-msg="A 14B model can take a minute or two.">
+    <textarea name="query" placeholder="What are you looking for? e.g. Pokémon sealed product that resells over MSRP, or Jordan 1 retros releasing this fall" required>{{research.query if not research['for']}}</textarea>
+    <button>Research</button>
+  </form>
+  <p class="pr-sub" style="margin:8px 0 0">The AI's MSRPs and SKUs come from what it learned in training, so they can be out of date. Add a store link below to read the real price.</p>
+  {% if research.error %}<p class="bad" style="margin-top:12px">The local AI couldn't answer: {{research.error}}</p>{% endif %}
+  {% if research['items'] %}
+  <form method="post" action="/products/add" style="display:block;margin:16px 0 0">
+    <p class="muted" style="margin:0 0 8px"><b style="color:var(--text)">{{research.query}}</b>{% if research.type %} · {{research.type}}{% endif %}</p>
+    <table class="pr-table"><thead><tr><th></th><th>Product</th><th>SKU</th><th class="num">MSRP</th><th>Sold at</th><th>In production</th><th>Why</th></tr></thead><tbody>
+    {% for it in research['items'] %}{% set have = it.name.lower() in tracked %}<tr>
+      <td><input type="checkbox" name="pick" value="{{loop.index0}}" {{'disabled' if have else 'checked'}}></td>
+      <td><b>{{it.name}}</b>{% if it.type %}<div class="pr-sub">{{it.type}}</div>{% endif %}{% if have %}<div class="pr-sub">Already tracked</div>{% endif %}</td>
+      <td>{{it.sku or '-'}}</td>
+      <td class="num money">{{'$%.2f'|format(it.msrp) if it.msrp else '-'}}</td>
+      <td>{{it.retailers|join(', ') or '-'}}</td>
+      <td>{{'Yes' if it.in_production == true else ('No' if it.in_production == false else 'Not sure')}}</td>
+      <td class="pr-sub">{{it.why}}</td>
+    </tr>{% endfor %}</tbody></table>
+    <button style="margin-top:10px">Track selected</button>
+  </form>
+  {% endif %}
+  <details style="margin-top:14px"><summary>Add a product by hand</summary>
+    <form class="pr-form" method="post" action="/products/add" style="margin-top:10px">
+      <input name="name" placeholder="Product name" required style="flex:1;min-width:240px">
+      <input name="type" placeholder="Type (e.g. sneakers)" style="width:160px">
+      <input name="sku" placeholder="SKU" style="width:130px">
+      <input name="store" placeholder="Store" style="width:120px">
+      <input name="msrp" placeholder="MSRP" inputmode="decimal" style="width:100px">
+      <button class="ghost">Add</button>
+    </form>
+  </details>
+</div>
+
+<div class="panel" id="tracked">
+  <div class="pr-head"><h3>Tracked products</h3>
+    <span class="muted" style="font-size:12px">Sort:
+      {% for k, label in (('profit', 'profit'), ('margin', 'margin'), ('added', 'newest')) %}<a href="?sort={{k}}#tracked" style="{{'color:var(--text);font-weight:600' if sort == k}}">{{label}}</a>{{' · ' if not loop.last}}{% endfor %}</span>
+    {% if rows %}<form method="post" action="/products/update-all" class="pr-form" style="align-items:center">
+      <label title="When a page has no price data BotTrack can read, the local AI reads the page"><input type="checkbox" name="ai" value="1" checked> Local AI reads pages</label>
+      <button class="ghost" {{'disabled' if state.running}}>Update all prices</button></form>{% endif %}
+  </div>
+  {% if state.running %}<p class="muted" id="progress">Updating prices: {{state.done}} of {{state.total}}{% if state.current %}, now {{state.current}}{% endif %}…</p>
+  {% elif state.finished %}<p class="muted">Prices last updated at {{state.finished}}.</p>{% endif %}
+  {% if rows %}
+  <table class="pr-table"><thead><tr><th>Product</th><th>Buy at</th><th class="num">Market</th><th class="num">Profit</th><th class="num">Margin</th><th>Selling sites</th><th></th></tr></thead><tbody>
+  {% for p, a in rows %}
+  <tr id="p-{{p.id}}">
+    <td style="white-space:normal;min-width:200px"><b>{{p.name}}</b>
+      <div class="pr-sub">{{p.type or 'No type'}}{% if p.sku %} · SKU {{p.sku}}{% endif %}{% if p.in_production == false %} · <span class="bad">not in production</span>{% endif %}</div></td>
+    <td>{% if a.best %}<span class="chip best">{{a.best.store}} ${{'{:,.2f}'.format(a.best.price)}}</span>
+      {% for s in a.stores[1:] %}<div class="pr-sub">{{s.store}} ${{'{:,.2f}'.format(s.price)}}</div>{% endfor %}
+      {% else %}<span class="muted">No store price</span>{% endif %}</td>
+    <td class="num money">{{'$' ~ '{:,.2f}'.format(a.market) if a.market is not none else '-'}}</td>
+    <td class="num money {{'pos' if a.profit and a.profit > 0 else ('neg' if a.profit is not none and a.profit < 0 else '')}}">{{ ('+' if a.profit > 0 else ('-' if a.profit < 0 else '')) ~ '$' ~ '{:,.2f}'.format(a.profit|abs) if a.profit is not none else '-'}}</td>
+    <td class="num">{{a.margin ~ '%' if a.margin is not none else '-'}}</td>
+    <td><div class="chips">{% for plat in platforms if p.market.get(plat.key) %}{% set m = p.market[plat.key] %}
+      <span class="chip{{' err' if m.error}}" title="{{m.how}}{% if m.count %}, {{m.count}} price{{'s' if m.count != 1}} ${{m.low}}-${{m.high}}{% endif %}, {{m.when}}{% if m.error %}. Last try failed: {{m.error}}{% endif %}">{{plat.name}} ${{'{:,.0f}'.format(m.price)}}</span>
+      {% else %}<span class="muted">None yet</span>{% endfor %}</div></td>
+    <td><div class="acts">
+      <form method="post" action="/products/{{p.id}}/update" data-loader="Looking up resale prices"><input type="hidden" name="ai" value="1"><button class="ghost mini-btn">Update</button></form>
+      <a class="mini-btn" href="?open={{p.id}}#p-{{p.id}}">Details</a></div></td>
+  </tr>
+  {% if open == p.id %}<tr class="detail"><td colspan="7"><div class="det">
+    <div><h4>Stores (what it costs you)</h4>
+      {% if p.retail %}<table><tbody>{% for r in p.retail %}<tr>
+        <td>{{r.store}}{% if a.best and a.best.idx == loop.index0 %} <span class="pill s-ok">best</span>{% endif %}</td>
+        <td class="num money">{{'$%.2f'|format(r.price) if r.price else '-'}}</td>
+        <td class="pr-sub">{{'My cost' if r.kind == 'cost' else 'MSRP'}} · {{r['from']}}{% if r.link %} · <a href="{{r.link}}" target="_blank" rel="noopener">link</a>{% endif %}</td>
+        <td><form method="post" action="/products/{{p.id}}/retail/{{loop.index0}}/remove" style="margin:0"><button class="ghost mini-btn" title="Remove">✕</button></form></td>
+      </tr>{% endfor %}</tbody></table>{% endif %}
+      <form class="pr-form" method="post" action="/products/{{p.id}}/retail" style="margin-top:10px" data-loader="Reading the price">
+        <input name="store" placeholder="Store" style="width:110px">
+        <input name="price" placeholder="Price" inputmode="decimal" style="width:90px">
+        <select name="kind"><option value="msrp">MSRP</option><option value="cost">My cost</option></select>
+        <input name="link" placeholder="or a product link to read the price" style="flex:1;min-width:180px">
+        <button class="ghost mini-btn">Add</button>
+      </form>
+    </div>
+    <div><h4>Selling sites (what it resells for)</h4>
+      <table><tbody>{% for plat in platforms %}{% set m = p.market.get(plat.key) %}<tr>
+        <td>{{plat.name}}{% if plat.key in off %} <span class="pr-sub">(off)</span>{% endif %}</td>
+        <td class="num money">{{'$%.2f'|format(m.price) if m and m.price else '-'}}</td>
+        <td class="pr-sub">{% if m %}{{m.how}}{% if m.count and m.count > 1 %}, {{m.count}} prices ${{m.low}}-${{m.high}}{% endif %}, {{m.when}}{% if m.link %} · <a href="{{m.link}}" target="_blank" rel="noopener">open</a>{% endif %}{% if m.error %}<div class="bad">{{m.error}}</div>{% endif %}
+          {% elif plat.kind == 'app' %}{{app_note.get(plat.key, 'Type the price in.')}}{% else %}Not looked up yet{% endif %}</td>
+        <td><form class="pr-form" method="post" action="/products/{{p.id}}/market" title="Type a price, or several separated by commas; leave empty to clear">
+          <input type="hidden" name="platform" value="{{plat.key}}">
+          {% if m and m.how == 'read by the local AI' %}<input type="hidden" name="teach" value="1">{% endif %}
+          <input name="price" placeholder="{{'Correct' if m and not m.manual else 'Price'}}" inputmode="decimal" style="width:84px">
+          <button class="ghost mini-btn">Set</button></form></td>
+      </tr>{% endfor %}</tbody></table>
+      <p class="pr-sub" style="margin:8px 0 0">Correcting a price the local AI read also saves it as an example on the Training page (task “Read resale prices”), so it reads that site better next time.</p>
+    </div>
+    <div><h4>Product</h4>
+      <form class="pr-form" method="post" action="/products/{{p.id}}/edit">
+        <input name="name" value="{{p.name}}" style="flex:1;min-width:220px">
+        <input name="type" value="{{p.type}}" placeholder="Type" style="width:140px">
+        <input name="sku" value="{{p.sku}}" placeholder="SKU" style="width:130px">
+        <select name="in_production"><option value="">In production: not sure</option>
+          <option value="yes" {{'selected' if p.in_production == true}}>In production</option>
+          <option value="no" {{'selected' if p.in_production == false}}>Not in production</option></select>
+        <button class="ghost mini-btn">Save</button></form>
+      {% if p.why %}<p class="pr-sub" style="margin:8px 0 0">AI: {{p.why}}</p>{% endif %}
+      <div class="acts" style="margin-top:10px">
+        <form method="post" action="/products/{{p.id}}/similar" data-loader="Asking the local AI for similar products"><button class="ghost mini-btn">Find similar products</button></form>
+        <form method="post" action="/products/{{p.id}}/remove" onsubmit="return confirm('Stop tracking {{p.name|e}}?')"><button class="ghost mini-btn">Remove</button></form>
+      </div>
+      <p class="pr-sub" style="margin:8px 0 0">Added {{p.added}}{% if p.updated %} · prices updated {{p.updated}}{% endif %}</p>
+    </div>
+  </div></td></tr>{% endif %}
+  {% endfor %}</tbody></table>
+  <p class="pr-sub" style="margin:10px 0 0">Market is the middle price across the selling sites that have one. Profit is market minus the cheapest store's price.</p>
+  {% else %}<p class="muted">Nothing tracked yet. Research a product type above, or add one by hand.</p>{% endif %}
+</div>
+
+<div class="panel" id="sources">
+  <div class="pr-head"><h3>Selling sites</h3>
+    <form method="post" action="/products/sources/test" data-loader="Testing each selling site" data-loader-msg="One search per site, a few seconds apart.">
+      <button class="ghost">Test sources</button></form>
+  </div>
+  <p class="muted">“Test sources” runs one sample search on each site from this Mac and shows which ones answer. Sites that block automated visits stay
+  blocked; type their prices in on a product's details instead.</p>
+  <table class="pr-table"><thead><tr><th>Site</th><th>Last test</th><th></th></tr></thead><tbody>
+  {% for plat in platforms %}{% set st = status.get(plat.key) %}<tr>
+    <td><b>{{plat.name}}</b>{% if plat.custom %} <span class="pr-sub">yours</span>{% endif %}
+      <div class="pr-sub">{{'Phone app, prices typed in' if plat.kind == 'app' else (plat.url|replace('{q}', '…'))[:70]}}</div></td>
+    <td style="white-space:normal">{% if plat.key in off %}<span class="pill s-off">Off</span>
+      {% elif st %}<span class="pill s-{{st.state}}">{{ {'ok': 'Works', 'blocked': 'Blocked', 'error': 'No prices', 'app': 'Typed in'}[st.state] }}</span> <span class="pr-sub">{{st.note}} · {{st.when}}</span>
+      {% else %}<span class="pill s-untested">Not tested</span>{% endif %}</td>
+    <td><div class="acts">{% if plat.kind != 'app' %}<form method="post" action="/products/sources/{{plat.key}}/toggle"><button class="ghost mini-btn">{{'Turn on' if plat.key in off else 'Turn off'}}</button></form>{% endif %}
+      {% if plat.custom %}<form method="post" action="/products/sources/{{plat.key}}/remove"><button class="ghost mini-btn">Remove</button></form>{% endif %}</div></td>
+  </tr>{% endfor %}</tbody></table>
+  <details style="margin-top:14px"><summary>Add another selling site</summary>
+    <p class="muted" style="margin:10px 0 8px">Search the site in your browser, copy the results link, and replace your search words with <code>{q}</code>.
+    BotTrack reads prices from the page's product data, or has the local AI read the page. Correct its prices on a product to train it on that site.</p>
+    <form class="pr-form" method="post" action="/products/sources/add">
+      <input name="name" placeholder="Name, e.g. Whatnot" style="width:170px" required>
+      <input name="url" placeholder="https://example.com/search?q={q}" style="flex:1;min-width:260px" required>
+      <button class="ghost">Add site</button>
+    </form>
+  </details>
+  <details style="margin-top:10px"><summary>eBay API key (optional, free)</summary>
+    <p class="muted" style="margin:10px 0 8px">BotTrack reads eBay's sold listings page. If eBay blocks that, a free key from
+    <a href="https://developer.ebay.com/" target="_blank" rel="noopener">developer.ebay.com</a> (App ID and Cert ID, Production) lets it use
+    current listing prices instead; eBay doesn't give sold prices through its free API. {% if has_ebay %}<b class="ok">A key is saved.</b>{% endif %} Stored only on this Mac.</p>
+    <form class="pr-form" method="post" action="/products/ebay-key">
+      <input name="client_id" placeholder="App ID (Client ID)" autocomplete="off" style="width:240px">
+      <input type="password" name="client_secret" placeholder="Cert ID (Client Secret)" autocomplete="off" style="width:240px">
+      <button class="ghost">{{'Replace key' if has_ebay else 'Save key'}}</button>
+    </form>
+  </details>
+</div>
+
+{% if state.running %}<script>setTimeout(() => location.reload(), 5000);</script>{% endif %}
+{% endblock %}
