@@ -99,22 +99,62 @@ def _address_key(line1, zip_):
     return f"{base} · {A.zip5(zip_)}" if base and A.zip5(zip_) else base
 
 
+def _where(line1, zip_, full):
+    """An address as (house number + street, ZIP, the full address as it was used)."""
+    return {"base": A.base_line1(line1), "zip": A.zip5(zip_), "full": " ".join((full or "").split())}
+
+
 def profile_addresses(con):
-    """profile name -> the base street address it ships to (jig units and prefixes dropped), with its ZIP."""
+    """profile name -> where it ships: the base street (jig units and prefixes dropped), ZIP and full address."""
     out = {}
-    for p in con.execute("SELECT name, ship_address1, ship_zip, bill_address1, bill_zip FROM profiles"):
-        line1, zip_ = (p[1], p[2]) if (p[1] or "").strip() else (p[3], p[4])
-        if _address_key(line1, zip_):
-            out[p[0]] = _address_key(line1, zip_)
+    for p in con.execute("SELECT name, ship_address1, ship_address2, ship_city, ship_state, ship_zip,"
+                         " bill_address1, bill_address2, bill_city, bill_state, bill_zip FROM profiles"):
+        f = p[1:6] if (p[1] or "").strip() else p[6:11]
+        w = _where(f[0], f[4], ", ".join(x for x in (" ".join(y for y in f[:2] if y), f[2], " ".join(y for y in f[3:] if y)) if x))
+        if w["base"]:
+            out[p[0]] = w
     return out
 
 
 def order_address(order):
-    """The base street address from the order email the checkout matched, when its profile has none."""
+    """Where the order email the checkout matched shipped to, when its profile has no address."""
     if not order or not order.get("shipping_address"):
-        return ""
+        return None
     text = order["shipping_address"]
-    return _address_key(text, profilematch.parse_order_address(text)["zip"])
+    w = _where(text, profilematch.parse_order_address(text)["zip"], text)
+    return w if w["base"] else None
+
+
+def label_addresses(items):
+    """Name each checkout's address by its base address. Jigged copies of one address share the house number and
+    ZIP even when the street is spelled a little differently ("MAIN ST" / "MAINN ST"), so those count as one;
+    the label is the spelling used most."""
+    def cluster(w):
+        house = w["base"].split()[0]
+        return f"{house}|{w['zip']}" if w["zip"] else w["base"]
+    spellings = {}
+    for c in items:
+        if c.get("where"):
+            spellings.setdefault(cluster(c["where"]), Counter())[
+                f"{c['where']['base']} · {c['where']['zip']}" if c["where"]["zip"] else c["where"]["base"]] += 1
+    for c in items:
+        c["address"] = spellings[cluster(c["where"])].most_common(1)[0][0] if c.get("where") else ""
+        c["address_full"] = c["where"]["full"] if c.get("where") else ""
+
+
+def full_addresses(items):
+    """Every full address used under the checkouts shown (one base address once it's picked), most used first."""
+    used = {}
+    for c in items:
+        if c.get("address_full"):
+            u = used.setdefault(c["address_full"].upper(), {"full": c["address_full"], "tries": 0, "real": 0,
+                                                             "profiles": set()})
+            u["tries"] += 1
+            u["real"] += c["outcome"] in ("confirmed", "no_email")
+            if c["profile"]:
+                u["profiles"].add(c["profile"])
+    return sorted(({**u, "profiles": sorted(u["profiles"])} for u in used.values()),
+                  key=lambda u: (-u["tries"], u["full"]))
 
 
 def rows(con, matched=None, links=None):
@@ -131,8 +171,9 @@ def rows(con, matched=None, links=None):
         c.pop("raw", None)
         c["day"], c["outcome"] = day_of(c["ts"]), outcome(c)
         c["product"] = parsers.tidy(c["product"])  # for showing; the stored row is untouched
-        c["address"] = homes.get(c["profile"]) or order_address(c["order"])
+        c["where"] = homes.get(c["profile"]) or order_address(c["order"])
         out.append(c)
+    label_addresses(out)
     return out
 
 
@@ -212,6 +253,7 @@ def report(con, site=None, sort="proxy", day=None, by=None, name=None):
         "proxies": leaderboard(items, GROUPS["proxy"]),
         "profiles": leaderboard(items, GROUPS["profile"]),
         "addresses": leaderboard(items, GROUPS["address"]),
+        "full_addresses": full_addresses(items) if by == "address" else [],
         "combos": [t for t in leaderboard(items, lambda c: f"{c['proxy_group'] or c['proxy'] or 'No proxy'} + "
                                                          f"{c['profile'] or 'No profile'}") if t["real"]][:10],
         "drops": drops(items, sort, cards),
