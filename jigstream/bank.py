@@ -12,6 +12,7 @@ import hashlib
 import io
 import logging
 import re
+from functools import lru_cache
 from datetime import date, datetime, timedelta, timezone
 
 logger = logging.getLogger("jigstream.bank")
@@ -64,9 +65,16 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _setup(con):
+    con.executescript(SCHEMA)
+    # When the bank gave the charge a time (Plaid does for many cards): Card check ties a charge to a checkout by it.
+    if "time" not in {r[1] for r in con.execute("PRAGMA table_info(bank_transactions)")}:
+        con.execute("ALTER TABLE bank_transactions ADD COLUMN time TEXT")
+
+
 def ensure(con):
     from . import db
-    return db.setup_once(con, __name__, lambda c: c.executescript(SCHEMA))
+    return db.setup_once(con, __name__, _setup)
 
 
 # ---------- reading statement files ----------
@@ -239,18 +247,18 @@ def import_rows(con, account_id, rows, source):
             uid = "csv:" + hashlib.sha256(f"{base}|{seen[base]}".encode()).hexdigest()[:32]
         cur = con.execute(
             "INSERT OR IGNORE INTO bank_transactions (uid, account_id, date, description, amount, currency, pending,"
-            " category, source, imported_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            " category, source, imported_at, time) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (uid, account_id, r["date"], r["description"], r["amount"], r.get("currency") or "USD",
-             int(bool(r.get("pending"))), r.get("category"), source, _now()))
+             int(bool(r.get("pending"))), r.get("category"), source, _now(), r.get("time")))
         if cur.rowcount:
             added += 1
         else:
             skipped += 1
             if r.get("uid"):  # Plaid sends changed transactions again: keep the newest details
                 con.execute("UPDATE bank_transactions SET date = ?, description = ?, amount = ?, pending = ?,"
-                            " category = ? WHERE uid = ?",
+                            " category = ?, time = COALESCE(?, time) WHERE uid = ?",
                             (r["date"], r["description"], r["amount"], int(bool(r.get("pending"))),
-                             r.get("category"), uid))
+                             r.get("category"), r.get("time"), uid))
     con.commit()
     return added, skipped
 
@@ -278,6 +286,7 @@ def _squash(text):
     return re.sub(r"[^a-z0-9]", "", (text or "").lower())
 
 
+@lru_cache(maxsize=100000)  # pure; Stuck and Card check ask it for every refund and checkout pair
 def names_agree(description, store_name):
     """'NIKE.COM 8005551234 OR' vs 'Nike' -> True. Bank descriptions are cut short and mashed together,
     so a store word appearing anywhere in the squashed description counts."""

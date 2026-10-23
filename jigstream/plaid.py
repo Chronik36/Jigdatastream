@@ -187,7 +187,8 @@ def _row(tx, account_ids):
             "amount": round(float(tx["amount"]), 2),  # Plaid: positive = money out, like ours
             "currency": tx.get("iso_currency_code") or tx.get("unofficial_currency_code") or "USD",
             "pending": tx.get("pending"), "category": category.replace("_", " ").title() if category else None,
-            "account_id": account_ids.get(tx["account_id"]), "replaces": tx.get("pending_transaction_id")}
+            "account_id": account_ids.get(tx["account_id"]), "replaces": tx.get("pending_transaction_id"),
+            "time": tx.get("authorized_datetime")}  # when the card was swiped; the posted time says nothing
 
 
 def sync_item(con, item_id):
