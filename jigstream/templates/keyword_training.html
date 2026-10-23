@@ -1,0 +1,17 @@
+{% set kt = keyword_training() %}
+<h3 id="keywords">Keyword finder corrections</h3>
+<p class="muted">What you removed or added on the Keywords page. Rules apply to the same store, and to the same brand on
+other stores. Pages you corrected are shown to the local AI as examples before it suggests keywords for a new page.</p>
+<table><thead><tr><th>Keyword</th><th>You</th><th>Store</th><th>Brand</th><th>From</th><th></th></tr></thead><tbody>
+{% for r in kt.rules %}<tr><td><span class="chip {{'pos' if r.kind == '+' else 'neg'}}">{{r.kind}}{{r.word}}</span></td>
+<td>{{"removed it" if r.action == "remove" else "added it"}}</td><td>{{r.host}}</td><td>{{r.brand|upper or "-"}}</td>
+<td class="muted" style="overflow-wrap:anywhere">{{r.product or r.url or "-"}}</td>
+<td><form method="post" action="/keywords/rules/{{r.id}}/delete"><button class="danger">Delete</button></form></td></tr>
+{% else %}<tr><td colspan="6" class="muted">No corrections yet. On the Keywords page, use × to remove a suggestion or Add to add one.</td></tr>{% endfor %}
+</tbody></table>
+{% if kt.examples %}<p><a href="/keywords/training/export"><button class="ghost">Export keyword examples (.jsonl)</button></a></p>
+<table><thead><tr><th>Corrected page</th><th>Keywords you kept</th><th></th></tr></thead><tbody>
+{% for e in kt.examples %}{% set a = e.answer|fromjson %}<tr><td><b>{{e.product or "-"}}</b><div class="muted" style="overflow-wrap:anywhere">{{e.url}}</div></td>
+<td style="overflow-wrap:anywhere">{% for w in a.positive_keywords %}+{{w.word}} {% endfor %}{% for w in a.negative_keywords %}-{{w.word}} {% endfor %}</td>
+<td><form method="post" action="/keywords/examples/delete"><input type="hidden" name="url" value="{{e.url}}"><button class="danger">Delete</button></form></td></tr>
+{% endfor %}</tbody></table>{% endif %}

@@ -78,7 +78,7 @@ def test_page_and_blocked_site(tmp_path, monkeypatch):
 def test_ai_negatives_merged(tmp_path, monkeypatch):
     client = create_app(str(tmp_path / "k.db")).test_client()
     monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
-    monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, system, user: {
+    monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, system, user, **k: {
         "summary": "A sneaker product page.", "main_keywords": ["air jordan 1 low panda"],
         "positive_keywords": [{"word": "panda", "reason": "colourway"}],
         "negative_keywords": [{"word": "reimagined", "reason": "different release"}, {"word": "panda", "reason": "x"}]})
@@ -91,11 +91,11 @@ def test_model_failures_never_crash_the_page(tmp_path, monkeypatch):
     client = create_app(str(tmp_path / "k.db")).test_client()
     monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
 
-    def slow(self, system, user):
+    def slow(self, system, user, **k):
         raise TimeoutError("timed out")
 
-    odd_answers = [slow, lambda self, s, u: {"negative_keywords": 5, "positive_keywords": "panda", "main_keywords": None},
-                   lambda self, s, u: ["not", "a", "dict"], lambda self, s, u: {}.get("x")["y"]]
+    odd_answers = [slow, lambda self, s, u, **k: {"negative_keywords": 5, "positive_keywords": "panda", "main_keywords": None},
+                   lambda self, s, u, **k: ["not", "a", "dict"], lambda self, s, u, **k: {}.get("x")["y"]]
     for answer in odd_answers:
         monkeypatch.setattr(keywords.LLMClient, "chat_json", answer)
         r = client.post("/keywords", data={"url": "https://kicks.example/p/0", "ai": "1"})
@@ -105,7 +105,7 @@ def test_model_failures_never_crash_the_page(tmp_path, monkeypatch):
 def test_plain_string_negatives_from_model(tmp_path, monkeypatch):
     client = create_app(str(tmp_path / "k.db")).test_client()
     monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
-    monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, s, u: {"negative_keywords": ["reimagined", 7]})
+    monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, s, u, **k: {"negative_keywords": ["reimagined", 7]})
     assert "-reimagined" in client.post("/keywords", data={"url": "https://x.example/p", "ai": "1"}).get_data(as_text=True)
 
 
@@ -197,3 +197,51 @@ def test_page_details_wrap_long_values(tmp_path, monkeypatch):
     monkeypatch.setattr(keywords, "fetch", lambda url: (url, TOY_PAGE))
     html = client.post("/keywords", data={"url": "https://gotoytime.com/p"}).get_data(as_text=True)
     assert "overflow-wrap:anywhere" in html
+
+
+def test_corrections_are_remembered_and_taught(tmp_path, monkeypatch):
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, TOY_PAGE))
+    url = "https://gotoytime.com/products/nee-doh-dig-it-pig"
+    html = client.post("/keywords", data={"url": url}).get_data(as_text=True)
+    assert 'data-word="mini"' in html and "+dig,+pig,+needoh" in html
+
+    page = keywords.page_summary(keywords.analyze(TOY_PAGE, url))
+    base = {"url": url, "host": "gotoytime.com", "brand": "SCHYLLING", "product": "Dig It Pig NeeDoh", "page": page,
+            "positives": ["dig", "pig", "needoh"], "negatives": ["ice", "glow"]}
+    r = client.post("/keywords/feedback", json=dict(base, kind="-", word="mini", action="remove"))
+    assert r.get_json()["ok"] and r.get_json()["rule_id"]
+    assert client.post("/keywords/feedback", json=dict(base, kind="-", word="-Glow", action="add")).get_json()["word"] == "glow"
+    assert client.post("/keywords/feedback", json=dict(base, kind="?", word="x", action="add")).status_code == 400
+
+    # Same store, another page: the rules apply.
+    html = client.post("/keywords", data={"url": "https://gotoytime.com/products/other"}).get_data(as_text=True)
+    assert 'data-word="mini"' not in html and 'data-word="glow"' in html and "Removed by you" in html
+    assert "-glow" in html and "-mini" not in html.split('id="kwline"')[1].split("</div>")[0]
+
+    # Same brand on another store: still applies. Unrelated store and brand: doesn't.
+    other = TOY_PAGE.replace("SCHYLLING", "OTHERCO")
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, other))
+    assert 'data-word="glow"' not in client.post("/keywords", data={"url": "https://elsewhere.com/p"}).get_data(as_text=True)
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, TOY_PAGE))
+    assert 'data-word="glow"' in client.post("/keywords", data={"url": "https://elsewhere.com/p"}).get_data(as_text=True)
+
+    # The corrected page is shown to the model as an example for a new page; AI suggestions you removed stay out.
+    seen = {}
+
+    def model(self, system, user, examples=()):
+        seen["examples"] = examples
+        return {"summary": "x", "negative_keywords": [{"word": "mini"}, {"word": "slime"}]}
+    monkeypatch.setattr(keywords.LLMClient, "chat_json", model)
+    html = client.post("/keywords", data={"url": "https://gotoytime.com/products/new", "ai": "1"}).get_data(as_text=True)
+    assert len(seen["examples"]) == 1 and '"glow"' in seen["examples"][0][1]
+    assert 'data-word="slime"' in html and 'data-word="mini"' not in html
+
+    # Training page lists them; rules and examples can be deleted and exported.
+    page = client.get("/training").get_data(as_text=True)
+    assert "Keyword finder corrections" in page and "-mini" in page and "Dig It Pig NeeDoh" in page
+    assert b"glow" in client.get("/keywords/training/export").data
+    rule_id = r.get_json()["rule_id"]
+    client.post(f"/keywords/rules/{rule_id}/delete")
+    html = client.post("/keywords", data={"url": url}).get_data(as_text=True)
+    assert 'data-word="mini"' in html
