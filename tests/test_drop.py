@@ -200,3 +200,21 @@ def test_real_valor_follow_ups(tmp_path):
     assert {r["order_number"]: r["outcome"] for r in rows} == {
         "102003850007046": "cancelled", "102003854795409": "confirmed", "102003854750691": "confirmed"}
     assert {r["proxy"] for r in rows} == {"isp.example.net:8000"}
+
+
+def test_tidy_product_names_and_odd_proxies(tmp_path):
+    raw = ("[(94300082) Pok&amp;#233;mon Trading Card Game: Scarlet &amp;#38; Violet&amp;#8212; Destined Rivals]"
+           "(https://www.target.com/p/-/A-94300082)")
+    assert parsers.tidy(raw) == "(94300082) Pokémon Trading Card Game: Scarlet & Violet— Destined Rivals"
+    assert drop.proxy_host("Leaf ISP") == "Leaf ISP"  # a list's name, nothing secret
+    assert drop.proxy_host("Leaf ISP - 23.1.2.3:8000:user:s3cret") == "23.1.2.3:8000"
+    assert drop.proxy_host("Leaf ISP - user:s3cret") == "(hidden)"
+    c, store = setup(tmp_path)
+    hook(c, "a", "Target", "Ana", "ISP A", "isp.example.net:8000")
+    c.execute("UPDATE checkouts SET product = ?", (raw,))
+    c.commit()
+    client = create_app(str(tmp_path / "m.db")).test_client()
+    page = client.get("/drop").get_data(as_text=True)
+    assert "Pokémon Trading Card" in page and "&amp;#233;" not in page and "target.com/p" not in page
+    assert 'class="droprow"' in page and "Open ›" in page
+    assert "Pokémon Trading Card" in client.get("/checkouts").get_data(as_text=True)

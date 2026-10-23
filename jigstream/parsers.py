@@ -40,6 +40,17 @@ def _clean(s):
     return s.strip()
 
 
+def tidy(s):
+    """Text a bot sent, as people should read it: HTML entities decoded even when sent twice ("Pok&amp;#233;mon"),
+    and markdown links reduced to their text. For display only; stored fields stay as they came."""
+    s = str(s or "")
+    for _ in range(3):
+        if "&" not in s:
+            break
+        s = html.unescape(s)
+    return re.sub(r"\[([^\]]+)\]\((?:https?://)[^)\s]*\)", r"\1", s).strip()
+
+
 def flatten_embed(embed):
     fields = {}
     for f in embed.get("fields", []) or []:
