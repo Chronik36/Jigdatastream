@@ -64,7 +64,7 @@ def test_drops_tab_holds_every_checkout_page(tmp_path):
     hook(c, "a", "Target", "Ana", "ISP A", "isp.example.net:8000")
     client = create_app(str(tmp_path / "m.db")).test_client()
     page = client.get("/drop").get_data(as_text=True)
-    assert "/drop?day=" in page and 'href="/checkouts"' in page and 'href="/stuck"' in page
+    assert "day=" in page and 'href="/checkouts"' in page and 'href="/stuck"' in page
     assert 'href="/checkouts" title="Checkouts"' not in page  # no separate sidebar entries
     for url in ("/checkouts", "/stuck"):
         assert 'class="it on" href="/drop"' in client.get(url).get_data(as_text=True)
@@ -115,3 +115,59 @@ def test_cancel_weeks_later_still_matches_without_an_order_number(tmp_path):
     c.execute("UPDATE tracked_orders SET order_date = NULL")
     c.commit()
     assert drop.rows(Store(c).db)[0]["outcome"] == "cancelled"
+
+
+def valor(c, title, number="", profile="Ana", site="Target", ts="2026-10-25T10:00:00Z", fields=()):
+    embed = {"title": title, "timestamp": ts, "fields": [{"name": "Site", "value": site}, {"name": "Profile", "value": profile},
+                                                         {"name": "Order Number", "value": number}, *fields]}
+    return parsers.ingest(c, json.dumps([{"username": "Valor AIO", "embeds": [embed]}]))
+
+
+def test_valor_follow_up_decides_good_or_cancelled(tmp_path):
+    c, store = setup(tmp_path)
+    for fp, n in (("a", "V1"), ("b", "V2"), ("c", "")):
+        valor(c, "Successful Checkout", n, ts="2026-10-20T15:00:00Z")
+    assert valor(c, "Order Cancelled", "V1") == 1
+    valor(c, "Order Update", "V2", fields=[{"name": "Status", "value": "Stuck"}])
+    valor(c, "Order Cancelled", "", ts="2026-10-21T10:00:00Z")  # no order number: same bot, site and profile
+    # Follow-ups are not checkouts: they don't add tries.
+    assert c.execute("SELECT COUNT(*) FROM checkouts").fetchone()[0] == 3
+    out = {r["order_number"]: r["outcome"] for r in drop.rows(Store(c).db)}
+    assert out == {"V1": "cancelled", "V2": "confirmed", "": "cancelled"}
+    # An order email cancelling it wins over the bot's "good".
+    mail(store, "m", "Target", "cancelled", "2026-10-30T09:00:00+00:00", "V2")
+    assert {r["order_number"]: r["outcome"] for r in drop.rows(Store(c).db)}["V2"] == "cancelled"
+
+
+def test_checkout_webhooks_are_not_follow_ups():
+    embed = lambda title, fields=(): {"title": title, "fields": list(fields)}
+    assert parsers.update_verdict(embed("Successful Checkout!")) is None
+    assert parsers.update_verdict(embed("Checkout Cancelled")) is None
+    assert parsers.update_verdict(embed("Order Placed")) is None
+    assert parsers.update_verdict(embed("Order Stuck")) == "good"
+    assert parsers.update_verdict(embed("Order status", [{"name": "Cancel Reason", "value": "x"}])) is None
+
+
+def test_follow_ups_stored_as_checkouts_move_out(tmp_path):
+    c, store = setup(tmp_path)
+    valor(c, "Successful Checkout", "V1")
+    raw = json.dumps({"payload_username": "Valor AIO", "embed": {"title": "Order Cancelled", "fields": [
+        {"name": "Order Number", "value": "V1"}]}})
+    c.execute("INSERT INTO checkouts (fingerprint, bot, status, raw) VALUES ('old', 'Valor', 'failure', ?)", (raw,))
+    assert parsers.move_updates(c) == 1
+    assert c.execute("SELECT COUNT(*) FROM checkouts").fetchone()[0] == 1
+    assert drop.rows(Store(c).db)[0]["outcome"] == "cancelled"
+
+
+def test_click_into_a_group(tmp_path):
+    c, store = setup(tmp_path)
+    hook(c, "a", "Target", "Ana", "ISP A", "isp.example.net:8000", number="1")
+    hook(c, "b", "Target", "Jacob 1", "Resi B", "gw.resi.io:7777", number="2")
+    day = drop.rows(Store(c).db)[0]["day"]
+    r = drop.report(Store(c).db, day=day, by="group", name="Resi B")
+    assert [x["profile"] for s in r["drops"] for d in s["days"] for x in d["checkouts"]] == ["Jacob 1"]
+    assert {t["name"] for t in r["chips"]["group"]} == {"ISP A", "Resi B"}  # the others stay clickable
+    client = create_app(str(tmp_path / "m.db")).test_client()
+    page = client.get(f"/drop?day={day}&by=profile&name=Ana").get_data(as_text=True)
+    assert "Profile: Ana" in page and "gw.resi.io" not in page.split("Click a group")[1].split("<h3>Best")[0]
+    assert "by=group" in client.get("/drop").get_data(as_text=True)

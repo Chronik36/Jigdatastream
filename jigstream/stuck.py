@@ -137,9 +137,14 @@ def cross_reference(con):
         taken.add(i)
         used.add(oid)
     _match_refunds(con, checkouts)
+    _match_bot_updates(con, checkouts)
     verdicts = {r[0]: (r[1], r[2]) for r in con.execute("SELECT checkout_id, verdict, set_at FROM checkout_verdicts")}
     for c in checkouts:
         c["state"] = "cancelled" if c["refund"] else state_of(c["order"])
+        # The bot's own follow-up: a cancel always counts; "good" confirms it unless an email or refund cancelled it.
+        if c["bot_update"]:
+            c["state"] = "cancelled" if c["bot_update"]["verdict"] == "cancelled" or c["state"] == "cancelled" \
+                else "emailed"
         # Set by hand on the Drops page: "good" counts as a confirmed order, "cancelled" as cancelled.
         c["verdict"] = verdicts.get(c["id"])
         if c["verdict"] and c["verdict"][0] == "good" and c["state"] == "cancelled" and _cancelled_after(c, c["verdict"][1]):
@@ -152,9 +157,38 @@ def cross_reference(con):
     return out
 
 
+def _match_bot_updates(con, checkouts):
+    """Give each checkout the bot's latest follow-up on it (Valor posts whether the order stuck or got cancelled):
+    by order number, else the same bot, site and profile (or account email) after the checkout, nearest checkout first."""
+    for c in checkouts:
+        c["bot_update"] = None
+    updates = [dict(u) for u in con.execute("SELECT * FROM checkout_updates ORDER BY ts")]
+    by_number = {}
+    for i, c in enumerate(checkouts):
+        if _number(c["order_number"]):
+            by_number.setdefault(_number(c["order_number"]), i)
+    for u in updates:
+        i = by_number.get(_number(u["order_number"]))
+        if i is None and not _number(u["order_number"]):
+            t = when(u["ts"])
+            near = [(when(c["ts"]), j) for j, c in enumerate(checkouts)
+                    if c["bot"] == u["bot"] and same_site(c["site"], u["site"])
+                    and ((u["profile"] and c["profile"] == u["profile"])
+                         or (u["email"] and profilematch.norm_email(c["email"]) == profilematch.norm_email(u["email"])))]
+            near = [(ct, j) for ct, j in near if not (t and ct) or ct - BEFORE <= t <= ct + LATE_CANCEL]
+            # Prefer a checkout that has no order number either and no follow-up yet, then the latest one.
+            i = max(near, key=lambda p: (not _number(checkouts[p[1]]["order_number"]),
+                                         not checkouts[p[1]]["bot_update"], p[0] or when("1970-01-01")))[1] if near else None
+        if i is not None:
+            checkouts[i]["bot_update"] = u  # updates are in time order, so the latest one wins
+
+
 def _cancelled_after(c, set_at):
-    """Whether the cancel email or bank refund that cancels this checkout came after set_at."""
+    """Whether the cancel email, bank refund or bot follow-up that cancels this checkout came after set_at."""
     mark = when(set_at)
+    update = c.get("bot_update")
+    if update and update["verdict"] == "cancelled" and mark and when(update["ts"]) and when(update["ts"]) > mark:
+        return True
     if c["refund"]:
         day = when(c["refund"]["date"])
         return bool(mark and day and day.date() > mark.date())
