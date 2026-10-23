@@ -208,7 +208,7 @@ def set_profile(con, order_id, name):
 def history(con, orders):
     """Per profile: its orders, the sites it checked out on and a count per status."""
     out = {}
-    for p in con.execute("SELECT name, group_name, first_name, last_name, email, ship_address1, ship_city,"
+    for p in con.execute("SELECT name, group_name, site, first_name, last_name, email, ship_address1, ship_city,"
                          " ship_state, ship_zip FROM profiles ORDER BY name"):
         out[p["name"]] = {"profile": dict(p), "orders": [], "sites": {}, "statuses": {}, "spend": 0.0,
                           "checkouts": 0}
@@ -221,7 +221,8 @@ def history(con, orders):
         h["sites"][site] = h["sites"].get(site, 0) + 1
         status = o["shipping_status"] or "unknown"
         h["statuses"][status] = h["statuses"].get(status, 0) + 1
-        h["spend"] += o["total"] or 0
+        if status not in ("cancelled", "returned", "refunded", "not_an_order"):  # only orders that stuck cost money
+            h["spend"] += o["total"] or 0
     # Bot checkouts that never produced an email (yet) still show where the profile checked out.
     for r in con.execute("SELECT profile, site, COUNT(*) n FROM checkouts WHERE status='success' GROUP BY profile, site"):
         h = out.get(r["profile"])

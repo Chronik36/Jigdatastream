@@ -1,23 +1,35 @@
 {% extends "base.html" %}{% block body %}
 <style>
-.playout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:20px;align-items:start}
-.gside{max-height:calc(100vh - 100px);overflow:auto}.gside a{gap:8px}
+.pickbar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;margin:0 0 18px}
+.pickbar label{display:flex;flex-direction:column;gap:4px;font-size:12px;flex:0 1 200px;min-width:0}.pickbar label.wide{flex:1 1 260px}
+.pickbar select{width:100%;margin:0}
 .sites{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 18px}
 .sites span{background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:4px 10px;font-weight:500}
 .sites span b{color:var(--text);margin-left:6px}.sites span.bot{background:var(--surface-2);color:var(--muted)}
-@media (max-width:900px){.playout{grid-template-columns:1fr}.gside{max-height:none}}
 </style>
 {% set on_way = ("shipped", "in_transit", "out_for_delivery") %}
 <h2>Profile orders</h2>
 <p class="muted">Each order from your inboxes is matched to a profile by its shipping address, the name on it and the email it was sent to. When several profiles fit, pick the right one on <a href="/orders">Orders</a>; it stays that way.</p>
-<div class="playout">
-<aside class="gside">
-  <a href="/profile-orders" class="{{'on' if not pick}}">All profiles <span>{{used|length}}</span></a>
-  <div class="lbl">PROFILES WITH ORDERS</div>
-  {% for h in used %}<a href="/profile-orders?profile={{h.profile.name|urlencode}}" class="{{'on' if pick_name == h.profile.name}}">{{h.profile.name}} <span>{{h.orders|length}}</span></a>
-  {% else %}<p class="muted" style="padding:0 10px">None yet.</p>{% endfor %}
-  {% if unmatched %}<div class="lbl">NOT MATCHED</div><a href="/orders?profile=__none__">Orders without a profile <span>{{unmatched|length}}</span></a>{% endif %}
-</aside>
+<form class="pickbar" method="get">
+{% if sites|length > 1 or (sites and sites[0]) %}<label><span class="muted">Retail site</span><select name="site" onchange="pickProfiles(this)"><option value="" {{"selected" if site is none}} data-all>All sites</option>{% for s_ in sites %}<option value="{{s_}}" {{"selected" if site == s_}}>{{s_ or "No site"}}</option>{% endfor %}</select></label>{% endif %}
+<label><span class="muted">Group</span><select name="group" onchange="pickProfiles(this)"><option value="" {{"selected" if group is none}} data-all>All groups</option>{% for g in groups %}<option value="{{g}}" {{"selected" if group == g}}>{{g or "No group"}}</option>{% endfor %}</select></label>
+<label class="wide"><span class="muted">Profile</span><select name="profile" onchange="pickProfiles(this)"><option value="" data-all>All profiles ({{used|length}})</option>{% for h in used %}<option value="{{h.profile.name}}" {{"selected" if pick_name == h.profile.name}}>{{h.profile.name}} · {{h.orders|length}} order{{"s" if h.orders|length != 1}}</option>{% endfor %}</select></label>
+{% if unmatched %}<a class="btn ghost" href="/orders?profile=__none__">Orders without a profile ({{unmatched|length}})</a>{% endif %}
+</form>
+<script>
+// Picking a site starts its groups and profiles fresh; "All" leaves that filter out of the address.
+function pickProfiles(sel) {
+  var f = sel.form, order = ['site', 'group', 'profile'], q = new URLSearchParams();
+  order.slice(order.indexOf(sel.name) + 1).forEach(function (n) { if (f[n]) f[n].selectedIndex = 0; });
+  order.forEach(function (n) {
+    var s = f[n]; if (!s) return;
+    var o = s.options[s.selectedIndex];
+    if (o && !o.hasAttribute('data-all')) q.set(n, s.value);
+  });
+  location.href = '/profile-orders' + (q.toString() ? '?' + q : '');
+}
+</script>
+<div>
 <section>
 {% if pick %}{% set p = pick.profile %}
 <h3 style="margin-top:0">{{p.name}}{% if p.group_name %} <span class="muted" style="font-weight:400">· {{p.group_name}}</span>{% endif %}</h3>
