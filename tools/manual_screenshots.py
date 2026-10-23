@@ -212,10 +212,60 @@ def patch():
     if has_module("keywords"):
         from jigstream import keywords
         keywords.fetch = lambda url: (url, SAMPLE_PAGE)
+    if has_module("products"):
+        seed_products()
     updater.installed_version = lambda app_dir=None: "build-42-ed618bf"
     updater.can_self_update = lambda app_dir=None: True
     updater.backups = lambda app_dir=None: ["previous"]
     updater.state.update({"checked_at": "2026-10-22T09:00:00", "available": False})
+
+
+def seed_products():
+    from jigstream import products
+    os.environ["PRODUCTS_FILE"] = str(WORK / "products.json")
+
+    def item(name, ptype, sku, stores, market, prod=True, why=""):
+        p = products.new_product(name, ptype, sku, in_production=prod, why=why)
+        p["retail"] = [{"store": s, "price": v, "kind": k, "link": "", "from": "link", "when": "Oct 22"}
+                       for s, v, k in stores]
+        p["market"] = {k: {"price": v, "low": v * .93, "high": v * 1.08, "count": n, "how": how, "link": "",
+                           "when": "Oct 22", "manual": how == "typed in"} for k, v, n, how in market}
+        p["updated"] = "Oct 22, 4:10 PM"
+        return p
+    sold, page, typed = "sold listings", "listings on the page", "typed in"
+    data = {"products": [
+        item("Pokemon Prismatic Evolutions Elite Trainer Box", "Trading cards", "87510", [
+            ("Target", 49.99, "msrp"), ("Best Buy", 49.99, "msrp"), ("Walmart", 59.97, "cost")],
+            [("ebay", 92.5, 41, sold), ("mercari", 88.0, 12, page), ("tradepost", 80.0, 1, typed)]),
+        item("Air Jordan 4 Retro White Cement", "Sneakers", "FV5029-100", [("Nike", 215.0, "msrp"),
+            ("Foot Locker", 215.0, "msrp")], [("stockx", 268.0, 30, page), ("ebay", 255.0, 22, sold),
+                                              ("goat", 272.0, 8, page), ("alias", 250.0, 1, typed)]),
+        item("Pokemon Surging Sparks Booster Box", "Trading cards", "", [("Target", 161.64, "msrp")],
+             [("ebay", 205.0, 18, sold), ("mercari", 199.0, 6, page)]),
+        item("PlayStation 5 Pro", "Consoles", "6597009", [("Best Buy", 699.99, "msrp")],
+             [("ebay", 655.0, 27, sold)]),
+        item("New Balance 9060 Sea Salt", "Sneakers", "U9060WHT", [("New Balance", 149.99, "msrp")],
+             [("ebay", 140.0, 15, sold)], prod=True),
+    ], "sources": [{"key": "x-whatnot", "name": "Whatnot", "url": "https://www.whatnot.com/search?query={q}",
+                    "kind": "web"}], "off": [], "status": {
+        "stockx": {"state": "blocked", "note": "stockx.com answered with a bot check instead of results.", "when": "Oct 22, 4:02 PM"},
+        "goat": {"state": "blocked", "note": "www.goat.com refused the request (HTTP 403).", "when": "Oct 22, 4:02 PM"},
+        "ebay": {"state": "ok", "note": "38 prices from sold listings", "when": "Oct 22, 4:02 PM"},
+        "tradepost": {"state": "app", "note": products.APP_NOTE["tradepost"], "when": "Oct 22"},
+        "mercari": {"state": "ok", "note": "14 prices from listings on the page", "when": "Oct 22, 4:02 PM"},
+        "vinted": {"state": "error", "note": "No matching listings found on Vinted.", "when": "Oct 22, 4:02 PM"},
+        "alias": {"state": "app", "note": products.APP_NOTE["alias"], "when": "Oct 22"}}}
+    products.save(data)
+    products.last_research.update(query="Pokemon sealed product that resells over MSRP", type="Sealed Pokémon TCG",
+                                  items=[{"name": "Pokemon Prismatic Evolutions Elite Trainer Box", "type": "Trading cards",
+                                          "sku": "87510", "msrp": 49.99, "retailers": ["Target", "Best Buy", "Walmart"],
+                                          "in_production": True, "why": "Sells out on every restock."},
+                                         {"name": "Pokemon 151 Ultra Premium Collection", "type": "Trading cards",
+                                          "sku": "", "msrp": 119.99, "retailers": ["Target", "Pokemon Center"],
+                                          "in_production": False, "why": "Discontinued; sealed copies keep rising."},
+                                         {"name": "Pokemon Destined Rivals Booster Bundle", "type": "Trading cards",
+                                          "sku": "", "msrp": 26.94, "retailers": ["Target", "Walmart"],
+                                          "in_production": True, "why": "New set with strong chase cards."}])
 
 
 # Each shot: (name, page path, [(marker target, number)], options). A target is a CSS selector, or
@@ -420,6 +470,10 @@ shot("stock", "/stock?run=1&retailer=target&product=https%3A%2F%2Fwww.target.com
      [("input[name=product]", 1), ("select[name=retailer]", 2), ("input[name=zip]", 3), ("select[name=radius]", 4),
       ("table.st-table", 5), ("#recheck", 6), ("form[action='/stock/bestbuy-key']", 7)],
      viewport={"width": 1360, "height": 1100}, needs=lambda: has_module("stock"))
+shot("products", "/products", [("textarea[name=query]", 1), ("input[name=pick]:not([disabled])", 2), (".focus", 3),
+                               ("#tracked table.pr-table tbody tr td:nth-child(2)", 4), ("form[action='/products/update-all']", 5),
+                               ("form[action='/products/sources/test']", 6)],
+     viewport={"width": 1360, "height": 1500}, full=True, needs=lambda: has_module("products"))
 shot("setup-phone", "/setup", [("input[name=on]", 1), ("input[name=email][type=email]", 2),
                                ("input[name=allow_lan]", 3)], scroll="h3@Phone access", needs=has_phone)
 shot("phone-login", "/m/login", phone=True, needs=has_phone)
