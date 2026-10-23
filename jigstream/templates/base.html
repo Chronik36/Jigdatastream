@@ -277,6 +277,6 @@ function mini() {
   try { localStorage.setItem('bt-mini', on ? '1' : '0'); } catch (e) {}
 }
 </script>
-{% if path in ("/orders", "/expenses", "/profiles") %}{% include "live.html" %}{% endif %}
+{% with watch_data=path in ("/orders", "/expenses", "/profiles") %}{% if watch_data or on_phone %}{% include "live.html" %}{% endif %}{% endwith %}
 {% if on_phone %}{% include "phone.html" %}{% endif %}
 </body></html>

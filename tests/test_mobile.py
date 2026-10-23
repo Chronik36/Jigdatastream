@@ -197,7 +197,10 @@ def test_update_from_the_phone(app, monkeypatch):
     monkeypatch.setattr(updater, "restart_soon", lambda: calls.append("restart"))
     t = csrf(c, "/m/app")
     assert c.post("/m/update").status_code == 400  # needs the page token
-    assert "Updating BotTrack" in c.post("/m/update", data={"csrf": t}).get_data(as_text=True)
+    from jigstream import mobile
+    waiting = c.post("/m/update", data={"csrf": t}).get_data(as_text=True)
+    assert "Updating BotTrack" in waiting and mobile.BOOT in waiting  # it waits for a new boot id
+    assert c.get("/m/api/changes").get_json()["boot"] == mobile.BOOT
     assert calls == ["install", "restart"]
     paused = []
     monkeypatch.setattr(app, "pause_sync_for_update", lambda: paused.append(1))

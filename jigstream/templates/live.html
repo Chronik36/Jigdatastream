@@ -1,8 +1,10 @@
 <script>
 // Live updates: refresh this list when a phone (or a sync) changes orders, expenses or profiles,
-// unless you're in the middle of typing or choosing something here.
+// unless you're in the middle of typing or choosing something here. On a phone, also reload once
+// BotTrack restarts on the Mac (an update), so the phone shows the new version without reopening.
 (function () {
-  var last = null, touched = false;
+  var last = null, boot = null, touched = false, failedSince = null;
+  var watchData = {{ "true" if watch_data else "false" }}, phone = {{ "true" if on_phone else "false" }};
   document.addEventListener('input', function () { touched = true; });
   function busy() {
     var a = document.activeElement;
@@ -10,11 +12,19 @@
   }
   function poll() {
     if (document.hidden) return setTimeout(poll, 5000);
-    fetch('/m/api/changes', {cache: 'no-store'}).then(function (r) { return r.json(); }).then(function (d) {
-      if (last !== null && d.n !== last && !busy()) return location.reload();
+    fetch('/m/api/changes', {cache: 'no-store'}).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (d) {
+      failedSince = null;
+      if (phone && boot !== null && d.boot !== boot) return location.reload();
+      if (watchData && last !== null && d.n !== last && !busy()) return location.reload();
+      boot = d.boot;
       if (!busy()) last = d.n;
       setTimeout(poll, 5000);
-    }).catch(function () { setTimeout(poll, 10000); });
+    }).catch(function () {
+      failedSince = failedSince || Date.now();
+      // A page that fails to load makes the phone app look up the Mac's current link.
+      if (phone && Date.now() - failedSince > 30000) return location.reload();
+      setTimeout(poll, 10000);
+    });
   }
   poll();
 })();
