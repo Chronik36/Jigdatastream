@@ -126,13 +126,21 @@ def order_address(order):
     return w if w["base"] else None
 
 
+def cluster(w):
+    """Jigged copies of one address share the house number and ZIP even when the street is spelled a little
+    differently ("MAIN ST" / "MAINN ST"), so those count as one place."""
+    house = w["base"].split()[0]
+    return f"{house}|{w['zip']}" if w["zip"] else w["base"]
+
+
+def label_cluster(label):
+    """The place an address label ("12 MAIN ST · 78701") stands for."""
+    base, _, zip_ = (label or "").partition(" · ")
+    return cluster({"base": base.strip(), "zip": zip_.strip()}) if base.strip() else ""
+
+
 def label_addresses(items):
-    """Name each checkout's address by its base address. Jigged copies of one address share the house number and
-    ZIP even when the street is spelled a little differently ("MAIN ST" / "MAINN ST"), so those count as one;
-    the label is the spelling used most."""
-    def cluster(w):
-        house = w["base"].split()[0]
-        return f"{house}|{w['zip']}" if w["zip"] else w["base"]
+    """Name each checkout's address by its base address (see cluster); the label is the spelling used most."""
     spellings = {}
     for c in items:
         if c.get("where"):

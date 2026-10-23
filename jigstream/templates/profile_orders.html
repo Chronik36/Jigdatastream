@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block body %}
+{% extends "base.html" %}{% from "_verdict.html" import verdict, checkout_table with context %}{% block body %}
 <style>
 .pickbar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;margin:0 0 18px}
 .pickbar label{display:flex;flex-direction:column;gap:4px;font-size:12px;flex:0 1 200px;min-width:0}.pickbar label.wide{flex:1 1 260px}
@@ -33,7 +33,7 @@ function pickProfiles(sel) {
 <section>
 {% if pick %}{% set p = pick.profile %}
 <h3 style="margin-top:0">{{p.name}}{% if p.group_name %} <span class="muted" style="font-weight:400">· {{p.group_name}}</span>{% endif %}</h3>
-<p class="muted">{{p.first_name}} {{p.last_name}}{% if p.email %} · {{p.email}}{% endif %}{% if p.ship_address1 %} · {{p.ship_address1}}, {{p.ship_city}} {{p.ship_state}} {{p.ship_zip}}{% endif %}
+<p class="muted">{{p.first_name}} {{p.last_name}}{% if p.email %} · {{p.email}}{% endif %}{% if p.ship_address1 %} · {% if pick_address %}<a href="/address?name={{pick_address|urlencode}}" title="Every profile, checkout and order at this address">{{p.ship_address1}}, {{p.ship_city}} {{p.ship_state}} {{p.ship_zip}}</a>{% else %}{{p.ship_address1}}, {{p.ship_city}} {{p.ship_state}} {{p.ship_zip}}{% endif %}{% endif %}
  · <a href="/orders?profile={{p.name|urlencode}}">Show on Orders</a></p>
 <div class="stats"><div class="card">Orders <b>{{pick.orders|length}}</b></div><div class="card">Spend <b>{{pick.spend|money}}</b></div>
 <div class="card">On the way <b>{{pick.orders|selectattr("shipping_status", "in", on_way)|list|length}}</b></div>
@@ -52,6 +52,7 @@ function pickProfiles(sel) {
 <select name="status" onchange="if (this.value && (this.value != 'not_an_order' || confirm('Remove this order? Its emails teach the AI to skip emails like it.'))) this.form.submit(); else this.selectedIndex = 0" aria-label="Correct this order" title="Set it right; the AI learns from it">
 <option value="">{{"Bad" if bad else "Good"}} · change…</option>{% if bad %}<option value="ordered">Good (it went through)</option>{% else %}<option value="cancelled">Bad (cancelled)</option>{% endif %}<option value="not_an_order">Not an order</option></select></form></td></tr>
 {% else %}<tr><td colspan="8" class="muted">No order emails matched to this profile yet.</td></tr>{% endfor %}</tbody></table>
+<h3>Checkouts on this profile</h3>{{ checkout_table(pick_checkouts or []) }}
 {% elif pick_name %}<div class="panel muted">There's no profile called {{pick_name}}.</div>
 {% else %}
 <table><thead><tr><th>Profile</th><th>Sites</th><th class="num">Orders</th><th class="num">On the way</th><th class="num">Delivered</th><th class="num">Cancelled</th><th class="num">Spend</th></tr></thead><tbody>
