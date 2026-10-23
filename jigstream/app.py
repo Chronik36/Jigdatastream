@@ -9,7 +9,7 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import (analysis, bankpages, browsertrack, carriers, db, discord, drop, emailbook, engines, expensepages, export,
+from . import (analysis, bankpages, cardcheck, browsertrack, carriers, db, discord, drop, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, parsers, products, profilebook, profilematch, profiles, recurring,
                stock, stuck, tasks, training, updater, wallet)
 from .config import Config, format_accounts, save_env
@@ -178,6 +178,10 @@ def create_app(db_path=None):
             return url_for("drop_page", **{k: v for k, v in dict(here, **change).items() if v})
         return render_template("drop.html", r=drop.report(Store(con()).db, site, sort, day, by, name), site=site,
                                day=day, sort=sort, by=by, name=name, link=link)
+
+    @app.get("/drop/cards")
+    def card_check_page():
+        return render_template("cardcheck.html", r=cardcheck.report(Store(con()).db), minutes=cardcheck.LINK_MINUTES)
 
     @app.post("/drop/<int:checkout_id>/verdict")
     def drop_verdict(checkout_id):

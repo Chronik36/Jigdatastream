@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block body %}
+{% macro sums(t) %}<span class="ok"><b>{{t.went_through}}</b> went through</span> · {{t.charged}} charged{% if t.refunded %} · <span class="bad">{{t.refunded}} refunded</span>{% endif %} · {{t.bot}} bot checkout{{'s' if t.bot != 1}}{% if t.never_charged %} · <span style="color:var(--orange)">{{t.never_charged}} never charged</span>{% endif %}{% endmacro %}
+{% set tab = "cards" %}{% include "_drop_tabs.html" %}
+<p class="muted">What your cards say really went through. For each card on the <a href="/bank">Bank</a> page, charges at a store are grouped by their exact amount and the dates close together (one drop).
+A refund of the same amount on the same card takes one away, so <b>went through</b> is charges minus refunds. The amount tells what was bought: an order email with that total, or a bot checkout whose price plus tax and shipping comes to it.
+A charge is only tied to one checkout when that's certain: the bank gave the charge a time within {{minutes}} minutes of the checkout, it paid that checkout's order email, or it's the only charge and the only checkout. Otherwise you see counts, not which one is which.
+A tied charge that wasn't refunded turns an Unsure checkout Good on <a href="/drop">By date</a>; a refunded one turns it Cancelled. Bank data stays on this Mac.</p>
+{% if not r.cards %}<p class="muted">Nothing to check yet. Import a card statement or link your bank on the <a href="/bank">Bank</a> page, and add your bot webhooks. Only charges at stores your bots or order emails name are counted, and a profile's card is known from its last 4 digits.</p>{% else %}
+<div class="stats"><div class="card ok">Went through <b>{{r.total.went_through}}</b></div><div class="card">Charged <b>{{r.total.charged}}</b></div>
+<div class="card bad">Refunded <b>{{r.total.refunded}}</b></div><div class="card">Bot checkouts <b>{{r.total.bot}}</b></div><div class="card" style="--c:var(--orange)">Never charged <b style="color:var(--orange)">{{r.total.never_charged}}</b></div></div>
+{% for a in r.cards %}<section class="panel" style="margin:14px 0;overflow-x:auto">
+<h3 style="margin-top:0">{{a.name}}{% if a.last4 %} <span class="muted">•••• {{a.last4}}</span>{% endif %} <span class="muted" style="font-weight:400;font-size:14px">· {{a.spent|money}} kept</span></h3>
+<p style="margin:6px 0">{{ sums(a) }}{% if a.profiles %}<span class="muted"> · profiles on this card: {{a.profiles|join(", ")}}</span>{% elif not a.last4 %}<span class="muted"> · this card has no last 4 digits, so any profile's checkouts can count here</span>{% endif %}</p>
+<table><thead><tr><th>Store</th><th>Amount</th><th>Likely product</th><th>Charged on</th><th title="Charges minus refunds">Went through</th><th>Charged</th><th>Refunded</th><th>Bot checkouts</th><th>Tied 1 to 1</th></tr></thead><tbody>
+{% for run in a.runs %}<tr>
+<td><b>{{run.store_name}}</b>{% if run.drop_day %}<div class="muted" style="font-size:12px"><a href="/drop?site={{run.store_name|urlencode}}&day={{run.drop_day}}">drop {{run.drop_day}}</a></div>{% endif %}</td>
+<td>{{run.amount|money}}</td>
+<td>{% if run.product %}{{run.product}}<div class="muted" style="font-size:12px">{{ {"bot": "from the bot checkouts", "email": "order email with this total", "price": "guessed from the price"}[run.product_from] }}</div>{% else %}<span class="muted">-</span>{% endif %}</td>
+<td class="muted" style="white-space:nowrap">{{run.first}}{% if run.last != run.first %} to {{run.last}}{% endif %}</td>
+<td class="ok"><b>{{run.went_through}}</b></td><td>{{run.charges|length}}</td><td class="{{'bad' if run.refunded}}">{{run.refunded}}</td>
+<td>{{run.bot}}{% if run.bot_cancelled %} <span class="muted">({{run.bot_cancelled}} cancelled by email/bot)</span>{% endif %}{% if run.never_charged %}<div style="color:var(--orange);font-size:12px">{{run.never_charged}} never charged</div>{% endif %}</td>
+<td><details><summary>{{run.linked}} of {{run.charges|length}}</summary><table style="margin-top:6px">
+{% for tx in run.charges %}<tr><td class="muted" style="white-space:nowrap">{{tx.date}}{% if tx.time %} {{tx.time[11:16]}}{% endif %}</td><td class="muted">{{tx.description[:40]}}</td>
+<td>{% if tx.refund %}<span class="pill s-refunded" title="Refunded {{tx.refund.date}}">Refunded</span>{% else %}<span class="pill s-delivered">Kept</span>{% endif %}</td>
+<td>{% if tx.checkout %}{{tx.checkout.profile or "-"}} <span class="muted">{{(tx.checkout.ts or "")[:16]|replace("T", " ")}} · {{tx.linked_by}}</span>{% else %}<span class="muted">not tied</span>{% endif %}</td></tr>{% endfor %}
+</table></details></td></tr>{% endfor %}</tbody></table></section>{% endfor %}
+{% if r.loose %}<section class="panel" style="margin:14px 0"><h3 style="margin-top:0">Refunds with no matching charge</h3>
+<p class="muted">Partial refunds, or refunds of charges older than your imported statements. They aren't counted above.</p>
+<table><tbody>{% for tx in r.loose %}<tr><td class="muted">{{tx.date}}</td><td>{{tx.store_name}}</td><td>{{(-tx.amount)|money}}</td><td class="muted">{{tx.description[:50]}}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+{% endif %}
+{% endblock %}
