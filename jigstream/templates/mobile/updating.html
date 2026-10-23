@@ -2,14 +2,24 @@
 <div style="text-align:center;margin-top:60px"><img src="{{url_for('static', filename='mark.png')}}" alt="" width="72" height="72" style="border-radius:18px">
 <h2 style="margin:16px 0 6px">Updating BotTrack</h2><p class="muted" id="msg">Your Mac is installing the new version and restarting. This page comes back by itself.</p></div>
 <script>
-var tries = 0;
+// Wait until the Mac answers as a new run of BotTrack (its boot id changes), then open the app again.
+// If it can't be reached for a while, reload the whole page: in the phone app a failed page load
+// makes the app look up the Mac's current link, in case it changed while BotTrack restarted.
+var started = Date.now(), lastOk = Date.now(), home = '{{url_for("mobile.app_page")}}';
+function back() { location.replace(home); }
 setTimeout(function ping() {
   fetch('{{url_for("mobile.changes")}}', {cache: 'no-store', credentials: 'same-origin'})
-    .then(function (r) { if (r.ok) location.href = '{{url_for("mobile.app_page")}}'; else throw 0; })
+    .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+    .then(function (d) {
+      lastOk = Date.now();
+      if (d.boot !== '{{boot}}' || Date.now() - started > 90000) return back();  // restarted (or never needed to)
+      setTimeout(ping, 1500);
+    })
     .catch(function () {
-      if (++tries < 90) setTimeout(ping, 2000);
-      else document.getElementById('msg').textContent = "It's taking a while. Check that BotTrack opened again on your Mac.";
+      if (Date.now() - lastOk > 30000) return back();  // a page load lets the app find a changed link
+      if (Date.now() - started > 600000) document.getElementById('msg').textContent = "It's taking a while. Check that BotTrack opened again on your Mac.";
+      setTimeout(ping, 2000);
     });
-}, 4000);
+}, 3000);
 </script>
 {% endblock %}
