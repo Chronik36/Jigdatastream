@@ -326,8 +326,9 @@ def main():
     try:
         open_window(f"http://127.0.0.1:{port}", bundle / "Contents/Resources/AppIcon.icns", restarted=restarted)
     finally:
-        if not RESTART_MARK.exists():
-            tunnel.stop()  # closing BotTrack closes the phone link too
+        # The phone link keeps running after BotTrack closes, so it keeps the same address and paired
+        # phones (iPhones too) reconnect by themselves when BotTrack opens again. Turning phone access
+        # off stops it; restarting the Mac gives it a new address, which the Android app follows.
         engines.stop_mlx()
         ai.terminate()
         try:

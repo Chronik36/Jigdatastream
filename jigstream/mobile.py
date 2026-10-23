@@ -132,7 +132,7 @@ def init_app(app):
     # Saved to .env when phone access is turned on, so phones stay signed in across restarts.
     app.secret_key = os.environ.get("PHONE_SECRET_KEY") or secrets.token_hex(32)
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
-                      PERMANENT_SESSION_LIFETIME=timedelta(days=30))
+                      PERMANENT_SESSION_LIFETIME=timedelta(days=365))
     app.jinja_env.globals["csrf_token"] = csrf_token
     if os.environ.get("PHONE_ACCESS") == "1" and not os.environ.get("PHONE_PAIR_KEY"):
         save_env(new_pairing())  # phone access turned on before pairing by QR code existed
