@@ -10,8 +10,8 @@ from flask import Flask, Response, flash, jsonify, redirect, render_template, re
 
 from . import address as A
 from . import (analysis, bankpages, carriers, db, discord, emailbook, engines, expensepages, export, inbox, keywords,
-               logs, manual, mobile, parsers, profilebook, profilematch, profiles, recurring, stock, tasks, training,
-               updater, wallet)
+               logs, manual, mobile, parsers, products, profilebook, profilematch, profiles, recurring, stock, tasks,
+               training, updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
@@ -45,6 +45,7 @@ def create_app(db_path=None):
     app.register_blueprint(stock.bp)
     app.register_blueprint(manual.bp)
     app.register_blueprint(keywords.bp)
+    app.register_blueprint(products.bp)
 
     @app.context_processor
     def nav_flags():
