@@ -75,6 +75,19 @@ def test_page_and_blocked_site(tmp_path, monkeypatch):
     assert "HTTP 403" in html
 
 
+def with_ai(client, url):
+    """Post with "Also ask the local AI", then fetch the AI part the way the page does. Returns the page
+    text with the AI's additions written out like rows, and the AI reply."""
+    import re
+    html = client.post("/keywords", data={"url": url, "ai": "1"}).get_data(as_text=True)
+    token = re.search(r'"ai_token": "([^"]+)"', html).group(1)
+    j = client.post("/keywords/ai", json={"token": token}).get_json()
+    if j["ok"]:
+        html += j["summary"] + "".join(f' +{w} data-word="{w}"' for w, _ in j["positives"])
+        html += "".join(f' -{w} data-word="{w}"' for w, _ in j["negatives"])
+    return html, j
+
+
 def test_ai_negatives_merged(tmp_path, monkeypatch):
     client = create_app(str(tmp_path / "k.db")).test_client()
     monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
@@ -82,7 +95,7 @@ def test_ai_negatives_merged(tmp_path, monkeypatch):
         "summary": "A sneaker product page.", "main_keywords": ["air jordan 1 low panda"],
         "positive_keywords": [{"word": "panda", "reason": "colourway"}],
         "negative_keywords": [{"word": "reimagined", "reason": "different release"}, {"word": "panda", "reason": "x"}]})
-    html = client.post("/keywords", data={"url": "https://kicks.example/p/0", "ai": "1"}).get_data(as_text=True)
+    html, _ = with_ai(client, "https://kicks.example/p/0")
     assert "A sneaker product page." in html and "-reimagined" in html and "+panda" in html
     assert "-panda" not in html  # the model may not exclude the product's own words
 
@@ -98,15 +111,15 @@ def test_model_failures_never_crash_the_page(tmp_path, monkeypatch):
                    lambda self, s, u, **k: ["not", "a", "dict"], lambda self, s, u, **k: {}.get("x")["y"]]
     for answer in odd_answers:
         monkeypatch.setattr(keywords.LLMClient, "chat_json", answer)
-        r = client.post("/keywords", data={"url": "https://kicks.example/p/0", "ai": "1"})
-        assert r.status_code == 200 and "553558-040" in r.get_data(as_text=True)
+        html, j = with_ai(client, "https://kicks.example/p/0")
+        assert "553558-040" in html and (j["ok"] or j["error"])
 
 
 def test_plain_string_negatives_from_model(tmp_path, monkeypatch):
     client = create_app(str(tmp_path / "k.db")).test_client()
     monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
     monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, s, u, **k: {"negative_keywords": ["reimagined", 7]})
-    assert "-reimagined" in client.post("/keywords", data={"url": "https://x.example/p", "ai": "1"}).get_data(as_text=True)
+    assert "-reimagined" in with_ai(client, "https://x.example/p")[0]
 
 
 def test_render_failure_shows_friendly_error(tmp_path, monkeypatch):
@@ -233,7 +246,7 @@ def test_corrections_are_remembered_and_taught(tmp_path, monkeypatch):
         seen["examples"] = examples
         return {"summary": "x", "negative_keywords": [{"word": "mini"}, {"word": "slime"}]}
     monkeypatch.setattr(keywords.LLMClient, "chat_json", model)
-    html = client.post("/keywords", data={"url": "https://gotoytime.com/products/new", "ai": "1"}).get_data(as_text=True)
+    html, _ = with_ai(client, "https://gotoytime.com/products/new")
     assert len(seen["examples"]) == 1 and '"glow"' in seen["examples"][0][1]
     assert 'data-word="slime"' in html and 'data-word="mini"' not in html
 
@@ -258,7 +271,7 @@ def test_ai_never_excludes_a_plus_keyword_spelled_apart(tmp_path, monkeypatch):
     monkeypatch.setattr(keywords, "fetch", lambda url: (url, TOY_PAGE))
     monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, s, u, **k: {
         "negative_keywords": [{"word": "nee doh"}, {"word": "Nee"}, {"word": "slime"}]})
-    html = client.post("/keywords", data={"url": "https://gotoytime.com/p", "ai": "1"}).get_data(as_text=True)
+    html, _ = with_ai(client, "https://gotoytime.com/p")
     assert 'data-word="slime"' in html and 'data-word="nee doh"' not in html and 'data-word="nee"' not in html
 
 
@@ -344,3 +357,14 @@ def test_trading_card_boxes():
         assert w in negs, line
     for w in ("target", "box", "pok", "mon", "pokémon", "elite"):
         assert w not in negs, line
+
+
+def test_ai_page_shows_keywords_before_the_model_answers(tmp_path, monkeypatch):
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
+    called = []
+    monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, s, u, **k: called.append(1) or {})
+    html = client.post("/keywords", data={"url": "https://kicks.example/p/0", "ai": "1"}).get_data(as_text=True)
+    assert not called and 'data-word="panda"' in html and "Asking the local AI" in html
+    assert client.post("/keywords/ai", json={"token": "nope"}).get_json()["ok"] is False
+

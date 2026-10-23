@@ -54,11 +54,10 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
 <p class="muted">{{result.word_count}} words read from <a href="{{result.url}}" target="_blank" rel="noopener">{{result.host}}</a>.
 {% if result.thin %}<span style="color:var(--orange)">Very little text came back. This page probably builds itself with JavaScript, so the list below may be incomplete.</span>{% endif %}</p>
 
-{% if ai %}<div class="panel"><div class="kw-head"><h3>Local AI</h3></div>
-<p>{{ai.summary}}</p>
-{% if ai.main_keywords %}<div class="chips" style="margin-bottom:10px">{% for k in ai.main_keywords %}<span class="chip key">{{k}}</span>{% endfor %}</div>{% endif %}
-{% if ai.positives or ai.negatives %}<p class="muted" style="margin:0">Its + and - keywords are added to the lists below, marked "local AI".</p>{% endif %}
-</div>{% elif ai_error %}<div class="banner" style="border-color:rgba(255,138,61,.45);background:rgba(255,138,61,.08)">The local AI couldn't help this time: {{ai_error}}</div>{% endif %}
+{% if ai_token %}<div class="panel" id="kwai"><div class="kw-head"><h3>Local AI</h3></div>
+<p class="muted" id="kwaimsg">Asking the local AI for more keywords. This can take a minute or two, longer while a sync is running. The keywords below are ready to use now.</p>
+<p id="kwaisummary" hidden></p><div class="chips" id="kwaimain" style="margin-bottom:10px" hidden></div>
+</div>{% endif %}
 
 <div class="panel">
   <div class="kw-head"><h3>Monitor keywords</h3><button class="ghost" data-copy="kwline">Copy</button></div>
@@ -89,7 +88,7 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
     <p class="muted" style="font-size:12px">How a monitor running the line above treats this product and the look-alikes on the page. Updates as you edit the line.</p>
     <div id="kwcheck">{% for c in result.check %}<div class="kw-check" data-text="{{c.text}}" data-target="{{1 if c.target else 0}}"><span class="kw-verdict"></span> {{c.text}}</div>{% endfor %}</div>
   </div>{% endif %}
-<script id="kwdata" type="application/json">{{ {"url": result.url, "host": result.host, "brand": result.product.brand or "", "product": result.name, "page": summary}|tojson }}</script>
+<script id="kwdata" type="application/json">{{ {"url": result.url, "host": result.host, "brand": result.product.brand or "", "product": result.name, "page": summary, "ai_token": ai_token}|tojson }}</script>
 
 <div class="kw-grid">
   <div class="panel">
@@ -250,6 +249,31 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
   line.addEventListener('input', check);
   check();
   line.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); line.blur(); } });
+  // The local AI's extra + and - keywords arrive after the page has shown.
+  if (info.ai_token) {
+    const aiMsg = document.getElementById('kwaimsg');
+    fetch('/keywords/ai', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                           body: JSON.stringify({token: info.ai_token})})
+      .then(r => r.json())
+      .then(d => {
+        if (!d.ok) { aiMsg.textContent = "The local AI couldn't help this time: " + d.error; return; }
+        const summary = document.getElementById('kwaisummary');
+        summary.textContent = d.summary; summary.hidden = !d.summary;
+        const main = document.getElementById('kwaimain');
+        d.main_keywords.forEach(k => { const c = document.createElement('span'); c.className = 'chip key'; c.textContent = k; main.appendChild(c); });
+        main.hidden = !d.main_keywords.length;
+        const add = (kind, list) => {
+          const body = document.getElementById(kind === '+' ? 'kwpos' : 'kwneg'), have = new Set(words(kind));
+          list.filter(([w]) => !have.has(w)).forEach(([w, r]) => body.insertBefore(row(kind, w, r), body.querySelector('.kw-empty')));
+        };
+        add('+', d.positives); add('-', d.negatives);
+        const n = d.positives.length + d.negatives.length;
+        aiMsg.textContent = n ? `Added ${n} keyword${n === 1 ? '' : 's'} below, marked "local AI". Remove any you don't want.`
+                              : 'Nothing to add beyond the keywords below.';
+        refresh();
+      })
+      .catch(() => { aiMsg.textContent = "The local AI couldn't help this time: BotTrack stopped answering. Try again in a moment."; });
+  }
 })();
 document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => {
   const el = document.getElementById(b.dataset.copy);

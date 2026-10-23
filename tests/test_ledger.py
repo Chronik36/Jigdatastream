@@ -131,3 +131,16 @@ def test_pages_and_hand_edits(tmp_path, con):
     ipr = c.execute("SELECT id FROM expenses WHERE vendor = 'IPRoyal'").fetchone()[0]
     client.post(f"/expenses/{ipr}/delete")
     assert c.execute("SELECT match_kind FROM bank_transactions WHERE description = 'IPROYAL PROXIES'").fetchone()[0] is None
+
+
+def test_expenses_page_with_blank_amounts(tmp_path):
+    from jigstream import db as jdb
+    from datetime import date
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    client.get("/expenses")
+    c = jdb.connect(str(tmp_path / "k.db"))
+    for vendor, category, amount in (("Whop", "software", None), ("Oxylabs", "proxies", 10.0)):
+        c.execute("INSERT INTO expenses (vendor, category, amount, date) VALUES (?, ?, ?, ?)",
+                  (vendor, category, amount, date.today().isoformat()))
+    c.commit()
+    assert client.get("/expenses").status_code == 200
