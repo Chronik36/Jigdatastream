@@ -10,7 +10,7 @@ and the task can be trained like any other.
 import json
 import logging
 
-from . import tasks
+from . import db, tasks
 
 logger = logging.getLogger("jigstream.keywords")
 
@@ -32,8 +32,12 @@ TASK_NAME = "Keyword finder"
 
 
 def ensure(con):
-    con.executescript(SCHEMA)
-    return con
+    """Make the tables (once per database file) and wait for other writers instead of failing.
+
+    Syncs and monitors write to the same database in the background; without a longer wait a save
+    that lands mid-sync fails with "database is locked"."""
+    con.execute("PRAGMA busy_timeout = 30000")
+    return db.setup_once(con, "keywords", lambda c: c.executescript(SCHEMA))
 
 
 def save_rule(con, host, brand, kind, word, action, url="", product=""):
