@@ -1,0 +1,86 @@
+{# Privacy screen: addresses, emails, phone numbers and card numbers are blurred until "Reveal sensitive info" is
+   switched on in the top bar. The choice is remembered on this device only. #}
+<style>
+html:not(.reveal) .pv,html:not(.reveal) td[data-label="Ship to"],html:not(.reveal) [data-private],
+html:not(.reveal) main input:not(:focus):is([name*=address],[name*=email],[name*=phone],[name*=zip],[name*=city],[name*=card],[name*=number],[name*=first_name],[name*=last_name],[name*=holder],[type=email],[type=tel]),
+html:not(.reveal) dialog input:not(:focus):is([name*=address],[name*=email],[name*=phone],[name*=zip],[name*=city],[name*=card],[name*=number],[name*=first_name],[name*=last_name],[name*=holder],[type=email],[type=tel])
+{filter:blur(5px);transition:filter .15s}
+html:not(.reveal) .pv{user-select:none}
+.privsw{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;margin:0}
+.privsw input{position:absolute;opacity:0;width:0;height:0}
+.privsw .knob{position:relative;width:34px;height:20px;border-radius:999px;background:var(--line-2);transition:background .15s;flex:none}
+.privsw .knob:after{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#c9d2f2;transition:transform .15s}
+.privsw input:checked+.knob{background:var(--accent)}.privsw input:checked+.knob:after{transform:translateX(14px);background:#0b1436}
+.privsw input:focus-visible+.knob{box-shadow:0 0 0 3px var(--accent-soft)}
+@media (max-width:700px){.privsw .lbl{display:none}}
+</style>
+<script>
+(function () {
+  var root = document.documentElement, KEY = 'bt-reveal';
+  try { if (localStorage.getItem(KEY) === '1') root.classList.add('reveal'); } catch (e) {}
+  var sw = document.getElementById('privsw');
+  if (sw) {
+    sw.checked = root.classList.contains('reveal');
+    sw.addEventListener('change', function () {
+      root.classList.toggle('reveal', sw.checked);
+      try { localStorage.setItem(KEY, sw.checked ? '1' : '0'); } catch (e) {}
+    });
+  }
+  // Find personal details in the page text and wrap them so they can be blurred.
+  var PATTERNS = [
+    /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g,                                             // email addresses
+    /\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g,                                    // phone numbers
+    /\b[A-Z][A-Za-z .'-]{1,30},\s*[A-Z]{2},?\s+\d{5}(?:-\d{4})?\b/g,                       // city, state ZIP
+    /\b\d{4}([ -])\d{4}\1\d{4}\1\d{1,7}\b|\b\d{4}[ -]\d{6}[ -]\d{5}\b/g,                   // card numbers as written
+    {re: /\b[3-6]\d{14,15}\b/g, ok: luhn},                                       // card numbers run together
+    /(?:•{2,}|\*{2,}|x{2,}|ending in|ends in)\s?\d{4}\b/gi,                         // masked cards
+    /\b\d{1,6}\s+(?:[NSEW]\.?\s+)?(?:[A-Za-z0-9.'-]+\s+){0,4}(?:st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|ct|court|way|pl|place|pkwy|parkway|cir|circle|hwy|highway|ter|terrace|trl|trail|loop|sq|square)\b\.?(?:[ ,]+(?:apt|suite|ste|unit|#)\s*[\w-]+)?(?:,?\s+[A-Za-z .'-]+,?\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?)?/gi  // street addresses
+  ];
+  function luhn(d) {  // real card numbers pass this check; order and tracking numbers mostly don't
+    var sum = 0;
+    for (var i = 0; i < d.length; i++) {
+      var n = +d[d.length - 1 - i];
+      if (i % 2) { n *= 2; if (n > 9) n -= 9; }
+      sum += n;
+    }
+    return sum % 10 === 0;
+  }
+  var SKIP = /^(SCRIPT|STYLE|TEXTAREA|INPUT|SELECT|OPTION|CODE)$/;
+  function mark(node) {
+    var text = node.nodeValue, hits = [];
+    PATTERNS.forEach(function (p) {
+      var re = p.re || p, m;
+      re.lastIndex = 0;
+      while ((m = re.exec(text))) if (!p.ok || p.ok(m[0])) hits.push([m.index, m.index + m[0].length]);
+    });
+    if (!hits.length) return;
+    hits.sort(function (a, b) { return a[0] - b[0]; });
+    var frag = document.createDocumentFragment(), at = 0;
+    hits.forEach(function (h) {
+      if (h[0] < at) { if (h[1] > at) { frag.lastChild.textContent += text.slice(at, h[1]); at = h[1]; } return; }
+      frag.appendChild(document.createTextNode(text.slice(at, h[0])));
+      var s = document.createElement('span'); s.className = 'pv'; s.textContent = text.slice(h[0], h[1]);
+      frag.appendChild(s); at = h[1];
+    });
+    frag.appendChild(document.createTextNode(text.slice(at)));
+    node.parentNode.replaceChild(frag, node);
+  }
+  function scan(el) {
+    var walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {acceptNode: function (n) {
+      var p = n.parentElement;
+      return !p || SKIP.test(p.tagName) || p.closest('.pv,[data-public]') || !/\d|@/.test(n.nodeValue)
+        ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    }}), found = [];
+    while (walk.nextNode()) found.push(walk.currentNode);
+    found.forEach(mark);
+  }
+  var areas = document.querySelectorAll('main, dialog');
+  areas.forEach(scan);
+  new MutationObserver(function (list) {
+    list.forEach(function (m) { m.addedNodes.forEach(function (n) {
+      if (n.nodeType === 1 && !n.classList.contains('pv')) scan(n);
+      else if (n.nodeType === 3 && n.parentElement && !n.parentElement.closest('.pv')) scan(n.parentElement);
+    }); });
+  }).observe(document.body, {childList: true, subtree: true});
+})();
+</script>

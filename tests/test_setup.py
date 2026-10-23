@@ -206,3 +206,11 @@ def test_patch_notes_show_once_after_an_update(tmp_path, monkeypatch):
     assert c.get("/whats-new").get_json()["releases"] == [{"build": 62, "date": "", "notes": ["from 60"]}]
     c.post("/whats-new/seen")
     assert 'id="wnew"' not in c.get("/orders").get_data(as_text=True)
+
+
+def test_privacy_screen_is_on_every_page(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    c = appmod.create_app(str(tmp_path / "s.db")).test_client()
+    for path in ("/", "/orders", "/profiles"):
+        page = c.get(path).get_data(as_text=True)
+        assert 'id="privsw"' in page and "Reveal sensitive info" in page and "html:not(.reveal) .pv" in page

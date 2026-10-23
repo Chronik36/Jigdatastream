@@ -240,6 +240,7 @@ body .fl{color:#7884b3}
   <button class="menu" type="button" onclick="document.documentElement.classList.toggle('open')" aria-label="Menu">{{ icon("menu") }}</button>
   <div class="crumb">{% if ns.page %}{{ icon(ns.icon) }}<span>{{ns.sec}}</span><span>/</span><b>{{ns.page}}</b>{% else %}<b>BotTrack</b>{% endif %}</div>
   <span class="grow"></span>
+  <label class="privsw" title="Addresses, emails, phone and card numbers are blurred until this is on"><input type="checkbox" id="privsw"><span class="knob"></span><span class="lbl">Reveal sensitive info</span></label>
   {% if syncing %}<form method="post" action="/sync/all" class="syncall"><button type="submit" class="ghost" {{"disabled" if syncing.running}} title="Email, Discord, linked banks and package tracking">{{ icon("sync") }}<span class="lbl">{{"Syncing..." if syncing.running else "Sync everything"}}</span></button></form>{% endif %}
   {% if update and update.available %}<a class="chip upd" href="{{'/m/app' if on_phone else '/setup#updates'}}"><i></i>Update ready</a>{% endif %}
   {% if ai and ai.ready and not ai.error %}<span class="chip ai"><i></i>AI ready</span>{% endif %}
@@ -283,6 +284,7 @@ function mini() {
 </script>
 {% with watch_data=path in ("/orders", "/expenses", "/profiles") %}{% if watch_data or on_phone %}{% include "live.html" %}{% endif %}{% endwith %}
 {% include "_responsive.html" %}
+{% include "_privacy.html" %}
 {% if whats_new %}{% include "_whats_new.html" %}{% endif %}
 {% if on_phone %}{% include "phone.html" %}{% endif %}
 </body></html>
