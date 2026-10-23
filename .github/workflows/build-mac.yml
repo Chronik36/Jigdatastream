@@ -41,6 +41,7 @@ jobs:
 
   build:
     needs: android
+    if: ${{ !cancelled() }}  # a broken Android build never holds back the Mac app
     runs-on: macos-latest  # Apple Silicon
     timeout-minutes: 30
     env:
