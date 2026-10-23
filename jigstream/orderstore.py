@@ -143,6 +143,7 @@ def _key(s):
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 
+NOT_SPENT = ("cancelled", "returned", "refunded", "not_an_order")  # orders that didn't stick
 CANCEL_WINDOW_DAYS = 60  # store + To address matching; an order number matches at any age
 
 
@@ -529,7 +530,8 @@ class Store:
         orders = self.orders() if orders is None else orders
         by_status = {s: 0 for s in STATUSES}
         for o in orders:
-            by_status[o["shipping_status"] or "unknown"] += 1
+            st = o["shipping_status"] or "unknown"
+            by_status[st] = by_status.get(st, 0) + 1
         expenses = self.expenses() if expenses is None else expenses
         by_category = {}
         by_month = {}
@@ -542,7 +544,9 @@ class Store:
             by_month[month] = by_month.get(month, 0) + amount
         return {
             "order_count": len(orders),
-            "order_total": sum(o["total"] or 0 for o in orders),
+            # Spend counts only orders that stuck: a cancelled, refunded or returned order cost nothing.
+            "order_total": sum(o["total"] or 0 for o in orders if o["shipping_status"] not in NOT_SPENT),
+            "not_spent": sum(by_status.get(s, 0) for s in NOT_SPENT),
             "in_flight": sum(by_status[s] for s in ("shipped", "in_transit", "out_for_delivery")),
             "by_status": {k: v for k, v in by_status.items() if v},
             "expense_total": sum(by_category.values()),

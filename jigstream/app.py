@@ -10,7 +10,7 @@ from flask import Flask, Response, flash, jsonify, redirect, render_template, re
 
 from . import address as A
 from . import (analysis, bankpages, cardcheck, browsertrack, carriers, db, discord, drop, emailbook, engines, expensepages, export,
-               inbox, keywords, logs, manual, mobile, parsers, products, profilebook, profilematch, profiles, recurring,
+               inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
                stock, stuck, tasks, training, updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
@@ -54,7 +54,7 @@ def create_app(db_path=None):
     @app.context_processor
     def nav_flags():
         return {"update": updater.state,
-                "ai": app.config.get("AI_STATE")}
+                "ai": app.config.get("AI_STATE"), "syncing": app.config["SYNC_STATE"]}
 
     def con():
         return db.connect(db_path)
@@ -155,12 +155,15 @@ def create_app(db_path=None):
 
     @app.get("/")
     def dashboard():
-        c = con()
-        tot = c.execute("SELECT COUNT(*) n, SUM(status='success') s, SUM(status!='success') f FROM checkouts").fetchone()
-        report, unmatched = analysis.failure_report(c)
-        return render_template("dashboard.html", tot=tot, sites=analysis.by_dimension(c, "site"),
-                               bots=analysis.by_dimension(c, "bot"), report=report, unmatched=unmatched,
-                               cancelled=[r for r in stuck.cross_reference(Store(c).db) if r["state"] == "cancelled"])
+        c = Store(con()).db
+        years = overview.years(c)
+        year = request.args.get("year") if request.args.get("year") in years else years[0]
+        return render_template("dashboard.html", s=overview.summary(c, year), years=years)
+
+    @app.get("/imports")
+    def imports_page():
+        report, unmatched = analysis.failure_report(con())
+        return render_template("imports.html", report=report, unmatched=unmatched)
 
     @app.get("/checkouts")
     def checkouts():
@@ -600,7 +603,7 @@ def create_app(db_path=None):
             flash(f"Imported {n} {kind} records")
         except Exception as e:  # surface parse problems in the UI
             flash(f"Import failed: {e}")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("imports_page"))
 
     def start_sync(full=False):
         """Start a background sync unless one is running. run.py also calls this on a timer."""
@@ -725,6 +728,26 @@ def create_app(db_path=None):
         elif app.config.get("AI_STATE") and not app.config["AI_STATE"]["ready"]:
             flash("The AI model is still getting ready; syncing starts by itself when it is.")
         return redirect(url_for("orders"))
+
+    @app.post("/sync/all")
+    def sync_all():
+        """Everything that comes in by itself, now: Gmail, Discord, linked banks and carrier tracking."""
+        started = app.start_sync()
+        extra = [name for name, run in app.config.get("SYNC_ALL", []) if run()]
+        if carriers.available(os.environ):
+            threading.Thread(target=carriers.run, args=(con(), dict(os.environ)), daemon=True).start()
+            extra.append("package tracking")
+        if started:
+            flash("Syncing everything: email and Discord" + (", " + ", ".join(extra) if extra else "") + ".")
+        elif sync_state["running"]:
+            flash("A sync is already running" + ("; also started " + ", ".join(extra) if extra else "") + ".")
+        elif app.config.get("AI_STATE") and not app.config["AI_STATE"]["ready"]:
+            flash("The AI model is still getting ready; email syncing starts by itself when it is.")
+        elif extra:
+            flash("Started " + ", ".join(extra) + ".")
+        else:
+            flash("Nothing to sync yet. Add an inbox, Discord channels or a bank on Setup.")
+        return redirect(request.referrer or url_for("dashboard"))
 
     @app.post("/sync/stop")
     def sync_stop():
