@@ -153,13 +153,14 @@ def cross_reference(con):
         if c["bot_update"]:
             c["state"] = "cancelled" if c["bot_update"]["verdict"] == "cancelled" or c["state"] == "cancelled" \
                 else "emailed"
-        # Set by hand on the Drops page: "good" counts as a confirmed order, "cancelled" as cancelled.
+        # Set by hand: "good" counts as a confirmed order, "cancelled" as cancelled, "not_order" as no checkout at all
+        # (a test or a duplicate webhook): it's left out of every count.
         c["verdict"] = verdicts.get(c["id"])
         if c["verdict"] and c["verdict"][0] == "good" and c["state"] == "cancelled" and _cancelled_after(c, c["verdict"][1]):
             c["verdict"] = None  # marked good, but a cancel email or refund came in since: the cancel wins
         c["verdict"] = c["verdict"] and c["verdict"][0]
         if c["verdict"]:
-            c["state"] = {"good": "emailed", "cancelled": "cancelled"}[c["verdict"]]
+            c["state"] = {"good": "emailed", "cancelled": "cancelled", "not_order": "not_order"}[c["verdict"]]
         out.append(c)
     out.sort(key=lambda c: c["ts"] or "", reverse=True)
     return out
@@ -259,9 +260,10 @@ def _match_refunds(con, checkouts):
 
 
 def counts(rows):
-    n = {"all": len(rows), "emailed": 0, "cancelled": 0, "no_email": 0}
+    n = {"all": 0, "emailed": 0, "cancelled": 0, "no_email": 0, "not_order": 0}
     for r in rows:
         n[r["state"]] += 1
+    n["all"] = len(rows) - n["not_order"]
     n["stuck"] = n["emailed"] + n["no_email"]
     return n
 
@@ -290,7 +292,7 @@ def _lookup(index, d):
 def decline_history(con, rows=None):
     """For each declined checkout: what happened earlier on the same profile or account email, from the webhooks
     (successes, how many stuck or got cancelled, other declines) and the order emails. checkout id -> summary."""
-    rows = rows if rows is not None else cross_reference(con)
+    rows = [c for c in (rows if rows is not None else cross_reference(con)) if c["state"] != "not_order"]
     orders = [dict(o) for o in con.execute(
         "SELECT id, retailer, order_date, last_email_date, profile_name, recipient_email, account"
         " FROM tracked_orders WHERE COALESCE(shipping_status, '') != 'not_an_order'")]
