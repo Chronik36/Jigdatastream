@@ -438,24 +438,31 @@ only the host and port.</p>
 
 {% if "keywords.keywords_page" in pages %}<section id="keywords" data-title="Keyword finder">
 <h2>Keyword finder</h2>
-<div class="where">Sidebar → <b>Keywords</b></div>
-<p>Helps you write monitor keywords for a drop. Paste the link to a product or store page and BotTrack reads it once, then lists the
-words the page is built around and the <b>negative keywords</b> that stop a monitor from catching look-alikes, like the kids' or low-top
-version of the same shoe.</p>
+<div class="where">Sidebar → Bot tools → <b>Keywords</b></div>
+<p>Helps you write monitor keywords for a drop. Paste the link to a product or store page and BotTrack reads it once, then suggests the
+<b>+ keywords</b> a product must have and the <b>- negative keywords</b> that stop a monitor from catching look-alikes, like the kids' or
+low-top version of the same shoe. It reads only the product itself, not the menus, reviews or "you might also like" boxes around it.</p>
 <ol class="steps">
 <li>Copy the product page's address from your browser.</li>
 <li>Paste it into the box and press <span class="ui">Find keywords</span>.</li>
-<li>Check the <b>Monitor keywords</b> line, take out anything that's wrong, and press <span class="ui">Copy</span> to paste it into your monitor.</li>
+<li>Fix the lists: press <b>×</b> on anything wrong, and add anything missing.</li>
+<li>Press <span class="ui">Copy</span> next to <b>Monitor keywords</b> and paste the line into your monitor.</li>
 </ol>
 {{ fig("keywords", "The Keyword finder with a sample page.", [
   "Paste the product or store page's address here.",
-  "Also ask the local AI: the AI on your Mac adds its own pick of main keywords and negatives. It takes a little longer.",
-  "Monitor keywords: a ready-made line of +keywords and -negatives. Copy puts it on your clipboard.",
-  "Negative keywords, each with the reason it was suggested, for example the look-alike item it came from.",
-  "Top keywords: the words the page uses most. A ★ means the word is also in the title, description or headings.",
-  "Top phrases: two and three word phrases the page repeats.",
-  "Page details: the page title, description, product name, colour, and SKU or style codes."]) }}
-<div class="warn">Remove any negative that is actually part of what you want. If you're after the GS size, for example, take <b>-gs</b> out of the line.</div>
+  "Also ask the local AI: the AI on your Mac adds its own + and - suggestions to the lists, marked “local AI”. It takes a little longer.",
+  "Monitor keywords: the ready-made line of +keywords and -negatives. It updates as you change the lists. Copy puts it on your clipboard.",
+  "Add a keyword: choose + require or - exclude, type the word, and press Add.",
+  "+ Keywords to require, each with the reason it was suggested. A style code or SKU is listed but left out of the line; add it if your monitor matches SKUs.",
+  "× removes a suggestion that's wrong. The - negative keywords below work the same way.",
+  "Removed by you: what you took out, with an undo button for each."]) }}
+<h4 id="keyword-corrections">BotTrack remembers your changes</h4>
+<p>Every keyword you remove or add is remembered for that <b>store</b> and for that <b>brand</b>. Next time you check a page from the same
+store, or the same brand on another store, your removed words stay out and your added ones go in, marked "you added this for…". The page
+you corrected is also shown to the local AI as an example, so its own suggestions get better too.</p>
+<p>You can see and undo all of it on <a href="#keyword-training">Training → Keyword finder corrections</a>.</p>
+<div class="tip">BotTrack never suggests a negative for a spaced spelling of the product's own name (a site that writes "Nee Doh" as well as
+"NeeDoh"), or for the store's own name.</div>
 <p>Some stores block automated visits. When that happens BotTrack says so and doesn't try to get around it; try a different page from
 the same site. If very little text comes back, the page builds itself with JavaScript and the list may be incomplete.</p>
 </section>{% endif %}
@@ -653,6 +660,13 @@ downloads the model (2 to 5 GB).</div>
   "Model said: what the AI answered. Green means it was already right, red means it got it wrong.",
   "Delete an example that's wrong, so the AI doesn't learn from it.",
   "Train an email reader on these examples. Once trained, Use this switches email syncing to it (BotTrack restarts its AI). Go back to the 14B model any time."]) }}
+{% if "keywords.keywords_page" in pages %}<h4 id="keyword-training">Keyword finder corrections</h4>
+<p>At the bottom of the Email reader page is everything you changed on the <a href="#keywords">Keywords</a> page.</p>
+{{ fig("training-keywords", "Training → Email reader → Keyword finder corrections.", [
+  "Your rules: each keyword you added or removed, and the store and brand it applies to.",
+  "Delete a rule you no longer want. Pages from that store or brand go back to the normal suggestions.",
+  "Export the pages you corrected as a .jsonl file, in the same format as the email examples, for training a model later."]) }}
+<p>Under the export button is the list of pages you corrected, which the local AI sees as examples. Delete one if it was a bad example.</p>{% endif %}
 </section>
 
 <section id="logs" data-title="Logs">
