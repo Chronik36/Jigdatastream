@@ -116,29 +116,38 @@ def label_emails(config, store, llm, picks, label):
             store.set_inbox_label(row, label, f"failed: {e}")
 
 
-def fill_missing_amounts(config, store, limit=200):
+def fill_missing_amounts(config, store, limit=200, recheck=False):
     """Re-open expenses saved without an amount and read the total straight from the email.
-    Reminders and unpaid invoices that were filed as expenses are removed. Each email is tried once."""
+    Reminders and unpaid invoices that were filed as expenses are removed. Each email is tried once,
+    unless recheck is set (the Find missing amounts button); one that couldn't be opened is tried again."""
     from .extract import NOT_A_CHARGE, PAID_WORDS, find_total
-    rows = store.db.execute("SELECT e.id, e.message_id, e.account, m.subject FROM expenses e"
+    rows = store.db.execute("SELECT e.id, e.message_id, e.account, e.vendor, e.description, m.subject FROM expenses e"
                             " LEFT JOIN emails m ON m.message_id = e.message_id"
-                            " WHERE e.amount IS NULL AND COALESCE(e.amount_checked, 0) = 0 LIMIT ?", (limit,)).fetchall()
+                            " WHERE e.amount IS NULL AND e.message_id NOT LIKE 'manual:%'"
+                            + ("" if recheck else " AND COALESCE(e.amount_checked, 0) = 0") + " LIMIT ?",
+                            (limit,)).fetchall()
     filled = removed = 0
     for r in rows:
-        subject = r["subject"] or ""
+        subject = r["subject"] or r["description"] or ""
         if NOT_A_CHARGE.search(subject) and not PAID_WORDS.search(subject):
             store.db.execute("DELETE FROM expenses WHERE id = ?", (r["id"],))
             store.db.execute("UPDATE emails SET kind = 'other' WHERE message_id = ?", (r["message_id"],))
             removed += 1
             continue
-        amount = None
         try:
             email = open_email(config, r["account"], r["message_id"])
-            amount = find_total(email.body) if email else None
         except Exception as e:
-            logger.warning("couldn't re-open expense email %s: %s", r["message_id"], e)
+            logger.warning("couldn't re-open the %s expense email: %s", r["vendor"], e)
+            continue  # tried again next sync
+        amount = find_total(email.body) if email else None
+        if not email:
+            logger.info("expense %s (%s): email not found in %s", r["id"], r["vendor"], r["account"] or "any inbox")
+        elif amount is None:
+            logger.info("expense %s (%s): no total found in the email (%d characters)",
+                        r["id"], r["vendor"], len(email.body))
         store.db.execute("UPDATE expenses SET amount = COALESCE(?, amount), amount_checked = 1 WHERE id = ?",
                          (amount, r["id"]))
+        store.db.commit()
         filled += amount is not None
     store.db.commit()
     if rows:
