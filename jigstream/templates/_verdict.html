@@ -1,0 +1,4 @@
+{# The Good / Cancelled / Not an order picker for a successful checkout webhook. It sticks, and when the checkout has
+   an order email the AI learns from the correction (see app.drop_verdict). #}
+{% macro verdict(c) %}{% if c.status == "success" %}<form method="post" action="/drop/{{c.id}}/verdict" style="margin:0"><select name="verdict" onchange="this.form.submit()" title="Correct this result; it sticks" aria-label="Correct this checkout">
+<option value="auto"{{' selected' if not c.verdict}}>{{'Auto' if not c.verdict else 'Back to auto'}}</option><option value="good"{{' selected' if c.verdict == 'good'}}>Good</option><option value="cancelled"{{' selected' if c.verdict == 'cancelled'}}>Bad (cancelled)</option><option value="not_order"{{' selected' if c.verdict == 'not_order'}}>Not an order</option></select></form>{% if c.verdict %}<div class="muted" style="font-size:12px">Set by you</div>{% endif %}{% endif %}{% endmacro %}

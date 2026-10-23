@@ -182,7 +182,7 @@ def create_app(db_path=None):
         rows = stuck.cross_reference(Store(con()).db)
         show = request.args.get("show", "stuck")
         keep = {"stuck": ("emailed", "no_email"), "emailed": ("emailed",), "no_email": ("no_email",),
-                "cancelled": ("cancelled",)}.get(show)
+                "cancelled": ("cancelled",), "not_order": ("not_order",)}.get(show)
         return render_template("stuck.html", rows=[r for r in rows if keep is None or r["state"] in keep],
                                counts=stuck.counts(rows), show=show)
 
@@ -209,7 +209,7 @@ def create_app(db_path=None):
         store = Store(con())
         row = next((c for c in stuck.cross_reference(store.db) if c["id"] == checkout_id), None)
         back = request.referrer if (request.referrer or "").startswith(request.host_url) else url_for("drop_page")
-        if row is None or verdict not in ("good", "cancelled", "auto"):
+        if row is None or verdict not in ("good", "cancelled", "not_order", "auto"):
             flash("Couldn't save that.")
             return redirect(back)
         drop.set_verdict(store.db, checkout_id, verdict)
@@ -224,7 +224,7 @@ def create_app(db_path=None):
             relabel(store, o, "ordered")
             flash(f"{said} marked good. Its order is set back to ordered, and its emails become training examples.")
         else:
-            flash(f"{said} marked {'automatic' if verdict == 'auto' else verdict}.")
+            flash(f"{said} marked {dict(auto='automatic', not_order='not an order').get(verdict, verdict)}.")
         return redirect(back)
 
     @app.get("/orders")
@@ -299,6 +299,8 @@ def create_app(db_path=None):
     def label_order(order_id):
         status = request.form.get("status", "")
         store = Store(con())
+        # The Profile orders page sends back=1 to stay where it was.
+        back = request.referrer if request.form.get("back") and (request.referrer or "").startswith(request.host_url) else None
         order = store.order(order_id)
         if order and status == "not_an_order":
             mails = store.dismiss_order(order_id)
@@ -311,14 +313,14 @@ def create_app(db_path=None):
                                  daemon=True).start()
             flash(f"Removed {order['retailer'] or 'that order'} {order['order_number'] or ''}. Its emails are saved as "
                   "\"not an order\" examples so the AI learns to skip emails like it.")
-            return redirect(url_for("orders"))
+            return redirect(back or url_for("orders"))
         if not order or status not in STATUSES:
             flash("Couldn't save that status.")
             return redirect(url_for("orders"))
         relabel(store, order, status)
         flash(f"{order['retailer']} {order['order_number'] or ''} set to {status}. Searching your inboxes for its "
               "emails to learn from; refresh in a minute.")
-        return redirect(url_for("orders") + f"#order-{order_id}")
+        return redirect(back or url_for("orders") + f"#order-{order_id}")
 
     @app.get("/training/export")
     def training_export():
