@@ -7,4 +7,6 @@
   {% if mine %}<span class="pill lbl-mine" title="{{mine.state}}">✓ {{labels[mine.label][0]}}</span>
   {% elif ai %}<span class="pill" title="What the AI decided when it synced">{{ {"botting_expense": "AI: expense", "other": "AI: not relevant", "skipped": "Skipped: no purchase words", "not_an_order": "You: not an order"}.get(ai, "AI: " ~ ai) }}</span>{% endif %}</div>
 </div>
-{% else %}<div class="mrow" style="cursor:default"><span></span><span class="muted">{{"Nothing here." if configured else ""}}</span><span></span></div>{% endfor %}
+{% else %}{% if first %}<div class="mrow" style="cursor:default"><span></span><span class="muted">{{"Nothing here." if configured else ""}}</span><span></span></div>{% endif %}{% endfor %}
+{% if more %}<div class="mrow more" style="cursor:default" data-next="{{next}}"><span></span><span class="muted">Loading more…</span><span></span></div>
+{% elif rows and not first %}<div class="mrow" style="cursor:default"><span></span><span class="muted">That's everything.</span><span></span></div>{% endif %}
