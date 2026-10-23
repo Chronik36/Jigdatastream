@@ -8,6 +8,7 @@ soon after the checkout, means it was cancelled even when no email said so. A ch
 neither a cancel email nor a refund followed it.
 """
 import re
+from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 
 from . import bank, profilematch
@@ -24,10 +25,12 @@ LATE_CANCEL = timedelta(days=60)
 SITE_FILLER = re.compile(r"^(www\.)|\.(com|net|co|us|ca|co\.uk)$|\s+(us|usa|store|online|inc)$")
 
 
+@lru_cache(maxsize=50000)  # pure string helpers called for every checkout and order on each page load
 def _number(s):
     return re.sub(r"[^A-Za-z0-9]", "", s or "").upper()
 
 
+@lru_cache(maxsize=20000)
 def site_key(s):
     s = (s or "").strip().lower()
     s = re.sub(r"^https?://", "", s).split("/")[0]
@@ -109,22 +112,27 @@ def cross_reference(con):
     for o in orders:
         if o["id"] not in used:
             by_site.setdefault(site_key(o["retailer"]), []).append(o)
+    # Worked out once per order and per site rather than for every checkout/order pair.
+    facts = {o["id"]: (_number(o["order_number"]), times[o["id"]],
+                       LATE_CANCEL if not o["order_date"] and state_of(o) == "cancelled" else AFTER) for o in orders}
+    near_site = {}
     pairs = []
     for i, c in enumerate(checkouts):
         if c["order"]:
             continue
         t, key = when(c["ts"]), site_key(c["site"])
-        near = [o for k, group in by_site.items() if key and k and (key in k or k in key) for o in group]
-        for o in near:
+        if key not in near_site:
+            near_site[key] = [o for k, group in by_site.items() if key and k and (key in k or k in key) for o in group]
+        number = _number(c["order_number"])
+        for o in near_site[key]:
+            onumber, ot, after = facts[o["id"]]
+            # Both sides have numbers that differ: that's another order.
+            if number and onumber:
+                continue
+            if t and ot and not (t - BEFORE <= ot <= t + after):
+                continue
             buyer = _same_buyer(c, o)
             if not buyer:
-                continue
-            # Both sides have numbers that differ: that's another order.
-            if _number(c["order_number"]) and _number(o["order_number"]):
-                continue
-            ot = times[o["id"]]
-            after = LATE_CANCEL if not o["order_date"] and state_of(o) == "cancelled" else AFTER
-            if t and ot and not (t - BEFORE <= ot <= t + after):
                 continue
             # The To address is the surest sign it's this checkout's order; then the profile, then the inbox.
             rank = ("To email", "profile", "inbox").index(buyer)
