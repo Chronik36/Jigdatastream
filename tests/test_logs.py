@@ -111,3 +111,30 @@ def test_send_logs_requires_a_note(tmp_path):
     import pytest
     with pytest.raises(ValueError):
         logs.send_logs("me@gmail.com", "pw", "   short   ", log_dir=tmp_path, to="dev@example.com", smtp=FakeSMTP())
+
+
+def test_email_body_has_recent_errors_and_tail(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta
+    monkeypatch.setattr(os, "environ", dict(os.environ, GMAIL_ACCOUNTS="me@gmail.com:abcdefghijklmnop"))
+    now = datetime.now()
+    old = (now - timedelta(hours=30)).strftime("%Y-%m-%d %H:%M:%S")
+    new = (now - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+    lines = [f"{old},001 ERROR   jigstream.sync: stale failure",
+             f"{new},002 INFO    jigstream.sync: synced 3 emails",
+             f"{new},003 ERROR   jigstream.sync: login failed abcdefghijklmnop",
+             f"{new},004 WARNING jigstream.llm: model hiccup",
+             "Traceback (most recent call last):",
+             '  File "x.py", line 1, in <module>',
+             "ValueError: card 4111 1111 1111 1111"]
+    lines += [f"{new},005 INFO    jigstream.app: line {i}" for i in range(250)]
+    (tmp_path / "app.log").write_text("\n".join(lines) + "\n")
+    smtp = FakeSMTP()
+    logs.send_logs("me@gmail.com", "abcdefghijklmnop", "sync keeps failing on my second inbox", {"BotTrack": "build-1"},
+                   log_dir=tmp_path, to="dev@example.com", smtp=smtp)
+    body = smtp.sent[0].get_body(("plain",)).get_content()
+    assert "sync keeps failing" in body and "Errors and tracebacks, last 24 hours (2)" in body
+    assert "login failed ********" in body and "ValueError: card [card]" in body and "model hiccup" in body
+    assert "stale failure" not in body  # older than 24 hours
+    assert "line 249" in body and "line 49\n" not in body  # only the last 200 lines
+    assert "abcdefghijklmnop" not in body and "4111" not in body
+    assert next(smtp.sent[0].iter_attachments()).get_filename() == "bottrack-logs.zip"
