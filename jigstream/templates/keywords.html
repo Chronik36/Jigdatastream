@@ -3,8 +3,8 @@
 .kw-form{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 18px}
 .kw-form input[name=url]{flex:1;min-width:260px;margin:0}
 .kw-form label{color:var(--muted);display:flex;align-items:center;gap:6px}
-.kw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
-.kw-grid .panel{margin:0}
+.kw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:16px}
+.kw-grid .panel{margin:0;min-width:0}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:999px;padding:3px 10px;font-size:13px}
 .chip.key{border-color:rgba(61,216,239,.4);color:var(--accent-2)}
@@ -17,8 +17,14 @@
 .kw-table td,.kw-table th{padding:7px 12px}
 .kw-table{margin:0}
 .kw-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;word-break:break-all}
-dl.kw-meta{display:grid;grid-template-columns:120px 1fr;gap:6px 12px;margin:0}dl.kw-meta dt{color:var(--muted)}dl.kw-meta dd{margin:0}
+dl.kw-meta{display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 12px;margin:0}dl.kw-meta dt{color:var(--muted)}dl.kw-meta dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.kw-table td{overflow-wrap:anywhere}
 .star{color:var(--orange)}
+.kw-add{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 0}
+.kw-add select,.kw-add input{margin:0}.kw-add input{min-width:180px}
+button.kw-x{background:transparent;border:1px solid var(--line-2);color:var(--muted);box-shadow:none;padding:0 9px;line-height:24px;font-size:15px}
+button.kw-x:hover{color:var(--red);border-color:var(--red)}
+button.kw-undo{background:transparent;border:0;box-shadow:none;color:var(--accent);padding:0 0 0 4px;font-size:12px;font-weight:500}
 </style>
 <h2>Keyword finder</h2>
 <p class="muted">Paste a product or store page. BotTrack loads it once, the same way your browser would, and lists the words the page is built around,
@@ -28,6 +34,16 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
   <label><input type="checkbox" name="ai" value="1" {{'checked' if use_ai}}> Also ask the local AI</label>
   <button>Find keywords</button>
 </form>
+{% if saved %}<div class="panel" id="rules">
+  <div class="kw-head"><h3>Your keyword rules</h3></div>
+  <p class="muted">What you removed or added on earlier pages. Each applies to its store, and to the same brand on other stores.
+  The pages themselves are examples on the <a href="/training">Training</a> page's Keyword finder task.</p>
+  <table class="kw-table"><thead><tr><th>Keyword</th><th>You</th><th>Store</th><th>Brand</th><th></th></tr></thead><tbody>
+  {% for r in saved %}<tr><td><span class="chip {{'pos' if r.kind == '+' else 'neg'}}">{{r.kind}}{{r.word}}</span></td>
+  <td>{{"removed it" if r.action == "remove" else "added it"}}</td><td>{{r.host}}</td><td>{{r.brand|upper or "-"}}</td>
+  <td class="num"><form method="post" action="/keywords/rules/{{r.id}}/delete" style="margin:0"><button class="kw-x" title="Delete rule" aria-label="Delete rule">×</button></form></td></tr>{% endfor %}
+  </tbody></table>
+</div>{% endif %}
 {% if error %}<div class="banner" style="border-color:rgba(255,107,122,.45);background:rgba(255,107,122,.08)">{{error}}</div>{% endif %}
 {% if result %}
 <p class="muted">{{result.word_count}} words read from <a href="{{result.url}}" target="_blank" rel="noopener">{{result.host}}</a>.
@@ -36,25 +52,34 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
 {% if ai %}<div class="panel"><div class="kw-head"><h3>Local AI</h3></div>
 <p>{{ai.summary}}</p>
 {% if ai.main_keywords %}<div class="chips" style="margin-bottom:10px">{% for k in ai.main_keywords %}<span class="chip key">{{k}}</span>{% endfor %}</div>{% endif %}
-{% if ai.positives %}<p class="muted" style="margin:10px 0 6px">Suggested + keywords</p>
-<div class="chips">{% for w, r in ai.positives %}<span class="chip pos" title="{{r}}">+{{w}}{% if r %} <small>{{r}}</small>{% endif %}</span>{% endfor %}</div>{% endif %}
-{% if ai.negatives %}<p class="muted" style="margin:10px 0 6px">Suggested negatives</p>
-<div class="chips">{% for w, r in ai.negatives %}<span class="chip neg" title="{{r}}">-{{w}}{% if r %} <small>{{r}}</small>{% endif %}</span>{% endfor %}</div>{% endif %}
+{% if ai.positives or ai.negatives %}<p class="muted" style="margin:0">Its + and - keywords are added to the lists below, marked "local AI".</p>{% endif %}
 </div>{% elif ai_error %}<div class="banner" style="border-color:rgba(255,138,61,.45);background:rgba(255,138,61,.08)">The local AI couldn't help this time: {{ai_error}}</div>{% endif %}
 
 <div class="panel">
   <div class="kw-head"><h3>Monitor keywords</h3><button class="ghost" data-copy="kwline">Copy</button></div>
-  <p class="muted" style="margin-bottom:8px">For <b style="color:var(--text)">{{result.name or "this page"}}</b>. Remove any negative that is actually part of the product you want.</p>
+  <p class="muted" style="margin-bottom:8px">For <b style="color:var(--text)">{{result.name or "this page"}}</b>.
+  Remove (×) any suggestion that's wrong and add any that's missing. BotTrack remembers it for {{result.host}}{% if result.product.brand %} and {{result.product.brand}} items{% endif %}, and the local AI learns from it (Training → Keyword finder).</p>
   <div class="kw-line" id="kwline">{{line}}</div>
+  <div class="kw-add">
+    <select id="kwkind" aria-label="Keyword type"><option value="+">+ require</option><option value="-">- exclude</option></select>
+    <input id="kwword" placeholder="Add a keyword" aria-label="Keyword">
+    <button class="ghost" id="kwaddbtn" type="button">Add</button>
+    <span class="muted" id="kwmsg" role="status"></span>
+  </div>
   <h3 style="margin:16px 0 8px">+ Keywords to require</h3>
-  {% if result.positives %}<table class="kw-table"><thead><tr><th>Keyword</th><th>Why</th></tr></thead><tbody>
-  {% for w, r, in_line in result.positives %}<tr><td><span class="chip pos">+{{w}}</span></td><td class="muted">{{r}}{% if not in_line %} <span style="color:var(--orange)">(not in the line above; add it if your monitor matches SKUs)</span>{% endif %}</td></tr>{% endfor %}</tbody></table>
-  {% else %}<p class="muted">Couldn't tell which product this page is for.</p>{% endif %}
+  <table class="kw-table"><thead><tr><th>Keyword</th><th>Why</th><th></th></tr></thead><tbody id="kwpos">
+  {% for w, r, in_line in result.positives %}<tr data-kind="+" data-word="{{w}}" data-line="{{1 if in_line else 0}}"><td><span class="chip pos">+{{w}}</span></td><td class="muted">{{r}}{% if not in_line %} <span style="color:var(--orange)">(not in the line above; add it if your monitor matches SKUs)</span>{% endif %}</td><td class="num"><button class="kw-x" type="button" title="Remove +{{w}}" aria-label="Remove +{{w}}">×</button></td></tr>{% endfor %}
+  <tr class="kw-empty"{% if result.positives %} hidden{% endif %}><td colspan="3" class="muted">Couldn't tell which product this page is for. Add the words yourself above.</td></tr></tbody></table>
   <h3 style="margin:16px 0 8px">- Negative keywords</h3>
-  {% if result.negatives %}<table class="kw-table"><thead><tr><th>Keyword</th><th>Why</th></tr></thead><tbody>
-  {% for w, r in result.negatives %}<tr><td><span class="chip neg">-{{w}}</span></td><td class="muted">{{r}}</td></tr>{% endfor %}</tbody></table>
-  {% else %}<p class="muted">No look-alike products were found on the page.</p>{% endif %}
+  <table class="kw-table"><thead><tr><th>Keyword</th><th>Why</th><th></th></tr></thead><tbody id="kwneg">
+  {% for w, r in result.negatives %}<tr data-kind="-" data-word="{{w}}" data-line="1"><td><span class="chip neg">-{{w}}</span></td><td class="muted">{{r}}</td><td class="num"><button class="kw-x" type="button" title="Remove -{{w}}" aria-label="Remove -{{w}}">×</button></td></tr>{% endfor %}
+  <tr class="kw-empty"{% if result.negatives %} hidden{% endif %}><td colspan="3" class="muted">No look-alike products were found on the page.</td></tr></tbody></table>
+  <div id="kwremoved"{% if not result.removed %} hidden{% endif %}>
+    <h3 style="margin:16px 0 8px">Removed by you</h3>
+    <div class="chips" id="kwremovedlist">{% for r in result.removed %}<span class="chip" data-rule="{{r.id}}">{{r.kind}}{{r.word}} <small>{{r.where}}</small> <button class="kw-undo" type="button" title="Suggest it again">undo</button></span>{% endfor %}</div>
+  </div>
 </div>
+<script id="kwdata" type="application/json">{{ {"url": result.url, "host": result.host, "brand": result.product.brand or "", "product": result.name, "page": summary}|tojson }}</script>
 
 <div class="kw-grid">
   <div class="panel">
@@ -93,6 +118,73 @@ plus the + keywords to require and the - keywords that help a monitor skip look-
 </div>
 {% endif %}
 <script>
+(function () {
+  const dataEl = document.getElementById('kwdata');
+  if (!dataEl) return;
+  const info = JSON.parse(dataEl.textContent);
+  const msg = document.getElementById('kwmsg');
+  const rows = kind => [...document.querySelectorAll(`#${kind === '+' ? 'kwpos' : 'kwneg'} tr[data-word]`)];
+  const words = kind => rows(kind).map(r => r.dataset.word);
+  function refresh() {
+    const pos = rows('+').filter(r => r.dataset.line === '1').map(r => '+' + r.dataset.word);
+    const neg = words('-').filter(w => !words('+').includes(w)).map(w => '-' + w);
+    document.getElementById('kwline').textContent = pos.concat(neg).join(',');
+    ['kwpos', 'kwneg'].forEach(id => {
+      document.querySelector(`#${id} .kw-empty`).hidden = !!document.querySelector(`#${id} tr[data-word]`);
+    });
+    document.getElementById('kwremoved').hidden = !document.querySelector('#kwremovedlist .chip');
+  }
+  function send(kind, word, action) {
+    return fetch('/keywords/feedback', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(Object.assign({}, info, {kind, word, action, positives: words('+'), negatives: words('-')}))})
+      .then(r => r.json()).then(d => { if (!d.ok) throw new Error(d.error || 'not saved'); return d; });
+  }
+  function say(text) { msg.textContent = text; }
+  function row(kind, word, reason) {
+    const tr = document.createElement('tr');
+    tr.dataset.kind = kind; tr.dataset.word = word; tr.dataset.line = '1';
+    tr.innerHTML = '<td><span class="chip"></span></td><td class="muted"></td><td class="num"><button class="kw-x" type="button">×</button></td>';
+    const chip = tr.querySelector('.chip');
+    chip.classList.add(kind === '+' ? 'pos' : 'neg'); chip.textContent = kind + word;
+    tr.children[1].textContent = reason;
+    tr.querySelector('button').title = 'Remove ' + kind + word;
+    return tr;
+  }
+  document.addEventListener('click', e => {
+    const x = e.target.closest('button.kw-x');
+    if (x) {
+      const tr = x.closest('tr'), kind = tr.dataset.kind, word = tr.dataset.word;
+      tr.remove(); refresh();
+      send(kind, word, 'remove').then(d => {
+        say(`Removed ${kind}${word}. It won't be suggested for ${info.host} again.`);
+        const chip = document.createElement('span');
+        chip.className = 'chip'; chip.dataset.rule = d.rule_id; chip.textContent = kind + word + ' ';
+        const undoBtn = document.createElement('button');
+        undoBtn.className = 'kw-undo'; undoBtn.type = 'button'; undoBtn.textContent = 'undo'; undoBtn.title = 'Suggest it again';
+        chip.appendChild(undoBtn);
+        document.getElementById('kwremovedlist').appendChild(chip); refresh();
+      }).catch(err => say('Not saved: ' + err.message));
+    }
+    const undo = e.target.closest('button.kw-undo');
+    if (undo) {
+      const chip = undo.closest('[data-rule]');
+      fetch(`/keywords/rules/${chip.dataset.rule}/delete`, {method: 'POST', headers: {'Accept': 'application/json'}})
+        .then(() => { chip.remove(); refresh(); say('It can be suggested again next time.'); });
+    }
+  });
+  function add() {
+    const kind = document.getElementById('kwkind').value;
+    const word = document.getElementById('kwword').value.trim().replace(/^[+-]+/, '').toLowerCase();
+    if (!word) return;
+    rows(kind).filter(r => r.dataset.word === word).forEach(r => r.remove());
+    const body = document.getElementById(kind === '+' ? 'kwpos' : 'kwneg');
+    body.insertBefore(row(kind, word, 'you added this'), body.querySelector('.kw-empty'));
+    document.getElementById('kwword').value = ''; refresh();
+    send(kind, word, 'add').then(() => say(`Added ${kind}${word} for ${info.host}.`)).catch(err => say('Not saved: ' + err.message));
+  }
+  document.getElementById('kwaddbtn').addEventListener('click', add);
+  document.getElementById('kwword').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+})();
 document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => {
   const el = document.getElementById(b.dataset.copy);
   const text = el.tagName === 'TBODY'
