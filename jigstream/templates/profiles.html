@@ -88,16 +88,16 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
     <form method="post" action="{{url_for('profile_delete', name=p.name)}}" onsubmit="return confirm('Delete {{p.name}}?')"><button class="del" title="Delete profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button></form>
   </div>
   <h3>{{p.name}}{% if p.site %} <span class="tag site">{{p.site}}</span>{% endif %}{% if p.group_name %} <span class="tag grp">{{p.group_name}}</span>{% endif %}{% if p.bot %} <span class="tag">{{p.bot}}</span>{% endif %}</h3>
-  <div class="who">{{p.email or "no email"}}{% if p.phone %} · {{p.phone}}{% endif %}</div>
+  <div class="who" data-private>{{p.email or "no email"}}{% if p.phone %} · {{p.phone}}{% endif %}</div>
   <div class="lbl">BILLING</div>
-  <div>{{p.bill_address1}}{% if p.bill_address2 %}, {{p.bill_address2}}{% endif %}</div>
-  <div>{{p.bill_city}}{% if p.bill_city %}, {% endif %}{{p.bill_state}} {{p.bill_zip}}</div>
+  <div data-private>{{p.bill_address1}}{% if p.bill_address2 %}, {{p.bill_address2}}{% endif %}</div>
+  <div data-private>{{p.bill_city}}{% if p.bill_city %}, {% endif %}{{p.bill_state}} {{p.bill_zip}}</div>
   <div class="lbl">SHIPPING</div>
   {% if same %}<div class="same">Same as billing ✓</div>{% else %}
-  <div>{{p.ship_address1}}{% if p.ship_address2 %}, {{p.ship_address2}}{% endif %}</div>
-  <div>{{p.ship_city}}{% if p.ship_city %}, {% endif %}{{p.ship_state}} {{p.ship_zip}}</div>{% endif %}
+  <div data-private>{{p.ship_address1}}{% if p.ship_address2 %}, {{p.ship_address2}}{% endif %}</div>
+  <div data-private>{{p.ship_city}}{% if p.ship_city %}, {% endif %}{{p.ship_state}} {{p.ship_zip}}</div>{% endif %}
   <div class="lbl">PAYMENT</div>
-  <div>{% if p.linked_last4 %}{{p.linked_brand}} •••• {{p.linked_last4}} • Exp {{p.linked_exp}}{% elif p.card_last4 %}{{p.card_brand or "Card"}} •••• {{p.card_last4}}{% if p.card_exp %} • Exp {{p.card_exp}}{% endif %} <span class="muted">(in bot file)</span>{% else %}<span class="muted">No card linked</span>{% endif %}{% if p.card_holder %} <span class="muted">· {{p.card_holder}}</span>{% endif %}</div>
+  <div>{% if p.linked_last4 %}{{p.linked_brand}} •••• {{p.linked_last4}} • Exp {{p.linked_exp}}{% elif p.card_last4 %}{{p.card_brand or "Card"}} •••• {{p.card_last4}}{% if p.card_exp %} • Exp {{p.card_exp}}{% endif %} <span class="muted">(in bot file)</span>{% else %}<span class="muted">No card linked</span>{% endif %}{% if p.card_holder %} <span class="muted" data-private>· {{p.card_holder}}</span>{% endif %}</div>
   <div class="lbl">ORDERS</div>
   <div><a href="/profile-orders?profile={{p.name|urlencode}}">{% set n = order_counts.get(p.name, 0) %}{{n}} order{{"" if n == 1 else "s"}} from your inboxes →</a></div>
   {% if issues %}<div class="issues">{{issues|join("; ")}}</div>{% endif %}
