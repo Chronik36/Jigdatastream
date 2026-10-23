@@ -265,10 +265,18 @@ def create_app(db_path=None):
         profilematch.match_orders(store.db)
         rows = store.orders()
         hist = profilematch.history(store.db, rows)
-        pick = request.args.get("profile")
+        a = request.args
+        pick, site, group = a.get("profile") or None, a.get("site"), a.get("group")
         used = [h for h in hist.values() if h["orders"] or h["checkouts"]]
+        sites = sorted({h["profile"].get("site") or "" for h in used}, key=lambda s: (not s, s.lower()))
+        if site is not None:
+            used = [h for h in used if (h["profile"].get("site") or "") == site]
+        groups = sorted({h["profile"].get("group_name") or "" for h in used}, key=lambda g: (not g, g.lower()))
+        if group is not None:
+            used = [h for h in used if (h["profile"].get("group_name") or "") == group]
         used.sort(key=lambda h: (-len(h["orders"]), h["profile"]["name"].lower()))
         return render_template("profile_orders.html", hist=hist, used=used, pick=hist.get(pick), pick_name=pick,
+                               sites=sites, groups=groups, site=site, group=group,
                                unmatched=[o for o in rows if not o["profile_name"]], total_profiles=len(hist))
 
     def background_rescan(label_id, order):
