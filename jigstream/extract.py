@@ -351,9 +351,13 @@ def normalize(data, email):
 
 
 def _recipient(email):
-    """The address the store sent the order email to: the profile's email, even when it forwards to this inbox."""
-    m = re.search(r"[\w.+'-]+@[\w-]+(?:\.[\w-]+)+", getattr(email, "to", "") or "")
-    return m.group(0).lower() if m else None
+    """The address the store sent the order email to: the profile's email, even when it forwards to this
+    inbox (the forwarding inbox itself is skipped)."""
+    inbox = (getattr(email, "account", "") or "").lower()
+    for a in re.findall(r"[\w.+'-]+@[\w-]+(?:\.[\w-]+)+", getattr(email, "to", "") or ""):
+        if a.lower() != inbox:
+            return a.lower()
+    return None
 
 
 def _sender_name(sender):

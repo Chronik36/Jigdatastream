@@ -82,7 +82,7 @@ def test_bot_checkout_order_number_wins_and_hand_picks_stick(tmp_path):
 
 def test_to_header_is_read():
     raw = b"Message-ID: <1@x>\r\nFrom: shop@x.com\r\nTo: Jacob <j.smith@gmail.com>\r\nSubject: hi\r\n\r\nbody"
-    assert parse_message(raw).to == "Jacob <j.smith@gmail.com>"
+    assert parse_message(raw).to == "j.smith@gmail.com"
 
 
 def test_pages(tmp_path):
