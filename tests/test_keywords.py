@@ -44,7 +44,7 @@ def test_analyze_finds_keywords_and_negatives():
 
 
 def test_catch_alls_skip_target_words():
-    negs = keywords.negative_keywords("Air Jordan 1 Low GS", [], [])
+    negs = keywords.negative_keywords("Air Jordan 1 Low GS", [])
     pos = {w: r for w, r, _ in keywords.positive_keywords("Air Jordan 1 Low GS Shoes", [])}
     assert "gs" in pos and "shoes" not in pos  # the GS version must require GS; generic words add nothing
     assert "gs" not in [w for w, _ in negs] and "ps" in [w for w, _ in negs]
@@ -153,3 +153,47 @@ def test_shopify_variants_are_not_lookalikes():
     r = keywords.analyze(html, "https://gotoytime.com/products/nee-doh-dig-it-pig")
     negs = [w for w, _ in r["negatives"]]
     assert "mini" in negs and "default" not in negs and "title" not in negs
+
+
+TOY_LD = {"@type": "Product", "name": "Dig It Pig NeeDoh", "brand": {"name": "SCHYLLING"}, "gtin13": "0019649520008"}
+TOY_PAGE = """<html><head><title>Nee doh dig it pig - ToyTime</title><meta property="og:site_name" content="ToyTime">
+<meta name="description" content="Buy Nee doh dig it pig for only $6.99 at ToyTime!">
+<script type="application/ld+json">%s</script></head><body>
+<header class="site-header"><svg><title>ToyTimeTrade_IconsTrade</title></svg>
+<nav class="menu"><a href="/c/toys">Toys</a><a href="/c/books">Books</a><a href="/c/bruder">Bruder Toys</a>
+<a href="/c/calico">Calico Critters</a><a href="/c/m">Model Kits</a><span>Expand child</span></nav></header>
+<main><div class="product"><h1>Nee doh dig it pig</h1><p>Squish the Nee Doh pig. Glow and Green colours sold separately.</p>
+<form><button>Add to cart</button><select><option>Default Title</option></select></form></div>
+<h2>You may also like</h2>
+<a href="/p/1"><span class="visually-hidden">Nice Ice Baby NeeDoh</span> Nice Ice Baby NeeDoh Sorry, this item is out of stock $5.99</a>
+<a href="/p/2">Nice Cube NeeDoh Nice Cube NeeDoh Sorry, this item is out of stock</a>
+<a href="/p/3" title="Needoh ice cube - ToyTime">Needoh ice cube - ToyTime</a>
+<a href="/p/4">Nee Doh Dig It Pig Mini</a>
+<a href="/p/5">Nee Doh Snowball High Bounce</a>
+</main><footer><svg><title>American Express</title></svg><svg><title>Apple Pay</title></svg>
+<a href="/policies">Refund policy</a> <a href="/x">Hat Pin Sticker Backpack Pants</a></footer></body></html>""" % json.dumps(TOY_LD)
+
+
+def test_shop_page_keeps_to_the_product():
+    r = keywords.analyze(TOY_PAGE, "https://gotoytime.com/collections/fidgets/products/nee-doh-dig-it-pig")
+    assert r["title"] == "Nee doh dig it pig - ToyTime"  # icon <title>s are not the page title
+    top = [w for w, *_ in r["words"]]
+    for chrome in ("iconstrade", "books", "bruder", "calico", "expand", "express", "refund", "toys", "sorry", "stock"):
+        assert chrome not in top
+    pos = {w: reason for w, reason, _ in r["positives"]}
+    assert "needoh" in pos and "nee doh" in pos["needoh"].lower()
+    negs = [w for w, _ in r["negatives"]]
+    for bad in ("nee", "doh", "toytime", "gotoytime", "sorry", "stock", "item", "hat", "pin", "pants", "backpack",
+                "sticker", "default", "title"):
+        assert bad not in negs, bad
+    for good in ("mini", "ice", "cube", "baby"):
+        assert good in negs, good
+    assert r["codes"] == ["0019649520008"]  # not "Green", "Kits" or "Glow"
+    assert "Nice Ice Baby NeeDoh" in r["related"] and not any("Sorry" in x for x in r["related"])
+
+
+def test_page_details_wrap_long_values(tmp_path, monkeypatch):
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, TOY_PAGE))
+    html = client.post("/keywords", data={"url": "https://gotoytime.com/p"}).get_data(as_text=True)
+    assert "overflow-wrap:anywhere" in html
