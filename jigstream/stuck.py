@@ -2,8 +2,8 @@
 
 A bot's webhook says "success" the moment the site takes the order, but many orders get cancelled
 afterwards. Each successful checkout is matched to the order emails: first by order number, and when
-the webhook has none (or the email doesn't), by the same site and profile within a few days of the
-checkout. Refunds from your bank or card (Bank page) count too: a refund from that store for that amount,
+the webhook has none (or the email doesn't), by the same site within a few days of the checkout and the
+same buyer: the account email the bot used is the email's To address (surest), or the same profile. Refunds from your bank or card (Bank page) count too: a refund from that store for that amount,
 soon after the checkout, means it was cancelled even when no email said so. A checkout stuck when
 neither a cancel email nor a refund followed it.
 """
@@ -62,10 +62,16 @@ def _order_time(o):
 
 
 def _same_buyer(c, o):
-    if c["profile"] and o["profile_name"] and c["profile"] == o["profile_name"]:
-        return True
+    """How the checkout's buyer matches the order email: "To email" (the account email the bot used is the
+    address the email was sent to), "profile", or None."""
     email = profilematch.norm_email(c["email"])
-    return bool(email) and email in (profilematch.norm_email(o["recipient_email"]), profilematch.norm_email(o["account"]))
+    if email and email == profilematch.norm_email(o["recipient_email"]):
+        return "To email"
+    if c["profile"] and o["profile_name"] and c["profile"] == o["profile_name"]:
+        return "profile"
+    if email and email == profilematch.norm_email(o["account"]):
+        return "inbox"
+    return None
 
 
 def state_of(order):
@@ -90,7 +96,8 @@ def cross_reference(con):
     used, out = set(), []
     for c in checkouts:
         o = by_number.get(_number(c["order_number"]))
-        c["order"], c["matched_on"] = (o, "order number") if o else (None, None)
+        c["order"], c["matched_on"] = (o, "order number" + (" and To email" if o and _same_buyer(c, o) == "To email"
+                                                              else "")) if o else (None, None)
         if o:
             used.add(o["id"])
     # The rest pair up with order emails for the same site and profile, closest in time first, so two
@@ -106,7 +113,8 @@ def cross_reference(con):
         t, key = when(c["ts"]), site_key(c["site"])
         near = [o for k, group in by_site.items() if key and k and (key in k or k in key) for o in group]
         for o in near:
-            if not _same_buyer(c, o):
+            buyer = _same_buyer(c, o)
+            if not buyer:
                 continue
             # Both sides have numbers that differ: that's another order.
             if _number(c["order_number"]) and _number(o["order_number"]):
@@ -114,12 +122,14 @@ def cross_reference(con):
             ot = times[o["id"]]
             if t and ot and not (t - BEFORE <= ot <= t + AFTER):
                 continue
-            pairs.append((abs((ot - t).total_seconds()) if t and ot else float("inf"), i, o["id"], o))
+            # The To address is the surest sign it's this checkout's order; then the profile, then the inbox.
+            rank = ("To email", "profile", "inbox").index(buyer)
+            pairs.append(((rank, abs((ot - t).total_seconds()) if t and ot else float("inf")), i, o["id"], o, buyer))
     taken = set()
-    for _, i, oid, o in sorted(pairs, key=lambda p: p[:3]):
+    for _, i, oid, o, buyer in sorted(pairs, key=lambda p: p[:3]):
         if i in taken or oid in used:
             continue
-        checkouts[i]["order"], checkouts[i]["matched_on"] = o, "same site and profile"
+        checkouts[i]["order"], checkouts[i]["matched_on"] = o, f"same site and {buyer}"
         taken.add(i)
         used.add(oid)
     _match_refunds(con, checkouts)
@@ -189,3 +199,50 @@ def counts(rows):
         n[r["state"]] += 1
     n["stuck"] = n["emailed"] + n["no_email"]
     return n
+
+
+def _by_buyer(items, profile_of, emails_of):
+    index = {}
+    for x in items:
+        if profile_of(x):
+            index.setdefault(("p", profile_of(x)), []).append(x)
+        for e in {profilematch.norm_email(e) for e in emails_of(x)} - {""}:
+            index.setdefault(("e", e), []).append(x)
+    return index
+
+
+def _lookup(index, d):
+    keys = [("p", d["profile"])] if d["profile"] else []
+    if profilematch.norm_email(d["email"]):
+        keys.append(("e", profilematch.norm_email(d["email"])))
+    found = {}
+    for k in keys:
+        for x in index.get(k, ()):
+            found[id(x)] = x
+    return list(found.values())
+
+
+def decline_history(con, rows=None):
+    """For each declined checkout: what happened earlier on the same profile or account email, from the webhooks
+    (successes, how many stuck or got cancelled, other declines) and the order emails. checkout id -> summary."""
+    rows = rows if rows is not None else cross_reference(con)
+    orders = [dict(o) for o in con.execute(
+        "SELECT id, retailer, order_date, last_email_date, profile_name, recipient_email, account"
+        " FROM tracked_orders WHERE COALESCE(shipping_status, '') != 'not_an_order'")]
+    declines = [dict(r) for r in con.execute("SELECT * FROM checkouts WHERE status = 'decline'")]
+    wins_by = _by_buyer(rows, lambda c: c["profile"], lambda c: [c["email"]])
+    declines_by = _by_buyer(declines, lambda c: c["profile"], lambda c: [c["email"]])
+    mails_by = _by_buyer(orders, lambda o: o["profile_name"], lambda o: [o["recipient_email"]])
+    out = {}
+    for d in declines:
+        before = lambda ts: not d["ts"] or bool(ts) and ts < d["ts"]
+        wins = sorted((c for c in _lookup(wins_by, d) if before(c["ts"])), key=lambda c: c["ts"])
+        out[d["id"]] = {
+            "checkouts": len(wins),
+            "stuck": sum(c["state"] != "cancelled" for c in wins),
+            "cancelled": sum(c["state"] == "cancelled" for c in wins),
+            "declines": sum(1 for x in _lookup(declines_by, d) if x["id"] != d["id"] and before(x["ts"])),
+            "orders": sum(1 for o in _lookup(mails_by, d) if before(o["order_date"] or o["last_email_date"])),
+            "last": wins[-1] if wins else None,
+        }
+    return out

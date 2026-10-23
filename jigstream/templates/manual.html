@@ -305,7 +305,12 @@ imported on the Dashboard.</p>
   "Show only successes, declines, failures, or all.",
   "Status: green for success, red for anything else.",
   "Reason: why a checkout didn't go through, when the bot said."]) }}
-<p>The <b>Email</b> column shows what your order emails say about each successful checkout, such as Cancelled or Delivered.</p>
+<p>The <b>Email / history</b> column shows what your order emails say about each successful checkout, such as Cancelled or Delivered.
+For a decline it shows what happened before on the same profile or account email: how many times it checked out (and how many of
+those stuck or got cancelled), how many order emails it has, and earlier declines. "Never checked out on this profile/email before"
+is worth a look.</p>
+<p><b>Hayha:</b> Hayha titles its declines "Successful Checkout!" too. BotTrack reads Hayha webhooks by their color instead (green is
+a success, red a decline), and a <b>Cancel Reason</b> field always counts as a decline, with that reason shown.</p>
 </section>
 
 <section id="stuck" data-title="Stuck">
@@ -315,7 +320,8 @@ imported on the Dashboard.</p>
 checkout against your order emails and bank refunds, and lists the ones that stuck: no cancel email or refund came after them.</p>
 <ul>
 <li>A checkout is matched to an order email by its order number. When the webhook has no order number, it's matched to an order
-from the same site and profile within a few days of the checkout.</li>
+from the same site within a few days of the checkout, sent to the account email the bot used (the email's To address). Failing
+that, an order matched to the same profile.</li>
 <li><b>Order email, no cancel</b>: the order was confirmed, shipped or delivered by email.</li>
 <li><b>No email found</b>: no order email matched yet. Sync your inboxes first; if it still shows here, the emails may have gone
 to an inbox you haven't added, or the webhook's site or profile doesn't match the email.</li>

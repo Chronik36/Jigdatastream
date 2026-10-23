@@ -146,8 +146,10 @@ def create_app(db_path=None):
         q = "SELECT * FROM checkouts" + (" WHERE status=?" if status else "") + " ORDER BY ts DESC LIMIT 500"
         c = con()
         rows = c.execute(q, (status,) if status else ()).fetchall()
-        emails = {r["id"]: r for r in stuck.cross_reference(Store(c).db)}
-        return render_template("checkouts.html", rows=rows, emails=emails)
+        matched = stuck.cross_reference(Store(c).db)
+        emails = {r["id"]: r for r in matched}
+        history = stuck.decline_history(c, matched) if status in (None, "decline") else {}
+        return render_template("checkouts.html", rows=rows, emails=emails, history=history)
 
     @app.get("/stuck")
     def stuck_page():
