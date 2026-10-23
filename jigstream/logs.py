@@ -21,6 +21,7 @@ LOG_DIR = Path(os.environ.get("JIGSTREAM_LOGS", "logs"))
 # Where "Send logs to developer" emails the zip. BOTTRACK_LOGS_TO in .env overrides it.
 DEVELOPER_EMAIL = "jacobbourg13@gmail.com"
 SMTP_HOST = "smtp.gmail.com"
+NOTE_MIN_CHARS = 20  # "Send logs" needs a short description of the problem
 FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
 
@@ -108,13 +109,15 @@ def log_files(log_dir=None):
     return sorted(p.name for p in d.glob("*.log*")) if d.exists() else []
 
 
-def zip_logs(log_dir=None, about=None):
+def zip_logs(log_dir=None, about=None, note=""):
     """All log files in one zip, passwords and card numbers masked, for sending to whoever is helping."""
     d = Path(log_dir or LOG_DIR)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for name in log_files(d):
             z.writestr(name, scrub((d / name).read_text("utf-8", "replace")))
+        if note.strip():
+            z.writestr("problem.txt", scrub(note.strip()) + "\n")
         if about:
             z.writestr("about.txt", "".join(f"{k}: {v}\n" for k, v in about.items()))
     return buf.getvalue()
@@ -130,8 +133,19 @@ def about(version="", engine="", model=""):
             "Machine": platform.machine(), "Python": platform.python_version(), "AI engine": engine, "AI model": model}
 
 
-def send_logs(sender, password, note="", about_info=None, log_dir=None, to=None, smtp=None):
+def note_problem(note):
+    """Why a note can't be sent yet, or None when it's fine."""
+    if len((note or "").strip()) < NOTE_MIN_CHARS:
+        return f"Describe what went wrong in at least {NOTE_MIN_CHARS} characters before sending."
+    return None
+
+
+def send_logs(sender, password, note, about_info=None, log_dir=None, to=None, smtp=None):
     """Email the logs zip from the user's own Gmail (the app password they already use for syncing)."""
+    problem = note_problem(note)
+    if problem:
+        raise ValueError(problem)
+    note = scrub(note.strip())
     to = to or developer_email()
     if not to:
         raise RuntimeError("No developer address is set.")
@@ -139,8 +153,8 @@ def send_logs(sender, password, note="", about_info=None, log_dir=None, to=None,
     msg = EmailMessage()
     msg["Subject"] = f"BotTrack logs ({info.get('BotTrack', 'unknown build')})"
     msg["From"], msg["To"], msg["Reply-To"] = sender, to, sender
-    msg.set_content((note.strip() or "(no note)") + "\n\n" + "".join(f"{k}: {v}\n" for k, v in info.items()))
-    msg.add_attachment(zip_logs(log_dir, info), maintype="application", subtype="zip",
+    msg.set_content("What went wrong:\n" + note + "\n\n" + "".join(f"{k}: {v}\n" for k, v in info.items()))
+    msg.add_attachment(zip_logs(log_dir, info, note), maintype="application", subtype="zip",
                        filename="bottrack-logs.zip")
     if smtp is None:
         smtp = smtplib.SMTP_SSL(SMTP_HOST, 465, context=ssl.create_default_context(), timeout=30)

@@ -17,9 +17,25 @@ Your database, saved cards, bank data, profiles and emails are never sent. Logs 
 <p>To: <b>{{to}}</b></p>
 <p>From: {% if accounts|length > 1 %}<select name="sender">{% for a in accounts %}<option>{{a}}</option>{% endfor %}</select>
 {% else %}<b>{{accounts[0]}}</b><input type="hidden" name="sender" value="{{accounts[0]}}">{% endif %}</p>
-<p><textarea name="note" rows="4" cols="60" maxlength="4000" placeholder="What went wrong? (optional)"></textarea></p>
+{% if error %}<p class="error" style="color:var(--red)"><b>{{error}}</b></p>{% endif %}
+<p><label for="note"><b>What went wrong?</b> <span class="muted">(required)</span></label><br>
+<textarea id="note" name="note" rows="5" cols="60" minlength="{{min_chars}}" maxlength="4000" required
+placeholder="What were you doing, what did you expect, and what happened instead? For example: I pressed Sync now and my Target order from yesterday never showed up.">{{note}}</textarea><br>
+<span class="muted" id="note-count"></span></p>
 <p><label><input type="checkbox" name="consent" value="yes" required> I've seen what's included and want to send it</label></p>
-<p><button>Send logs</button> <a href="/logs">Cancel</a></p>
+<p><button id="send-btn">Send logs</button> <a href="/logs">Cancel</a></p>
 </form>
+<script>
+(function () {
+  const note = document.getElementById('note'), btn = document.getElementById('send-btn'),
+        box = document.querySelector('input[name=consent]'), count = document.getElementById('note-count'), min = {{min_chars}};
+  function update() {
+    const n = note.value.trim().length;
+    count.textContent = n < min ? `${min - n} more characters needed` : 'Thanks, this is sent with the logs.';
+    btn.disabled = n < min || !box.checked;
+  }
+  note.addEventListener('input', update); box.addEventListener('change', update); update();
+})();
+</script>
 {% endif %}{% endif %}
 {% endblock %}
