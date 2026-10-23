@@ -1,6 +1,14 @@
 package com.bottrack.app;
 
 import android.app.Activity;
+import android.app.DownloadManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.Settings;
+import android.widget.Toast;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -195,7 +203,8 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
                 if ("bottrack".equals(u.getScheme())) {
-                    scan();
+                    if ("update".equals(u.getHost())) update(u.getQueryParameter("url"));
+                    else scan();
                     return true;
                 }
                 if (sameServer(u, home)) return false;
@@ -241,6 +250,58 @@ public class MainActivity extends Activity {
         main.postDelayed(() -> {
             if (web == started && !loaded[0]) unreachable();
         }, CONNECT_TIMEOUT_MS);
+    }
+
+    /**
+     * Update this app in place: download the new version from BotTrack's release and hand it to
+     * Android's installer, which asks the tester to confirm. Signed with the same key, it keeps
+     * the pairing and settings.
+     */
+    private void update(String url) {
+        Uri apk = url == null ? null : Uri.parse(url);
+        if (apk == null || !"https".equals(apk.getScheme()) || apk.getHost() == null
+                || !(apk.getHost().equals("github.com") || apk.getHost().endsWith(".githubusercontent.com"))) {
+            Toast.makeText(this, "That update link doesn't look right.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            Toast.makeText(this, "Allow BotTrack to install updates, then come back and tap Update app again.", Toast.LENGTH_LONG).show();
+            startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName())));
+            return;
+        }
+        DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+        String name = "BotTrack-update.apk";
+        java.io.File old = new java.io.File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), name);
+        if (old.exists()) old.delete();
+        DownloadManager.Request req = new DownloadManager.Request(apk)
+                .setTitle("BotTrack update")
+                .setMimeType("application/vnd.android.package-archive")
+                .setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, name)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE);
+        final long id = dm.enqueue(req);
+        Toast.makeText(this, "Downloading the update…", Toast.LENGTH_SHORT).show();
+        BroadcastReceiver done = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent i) {
+                if (i.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) != id) return;
+                unregisterReceiver(this);
+                Uri file = dm.getUriForDownloadedFile(id);
+                if (file == null) {
+                    Toast.makeText(MainActivity.this, "The update didn't download. Try again in a minute.", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                Intent install = new Intent(Intent.ACTION_VIEW)
+                        .setDataAndType(file, "application/vnd.android.package-archive")
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(install);
+            }
+        };
+        IntentFilter filter = new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(done, filter, Context.RECEIVER_EXPORTED);  // sent by Android's download service
+        } else {
+            registerReceiver(done, filter);
+        }
     }
 
     /** The Mac didn't answer: ask its private topic for a newer link, once, before giving up. */
