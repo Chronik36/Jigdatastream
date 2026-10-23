@@ -15,5 +15,7 @@
 <p><a href="bottrack://setup">Scan a new QR code</a></p></div>{% endif %}
 <div class="panel"><h3 style="margin-top:0">This phone</h3>
 <p class="muted">Setup, Logs, bank linking and full card numbers only open on your Mac. Everything else works here, and changes show up on every device within a few seconds.</p>
+<p><a class="btn" href="{{url_for('send_logs_page')}}">Send logs to developer</a></p>
+<p class="muted">Something not working? This emails BotTrack's logs from your Mac to the developer, with passwords and card numbers hidden.</p>
 <form method="post" action="{{url_for('mobile.logout')}}" class="ghost"><button>Sign out of this phone</button></form></div>
 {% endblock %}
