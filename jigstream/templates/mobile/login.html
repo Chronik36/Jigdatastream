@@ -1,9 +1,12 @@
-{% extends "mobile/base.html" %}{% block title %}Sign in{% endblock %}{% block body %}
+{% extends "mobile/base.html" %}{% block title %}Connect{% endblock %}{% block body %}
 <div style="text-align:center;margin:28px 0 22px"><img src="{{url_for('static', filename='mark.png')}}" alt="" width="72" height="72" style="border-radius:18px">
-<h2 style="margin:12px 0 4px">BotTrack</h2><p class="muted small">Use the email and password from Setup, Phone access, in BotTrack on your Mac.</p></div>
-<form method="post">
+<h2 style="margin:12px 0 4px">BotTrack</h2><p class="muted small">On your Mac, open BotTrack, go to Setup, Phone access, and scan the QR code
+{{"with this app" if "BotTrackApp" in request.user_agent.string else "with your Camera"}}.</p></div>
+{% if "BotTrackApp" in request.user_agent.string %}<a class="btn" href="bottrack://setup">Scan QR code</a>{% endif %}
+{% if phone_password %}<p class="muted small" style="text-align:center;margin-top:22px">Or sign in with the email and password set on your Mac:</p>
+<form method="post" action="{{url_for('mobile.login')}}">
 <label>Email<input type="email" name="email" value="{{email or ''}}" autocomplete="username" autocapitalize="off" required></label>
 <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
-<button>Sign in</button></form>
-{% if "BotTrackApp" in request.user_agent.string %}<p style="text-align:center;margin-top:18px"><a href="bottrack://setup" class="small">Change Mac address</a></p>{% else %}<p class="muted small" style="margin-top:22px">Tip: in Safari tap Share, then Add to Home Screen. In Chrome tap the menu, then Add to Home screen.</p>{% endif %}
+<button>Sign in</button></form>{% endif %}
+{% if "BotTrackApp" not in request.user_agent.string %}<p class="muted small" style="margin-top:22px">Once you're in: in Safari tap Share, then Add to Home Screen. In Chrome tap the menu, then Add to Home screen.</p>{% endif %}
 {% endblock %}
