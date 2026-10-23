@@ -14,4 +14,5 @@ Delete any that are wrong.</p>
 <td><form method="post" action="/training/{{e.id}}/delete"><button class="danger">Delete</button></form></td></tr>
 {% else %}<tr><td colspan="5" class="muted">No examples yet. Turn on Training mode on Setup, then correct an order's status on the Orders page.</td></tr>{% endfor %}
 </tbody></table>
+{% include "keyword_training.html" %}
 {% endblock %}

@@ -14,8 +14,9 @@ from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request
 
+from . import db, keywordrules
 from .config import Config
 from .llm import LLMClient, LLMError
 
@@ -451,26 +452,35 @@ def analyze(html, url=""):
     }
 
 
-def ai_summary(result, config):
-    """Ask the local model which keywords the page is targeting. Returns dict or raises LLMError."""
-    client = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, timeout=config.llm_timeout)
-    page = {
+def page_summary(result):
+    """What the model is shown about a page (also what a saved example keeps)."""
+    return {
         "title": result["title"], "description": result["description"], "meta_keywords": result["meta_keywords"],
         "headings": [h for _, h in result["headings"][:15]], "product": result["product"], "codes": result["codes"],
         "top_words": [w for w, *_ in result["words"][:25]], "top_phrases": [p for p, *_ in result["phrases"][:20]],
         "target_item": result["name"], "similar_items_on_page": result["related"][:20],
     }
-    system = ("You read keyword data pulled from one web page. Reply with JSON only: "
-              '{"summary": "one or two sentences on what the page is about", '
-              '"main_keywords": ["the 5-12 keywords or phrases the page is built around, most important first"], '
-              '"product": "product name if it is a product page, else empty", '
-              '"positive_keywords": [{"word": "a word from the target item name a monitor should require", '
-              '"reason": "short reason"}], '
-              '"negative_keywords": [{"word": "a word that appears in the names of similar but wrong items '
-              '(other sizing runs like GS/PS/TD, other genders, other cuts or colourways, apparel, accessories, used '
-              'or replica) and NOT in the target item name", "reason": "short reason"}]}. '
-              "Negative keywords are for a restock monitor that must match the target item and skip look-alikes.")
-    answer = client.chat_json(system, json.dumps(page, ensure_ascii=False))
+
+
+AI_SYSTEM = ("You read keyword data pulled from one web page. Reply with JSON only: "
+             '{"summary": "one or two sentences on what the page is about", '
+             '"main_keywords": ["the 5-12 keywords or phrases the page is built around, most important first"], '
+             '"product": "product name if it is a product page, else empty", '
+             '"positive_keywords": [{"word": "a word from the target item name a monitor should require", '
+             '"reason": "short reason"}], '
+             '"negative_keywords": [{"word": "a word that appears in the names of similar but wrong items '
+             '(other sizing runs like GS/PS/TD, other genders, other cuts or colourways, apparel, accessories, used '
+             'or replica) and NOT in the target item name", "reason": "short reason"}]}. '
+             "Negative keywords are for a restock monitor that must match the target item and skip look-alikes. "
+             "Earlier pages may follow with the keywords the user settled on; learn from them.")
+
+
+def ai_summary(result, config, examples=()):
+    """Ask the local model which keywords the page is targeting. Returns dict or raises LLMError.
+
+    examples: (page JSON, answer JSON) pairs from pages the user corrected, shown before this page."""
+    client = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, timeout=config.llm_timeout)
+    answer = client.chat_json(AI_SYSTEM, json.dumps(page_summary(result), ensure_ascii=False), examples=examples)
     if not isinstance(answer, dict):
         raise LLMError("The model's answer wasn't in the expected format.")
 
@@ -513,10 +523,22 @@ def keywords_page():
     except Exception as e:  # odd markup should never take the page down
         error = f"Couldn't read that page: {e}"
         logger.exception("keyword finder: unexpected error for %s", url)
+    rules = []
+    if result:
+        try:
+            con = rules_db()
+            rules = keywordrules.rules_for(con, result["host"], result["product"].get("brand", ""))
+            keywordrules.apply(result, rules)
+        except Exception:  # the suggestions still show without your saved rules
+            logger.exception("keyword finder: couldn't load saved keyword rules")
+            con = None
     if result and use_ai:
         try:
-            ai = ai_summary(result, Config.from_env())
-            logger.info("keyword finder: local AI picked %d main keywords for %s", len(ai["main_keywords"]), url)
+            examples = keywordrules.few_shot(con, result["url"]) if con is not None else []
+            ai = keywordrules.filter_ai(ai_summary(result, Config.from_env(), examples), rules)
+            merge_ai(result, ai)
+            logger.info("keyword finder: local AI picked %d main keywords for %s (%d example pages)",
+                        len(ai["main_keywords"]), url, len(examples))
         except LLMError as e:
             ai_error = str(e)
             logger.warning("keyword finder: local AI summary failed: %s", e)
@@ -524,11 +546,90 @@ def keywords_page():
             ai_error = f"Something went wrong asking the model ({type(e).__name__}: {e})."
             logger.exception("keyword finder: local AI summary crashed for %s", url)
     try:
-        line = monitor_line(result["positives"], result["negatives"] + (ai["negatives"] if ai else [])) if result else ""
+        line = monitor_line(result["positives"], result["negatives"]) if result else ""
         return render_template("keywords.html", result=result, error=error, url=url, use_ai=use_ai, ai=ai,
-                               ai_error=ai_error, line=line)
+                               ai_error=ai_error, line=line, summary=page_summary(result) if result else None)
     except Exception as e:
         logger.exception("keyword finder: couldn't show results for %s", url)
         return render_template("keywords.html", result=None, url=url, use_ai=use_ai, ai=None, ai_error=None, line="",
                                error=f"Couldn't show the results for that page ({type(e).__name__}: {e}). "
                                      "Details are in Logs; please send them over.")
+
+
+def merge_ai(result, ai):
+    """Put the model's extra + and - keywords into the same lists, so they can be kept or removed like the rest."""
+    have = {w.lower() for w, *_ in result["positives"]} | {w.lower() for w, _ in result["negatives"]}
+    for w, r in ai["positives"]:
+        if w.lower() not in have:
+            result["positives"].append((w.lower(), "local AI" + (f": {r}" if r else ""), True))
+            have.add(w.lower())
+    for w, r in ai["negatives"]:
+        if w.lower() not in have:
+            result["negatives"].append((w.lower(), "local AI" + (f": {r}" if r else "")))
+            have.add(w.lower())
+
+
+def rules_db():
+    return keywordrules.ensure(db.connect(current_app.config.get("DB_PATH")))
+
+
+@bp.post("/keywords/feedback")
+def keywords_feedback():
+    """Keep or drop one suggestion. Saves a rule for the store and brand, and the page as a training example."""
+    data = request.get_json(silent=True) or {}
+    try:
+        con = rules_db()
+        word, rule_id = keywordrules.save_rule(con, data.get("host", ""), data.get("brand", ""), data.get("kind", ""),
+                                      str(data.get("word", "")), data.get("action", ""), data.get("url", ""),
+                                      data.get("product", ""))
+        if isinstance(data.get("page"), dict):
+            keywordrules.save_example(con, data.get("url", ""), data.get("host", ""), data.get("product", ""),
+                                      data["page"], [str(w) for w in data.get("positives") or []],
+                                      [str(w) for w in data.get("negatives") or []])
+    except ValueError as e:
+        return jsonify(ok=False, error=str(e)), 400
+    except Exception as e:
+        logger.exception("keyword finder: couldn't save feedback")
+        return jsonify(ok=False, error=f"Couldn't save that ({type(e).__name__})."), 500
+    return jsonify(ok=True, word=word, rule_id=rule_id)
+
+
+@bp.post("/keywords/rules/<int:rule_id>/delete")
+def keywords_rule_delete(rule_id):
+    keywordrules.delete_rule(rules_db(), rule_id)
+    if request.is_json or request.accept_mimetypes.best == "application/json":
+        return jsonify(ok=True)
+    return redirect(request.referrer or "/training")
+
+
+@bp.post("/keywords/examples/delete")
+def keywords_example_delete():
+    keywordrules.delete_example(rules_db(), request.form.get("url", ""))
+    return redirect(request.referrer or "/training")
+
+
+@bp.get("/keywords/training/export")
+def keywords_export():
+    return Response(keywordrules.export_jsonl(rules_db(), AI_SYSTEM), mimetype="application/x-ndjson",
+                    headers={"Content-Disposition": "attachment; filename=keyword-training.jsonl"})
+
+
+@bp.app_template_filter("fromjson")
+def fromjson(text):
+    try:
+        return json.loads(text or "{}")
+    except ValueError:
+        return {}
+
+
+@bp.app_context_processor
+def keyword_training_context():
+    def keyword_training():
+        """For the Training page: saved keyword rules and corrected pages."""
+        try:
+            con = rules_db()
+            return {"rules": keywordrules.all_rules(con), "examples": keywordrules.examples(con)}
+        except Exception:
+            logger.exception("keyword finder: couldn't load keyword training data")
+            return {"rules": [], "examples": []}
+    return {"keyword_training": keyword_training}
