@@ -6,6 +6,7 @@ They're emailed from your own Gmail, so nothing goes through anyone else's serve
 <p>No developer address is set in this version yet. {% if on_phone %}On your Mac, open Logs to download them{% else %}You can <a href="/logs/download">download the logs</a>{% endif %} and send them yourself.</p>
 {% else %}
 <h3>What's included</h3>
+<p class="muted">The email itself contains your note, any errors from the last 24 hours and the last 200 lines of app.log. These files are attached as a zip:</p>
 <ul>{% for f in files %}<li>{% if on_phone %}{{f}}{% else %}<a href="/logs?file={{f}}">{{f}}</a>{% endif %} <span class="muted">({{ (sizes.get(f, 0) / 1024)|round(1) }} KB)</span></li>{% else %}<li class="muted">No log files yet.</li>{% endfor %}
 <li>about.txt: {% for k, v in about.items() %}{{k}} {{v}}{{ ", " if not loop.last }}{% endfor %}</li></ul>
 <p class="muted">Before sending, app passwords, bot and API tokens, Plaid keys and anything shaped like a card number are replaced with ********.
