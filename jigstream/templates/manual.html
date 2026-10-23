@@ -333,6 +333,25 @@ cancelled. If the profile's card and the bank account both show their last 4 dig
 </ul>
 </section>
 
+<section id="drop" data-title="Drop">
+<h2>Drop</h2>
+<div class="where">Sidebar → Bot tools → <b>Drop</b></div>
+<p>Shows which proxies and profiles really check out, so you can tune your setup. Every checkout webhook is grouped by
+<b>retail site</b>, then by the <b>day of the drop</b>, and that drop's checkouts are listed under it, sorted by proxy group,
+proxy and profile (or by profile first, with the Sort buttons). The proxy group and proxy come from the webhook's
+<b>Proxy Group</b> and <b>Proxy</b> fields.</p>
+<ul>
+<li><b>Real</b> checkouts are successes that no cancel email or bank refund followed (the same check as <a href="#stuck">Stuck</a>).
+Declines never count, including red Hayha webhooks and any webhook with a Cancel Reason.</li>
+<li><b>Rate</b> is real checkouts out of every webhook on that proxy or profile, declines and failures included.</li>
+<li>The tables at the top rank proxy groups, proxies, profiles and the best proxy + profile pairs, most real checkouts first.
+Pick a site to see only its drops.</li>
+<li>Results are only as good as the cancel detection: a cancel email that went to an inbox you haven't synced still counts
+as real. Sync your inboxes first.</li>
+<li>Proxy logins and passwords are never shown. Only the proxy's host and port appear.</li>
+</ul>
+</section>
+
 <section id="profiles" data-title="Profiles">
 <h2>Profiles</h2>
 <div class="where">Sidebar → Bot tools → <b>Profiles</b></div>
