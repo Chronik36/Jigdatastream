@@ -14,5 +14,6 @@ body .xtabs .side-link{margin-left:auto;font-size:13px}
 <a href="/expenses/ledger" class="{{'on' if tab == 'ledger'}}">Ledger{% if look %}<span class="n" title="Charges with no receipt, receipts with no charge, and close amounts">{{look}}</span>{% endif %}</a>
 <a href="/expenses/recurring" class="{{'on' if tab == 'recurring'}}">Recurring{% set ra = (totals.alerts if totals is defined else (rec.alerts if rec is defined else 0)) %}{% if ra %}<span class="n" title="Missed renewals and price changes">{{ra}}</span>{% endif %}</a>
 <a href="/expenses/budget" class="{{'on' if tab == 'budget'}}">Budget</a>
+<a href="/expenses/profit" class="{{'on' if tab == 'profit'}}">Profit goal</a>
 <a href="/bank" class="side-link muted">Bank &amp; card imports →</a>
 </nav>

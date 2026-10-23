@@ -189,6 +189,9 @@ class Store:
                  result["amount"], result["currency"], result["date"], result["order_number"],
                  result.get("billing_period"), email.account),
             )
+        elif kind == "sale":
+            from . import sales
+            sales.save_email(self.db, email, result)
         self.record_email(email, kind)
 
     def _find_order(self, result, email):
