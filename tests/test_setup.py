@@ -85,6 +85,18 @@ def test_release_updates_need_no_token(tmp_path, monkeypatch):
     assert (app_dir / "jigstream/app.py").read_text() == "# new"
     assert updater.installed_version(app_dir) == "build-9-bbbbbbb"
     assert updater.build_number("0123abc") == 0
+    # Patch notes: the update remembers the version it replaced until they've been seen.
+    assert updater.whats_new_pending(app_dir) is None  # 12 -> 9 here is a downgrade: nothing new to show
+    (app_dir / "VERSION").write_text("build-14-ddddddd\n")
+    assert updater.whats_new_pending(app_dir) == "build-12-ccccccc"
+    rels = [{"tag_name": "build-15-e", "body": "- Later"}, {"tag_name": "build-14-d", "published_at": "2026-10-24T01:00:00Z",
+             "body": "- Stop sync button\n- Phone fits the screen"}, {"tag_name": "build-13-c", "body": "Drops addresses"},
+            {"tag_name": "build-12-c", "body": "- Old"}]
+    notes = updater.release_notes(12, 14, fetch=lambda: rels)
+    assert notes == [{"build": 14, "date": "2026-10-24", "notes": ["Stop sync button", "Phone fits the screen"]},
+                     {"build": 13, "date": "", "notes": ["Drops addresses"]}]
+    updater.seen_whats_new(app_dir)
+    assert updater.whats_new_pending(app_dir) is None
 
 
 def test_update_shows_the_loading_screen(tmp_path, monkeypatch):
@@ -180,3 +192,17 @@ def test_sync_everything_starts_each_source(tmp_path, monkeypatch):
     c.post("/sync/all")
     assert started == ["email", "banks"]
     assert "Syncing everything: email and Discord, linked banks." in c.get("/").get_data(as_text=True)
+
+
+def test_patch_notes_show_once_after_an_update(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    pending = {"v": "build-60-a"}
+    monkeypatch.setattr(appmod.updater, "whats_new_pending", lambda: pending["v"])
+    monkeypatch.setattr(appmod.updater, "installed_version", lambda: "build-62-b")
+    monkeypatch.setattr(appmod.updater, "release_notes", lambda a, b: [{"build": b, "date": "", "notes": [f"from {a}"]}])
+    monkeypatch.setattr(appmod.updater, "seen_whats_new", lambda: pending.update(v=None))
+    c = appmod.create_app(str(tmp_path / "s.db")).test_client()
+    assert 'id="wnew"' in c.get("/orders").get_data(as_text=True)
+    assert c.get("/whats-new").get_json()["releases"] == [{"build": 62, "date": "", "notes": ["from 60"]}]
+    c.post("/whats-new/seen")
+    assert 'id="wnew"' not in c.get("/orders").get_data(as_text=True)
