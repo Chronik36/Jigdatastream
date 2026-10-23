@@ -215,6 +215,20 @@ def test_android_app_is_offered_its_update(app, monkeypatch):
     old = c.get("/m/app", headers={"User-Agent": "Mozilla/5.0 BotTrackApp/2"}).get_data(as_text=True)
     assert "Version 3 is ready" in old and "BotTrack-android-3.apk" in old
     assert "Version 3 is ready" not in c.get("/m/app", headers={"User-Agent": "x BotTrackApp/3"}).get_data(as_text=True)
+    assert "A new version of the BotTrack app is ready" in old  # every page offers it, not just App & updates
+    assert 'href="https://example.com/BotTrack-android-3.apk"' in old  # older apps download it in the browser
+
+
+def test_newer_android_apps_update_themselves(app, monkeypatch):
+    from jigstream import updater
+    monkeypatch.setitem(updater.state, "available", False)
+    monkeypatch.setitem(updater.state, "apk_version", 6)
+    monkeypatch.setitem(updater.state, "apk_url", "https://github.com/x/y/releases/download/b/BotTrack-android-6.apk")
+    c = phone(app)
+    pair(c)
+    page = c.get("/orders", headers={"User-Agent": "Mozilla/5.0 BotTrackApp/5"}).get_data(as_text=True)
+    assert 'href="bottrack://update?url=https%3A%2F%2Fgithub.com%2Fx%2Fy%2Freleases%2Fdownload%2Fb%2FBotTrack-android-6.apk"' in page
+    assert "BotTrack app is ready" not in c.get("/orders", headers={"User-Agent": "x BotTrackApp/6"}).get_data(as_text=True)
 
 
 def test_release_check_finds_the_android_app(monkeypatch):
