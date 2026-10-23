@@ -57,3 +57,61 @@ def test_page_never_shows_proxy_passwords(tmp_path):
     assert "s3cret" not in page and "jake" not in page
     assert "s3cret" not in client.get("/drop?sort=profile&site=Target").get_data(as_text=True)
     assert 'href="/drop"' in page and 'id="drop"' in client.get("/manual").get_data(as_text=True)
+
+
+def test_drops_tab_holds_every_checkout_page(tmp_path):
+    c, store = setup(tmp_path)
+    hook(c, "a", "Target", "Ana", "ISP A", "isp.example.net:8000")
+    client = create_app(str(tmp_path / "m.db")).test_client()
+    page = client.get("/drop").get_data(as_text=True)
+    assert "/drop?day=" in page and 'href="/checkouts"' in page and 'href="/stuck"' in page
+    assert 'href="/checkouts" title="Checkouts"' not in page  # no separate sidebar entries
+    for url in ("/checkouts", "/stuck"):
+        assert 'class="it on" href="/drop"' in client.get(url).get_data(as_text=True)
+    day = drop.rows(Store(c).db)[0]["day"]
+    page = client.get(f"/drop?day={day}").get_data(as_text=True)
+    assert "Unsure" in page and 'action="/drop/' in page and "isp.example.net:8000" in page
+
+
+def test_hand_verdict_sticks_and_corrects_the_order(tmp_path, monkeypatch):
+    import jigstream.app as appmod
+    monkeypatch.setattr(appmod.training, "rescan", lambda *a, **k: None)
+    c, store = setup(tmp_path)
+    hook(c, "a", "Target", "Ana", "ISP A", "isp.example.net:8000", number="9001")
+    mail(store, "a1", "Target", "ordered", "2026-10-20T15:05:00+00:00", "9001")
+    hook(c, "b", "Target", "Ana", "ISP A", "isp.example.net:8000", ts="2026-10-20T15:01:00Z")
+    ids = {r["fingerprint"]: r["id"] for r in drop.rows(Store(c).db)}
+    a, b = sorted(ids.values())
+    client = create_app(str(tmp_path / "m.db")).test_client()
+    client.post(f"/drop/{a}/verdict", data={"verdict": "cancelled"})
+    client.post(f"/drop/{b}/verdict", data={"verdict": "good"})
+    out = {r["id"]: r["outcome"] for r in drop.rows(Store(c).db)}
+    assert out[a] == "cancelled" and out[b] == "confirmed"
+    # The order email said ordered; it's corrected so the AI learns from its emails.
+    assert c.execute("SELECT shipping_status FROM tracked_orders WHERE order_number = '9001'").fetchone()[0] == "cancelled"
+    client.post(f"/drop/{a}/verdict", data={"verdict": "auto"})
+    assert {r["id"]: r["outcome"] for r in drop.rows(Store(c).db)}[a] == "cancelled"  # the order now says so
+
+
+def test_late_cancel_beats_an_earlier_good(tmp_path):
+    c, store = setup(tmp_path)
+    # Pokemon Center: confirmed at the drop, cancelled five weeks later.
+    hook(c, "a", "Pokemon Center", "Ana", "ISP A", "isp.example.net:8000", ts="2026-09-01T15:00:00Z", number="PC1")
+    mail(store, "a1", "Pokemon Center", "ordered", "2026-09-01T15:05:00+00:00", "PC1")
+    a = drop.rows(Store(c).db)[0]["id"]
+    drop.set_verdict(c, a, "good")
+    c.execute("UPDATE checkout_verdicts SET set_at = '2026-09-02T00:00:00+00:00'")
+    c.commit()
+    assert drop.rows(Store(c).db)[0]["outcome"] == "confirmed"
+    mail(store, "a2", "Pokemon Center", "cancelled", "2026-10-07T09:00:00+00:00", "PC1")
+    assert drop.rows(Store(c).db)[0]["outcome"] == "cancelled"
+
+
+def test_cancel_weeks_later_still_matches_without_an_order_number(tmp_path):
+    c, store = setup(tmp_path)
+    hook(c, "a", "Pokemon Center", "Ana", "ISP A", "isp.example.net:8000", ts="2026-09-01T15:00:00Z")
+    mail(store, "a1", "Pokemon Center", "cancelled", "2026-10-03T09:00:00+00:00", address="9 Oak Ave, Dallas, TX 75201",
+         name="Ana Lopez")
+    c.execute("UPDATE tracked_orders SET order_date = NULL")
+    c.commit()
+    assert drop.rows(Store(c).db)[0]["outcome"] == "cancelled"

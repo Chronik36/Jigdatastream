@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS ai_adapters (
 CREATE INDEX IF NOT EXISTS checkouts_order ON checkouts (order_number);
 CREATE INDEX IF NOT EXISTS checkouts_profile ON checkouts (profile, status);
 CREATE INDEX IF NOT EXISTS checkouts_ts ON checkouts (ts);
+-- Good / cancelled set by hand on the Drops page; wins over what the emails and bank say.
+CREATE TABLE IF NOT EXISTS checkout_verdicts (checkout_id INTEGER PRIMARY KEY, verdict TEXT, set_at TEXT);
 CREATE TABLE IF NOT EXISTS profile_groups (name TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS saved_addresses (
     nickname TEXT PRIMARY KEY,
