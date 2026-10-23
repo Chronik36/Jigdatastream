@@ -4,9 +4,13 @@ The page is fetched once with a normal request. If the site refuses (403, 429, a
 that is reported as-is; nothing here tries to get around it.
 """
 
+import copy
 import json
 import logging
 import re
+import secrets
+import threading
+from collections import OrderedDict
 import unicodedata
 import urllib.error
 import urllib.request
@@ -623,7 +627,7 @@ def keywords_page():
             saved = []
         return render_template("keywords.html", result=None, error=None, url="", use_ai=False, saved=saved)
     url, use_ai = request.form.get("url", ""), bool(request.form.get("ai"))
-    result = error = ai = ai_error = None
+    result = error = None
     try:
         url = normalize_url(url)
         logger.info("keyword finder: fetching %s", url)
@@ -640,30 +644,22 @@ def keywords_page():
     rules = []
     if result:
         try:
-            con = rules_db()
-            rules = keywordrules.rules_for(con, result["host"], result["product"].get("brand", ""))
+            rules = keywordrules.rules_for(rules_db(), result["host"], result["product"].get("brand", ""))
             keywordrules.apply(result, rules)
         except Exception:  # the suggestions still show without your saved rules
             logger.exception("keyword finder: couldn't load saved keyword rules")
-            con = None
+    ai_token = None
     if result and use_ai:
-        try:
-            ai = keywordrules.filter_ai(ai_summary(result, Config.from_env(), con or rules_db()), rules)
-            merge_ai(result, ai)
-            logger.info("keyword finder: local AI picked %d main keywords for %s", len(ai["main_keywords"]), url)
-        except LLMError as e:
-            ai_error = str(e)
-            logger.warning("keyword finder: local AI summary failed: %s", e)
-        except Exception as e:  # the keyword results still show without the AI part
-            ai_error = f"Something went wrong asking the model ({type(e).__name__}: {e})."
-            logger.exception("keyword finder: local AI summary crashed for %s", url)
+        # The model can take a minute or more (longer while a sync is using it), so the page shows the
+        # keywords right away and asks the model from the browser; a long-held request left the window blank.
+        ai_token = remember_page(result, rules)
     try:
         line = monitor_line(result["positives"], result["negatives"]) if result else ""
-        return render_template("keywords.html", result=result, error=error, url=url, use_ai=use_ai, ai=ai,
-                               ai_error=ai_error, line=line, summary=page_summary(result) if result else None)
+        return render_template("keywords.html", result=result, error=error, url=url, use_ai=use_ai, ai_token=ai_token,
+                               line=line, summary=page_summary(result) if result else None)
     except Exception as e:
         logger.exception("keyword finder: couldn't show results for %s", url)
-        return render_template("keywords.html", result=None, url=url, use_ai=use_ai, ai=None, ai_error=None, line="",
+        return render_template("keywords.html", result=None, url=url, use_ai=use_ai, ai_token=None, line="",
                                error=f"Couldn't show the results for that page ({type(e).__name__}: {e}). "
                                      "Details are in Logs; please send them over.")
 
@@ -684,6 +680,47 @@ def merge_ai(result, ai):
         if w.lower() not in have:
             result["negatives"].append((w.lower(), "local AI" + (f": {r}" if r else "")))
             have.add(w.lower())
+
+
+# Pages waiting on the local AI, by token: the page is fetched once, and the model reads the same analysis.
+_PAGES, _PAGES_LOCK = OrderedDict(), threading.Lock()
+
+
+def remember_page(result, rules):
+    token = secrets.token_urlsafe(12)
+    with _PAGES_LOCK:
+        _PAGES[token] = (copy.deepcopy(result), rules)
+        while len(_PAGES) > 20:
+            _PAGES.popitem(last=False)
+    return token
+
+
+@bp.route("/keywords/ai", methods=["POST"])
+def keywords_ai():
+    """The local AI's suggestions for a page already shown: {ok, summary, main_keywords, positives, negatives}
+    with only the + and - keywords that aren't on the page yet."""
+    token = (request.get_json(silent=True) or {}).get("token", "")
+    with _PAGES_LOCK:
+        held = _PAGES.get(token)
+    if not held:
+        return jsonify(ok=False, error="That page has expired. Press Find keywords again.")
+    result, rules = copy.deepcopy(held[0]), held[1]
+    before = {("+", w) for w, *_ in result["positives"]} | {("-", w) for w, _ in result["negatives"]}
+    try:
+        ai = keywordrules.filter_ai(ai_summary(result, Config.from_env(), rules_db()), rules)
+        merge_ai(result, ai)
+    except LLMError as e:
+        logger.warning("keyword finder: local AI summary failed: %s", e)
+        return jsonify(ok=False, error=str(e))
+    except Exception as e:  # the keyword results already show without the AI part
+        logger.exception("keyword finder: local AI summary crashed for %s", result["url"])
+        return jsonify(ok=False, error=f"Something went wrong asking the model ({type(e).__name__}: {e}).")
+    logger.info("keyword finder: local AI picked %d main keywords for %s", len(ai["main_keywords"]), result["url"])
+    targets = [c["text"] for c in result.get("check", []) if c["target"]] or [result["name"]]
+    negs = tidy_negatives(result["negatives"], result["positives"], targets)
+    return jsonify(ok=True, summary=ai["summary"], main_keywords=ai["main_keywords"],
+                   positives=[[w, r] for w, r, _ in result["positives"] if ("+", w) not in before],
+                   negatives=[[w, r] for w, r in negs if ("-", w) not in before])
 
 
 def rules_db():
