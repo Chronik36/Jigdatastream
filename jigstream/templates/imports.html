@@ -4,8 +4,12 @@
 <h2>Imports</h2>
 <p class="muted">Files from your bots. Email, Discord and linked banks come in on their own with <b>Sync everything</b> at the top of the page.</p>
 <div class="igrid">
-<div class="panel"><h4>Bot profiles</h4><p class="muted">A profile export (.json or .csv) from your bot. Importing again updates profiles with the same name.</p>
-<form method="post" action="/upload/profiles" enctype="multipart/form-data"><input name="bot" list="botnames" placeholder="Bot name" size="12" required><datalist id="botnames"><option>Valor</option><option>Stellar</option><option>Hayha</option><option>Polar</option><option>AYCD</option><option>Cybersole</option><option>Wrath</option></datalist><input type="file" name="files" multiple required><button>Import profiles</button></form></div>
+<div class="panel"><h4>Bot profiles</h4><p class="muted">A profile export (.json or .csv) from your bot. Pick the retail site the profiles are for and give them a group name; on Profiles they sit under that site and group. Importing again updates profiles with the same name.</p>
+<form method="post" action="/upload/profiles" enctype="multipart/form-data">
+<select name="site" required onchange="this.form.site_other.hidden = this.value !== 'other'; this.form.site_other.required = this.value === 'other'"><option value="">Retail site...</option>{% for s in retail_sites %}<option>{{s}}</option>{% endfor %}<option value="other">Other...</option></select>
+<input name="site_other" placeholder="Site name" size="14" hidden>
+<input name="group" placeholder="Group name" size="14" required>
+<input name="bot" list="botnames" placeholder="Bot name" size="12" required><datalist id="botnames"><option>Valor</option><option>Stellar</option><option>Hayha</option><option>Polar</option><option>AYCD</option><option>Cybersole</option><option>Wrath</option></datalist><input type="file" name="files" multiple required><button>Import profiles</button></form></div>
 <div class="panel"><h4>Webhook files</h4><p class="muted">Checkout webhooks saved as JSON, for checkouts that didn't come through Discord.</p>
 <form method="post" action="/upload/webhooks" enctype="multipart/form-data"><input type="file" name="files" multiple required><button>Import webhooks</button></form></div>
 <div class="panel"><h4>Bank and card statements</h4><p class="muted">CSV, OFX or QFX downloads from your bank or card site, or a linked bank.</p>

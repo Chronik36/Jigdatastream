@@ -164,7 +164,7 @@ def create_app(db_path=None):
     @app.get("/imports")
     def imports_page():
         report, unmatched = analysis.failure_report(con())
-        return render_template("imports.html", report=report, unmatched=unmatched)
+        return render_template("imports.html", report=report, unmatched=unmatched, retail_sites=profiles.RETAIL_SITES)
 
     @app.get("/checkouts")
     def checkouts():
@@ -342,18 +342,27 @@ def create_app(db_path=None):
     @app.get("/profiles")
     def profile_list():
         c = con()
-        group = request.args.get("group")
+        group, site = request.args.get("group"), request.args.get("site")
+        where, args = [], []
+        if site is not None:
+            where.append("COALESCE(p.site, '') = ?"), args.append(site)
+        if group is not None:
+            where.append("COALESCE(p.group_name, '') = ?"), args.append(group)
         q = ("SELECT p.*, c.brand AS linked_brand, c.last4 AS linked_last4, c.exp AS linked_exp, c.name AS linked_name"
              " FROM profiles p LEFT JOIN cards c ON c.id = p.card_id"
-             + (" WHERE COALESCE(p.group_name, '') = ?" if group is not None else "") + " ORDER BY p.name")
-        rows = [(p, analysis.profile_issues(p), export.same_address(p))
-                for p in c.execute(q, (group,) if group is not None else ())]
+             + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY p.name")
+        rows = [(p, analysis.profile_issues(p), export.same_address(p)) for p in c.execute(q, args)]
+        sites = {}
+        for s_, g_, n_ in c.execute("SELECT COALESCE(site, ''), COALESCE(group_name, ''), COUNT(*) FROM profiles"
+                                    " GROUP BY 1, 2 ORDER BY COALESCE(site, '') = '', lower(COALESCE(site, '')),"
+                                    " lower(COALESCE(group_name, ''))"):
+            sites.setdefault(s_, []).append((g_, n_))
         groups, ungrouped = profilebook.groups(c)
         profilematch.match_orders(Store(c).db)
         order_counts = dict(c.execute("SELECT profile_name, COUNT(*) FROM tracked_orders WHERE profile_name IS NOT NULL"
                                       " GROUP BY profile_name").fetchall())
         return render_template("profiles.html", order_counts=order_counts, email_groups=emailbook.groups(c)[0], rows=rows, bots=sorted(export.templates(c)), groups=groups,
-                               ungrouped=ungrouped, group=group, total=c.execute("SELECT COUNT(*) FROM profiles").fetchone()[0],
+                               ungrouped=ungrouped, group=group, site=site, sites=sites, total=c.execute("SELECT COUNT(*) FROM profiles").fetchone()[0],
                                fields=profilebook.DISTRIBUTE_FIELDS, addresses=profilebook.saved_addresses(c),
                                states=sorted(A.STATE_NAMES.items()), profiles_json=[dict(p) for p, _, _ in rows],
                                cards=wallet.cards(c))
@@ -407,6 +416,22 @@ def create_app(db_path=None):
                                               bool(request.form.get("billing")), bool(request.form.get("shipping")))
             flash(error or f"Updated {n} profile(s).")
         return _back_to_profiles()
+
+    @app.post("/profiles/clear")
+    def profiles_clear():
+        """Delete every profile (asked for with a confirmation on the page). Cards and orders are kept."""
+        c = con()
+        n = c.execute("SELECT COUNT(*) FROM profiles").fetchone()[0]
+        if request.form.get("confirm") != str(n):
+            flash("Nothing was deleted: the profile count changed. Try again.")
+            return _back_to_profiles()
+        c.execute("DELETE FROM profiles")
+        c.execute("UPDATE tracked_orders SET profile_name = NULL, profile_match = NULL, profile_candidates = NULL"
+                  " WHERE COALESCE(profile_manual, 0) = 0")  # hand picks come back when the profile is imported again
+        c.commit()
+        logger.info("cleared all %d profiles", n)
+        flash(f"Deleted all {n} profiles. Your cards and orders are kept; import profiles again on Imports.")
+        return redirect(url_for("profile_list"))
 
     @app.post("/profiles/groups")
     def profile_groups():
@@ -598,7 +623,10 @@ def create_app(db_path=None):
             if kind == "webhooks":
                 n = sum(parsers.ingest(c, f.read().decode("utf-8", "replace")) for f in request.files.getlist("files"))
             elif kind == "profiles":
-                n = profiles.ingest(c, text, request.form.get("bot", ""))
+                f = request.form
+                site = f.get("site_other", "").strip() if f.get("site") == "other" else f.get("site", "")
+                n = profiles.ingest(c, text, f.get("bot", ""), site, f.get("group", ""))
+                profilematch.match_orders(Store(c).db)  # tie existing orders to the new profiles now
             else:
                 return "unknown", 404
             flash(f"Imported {n} {kind} records")

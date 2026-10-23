@@ -196,20 +196,29 @@ def parse_profiles(text, bot=""):
     return out
 
 
-def ingest(con, text, bot=""):
+# Retail sites offered when importing profiles; any other site can be typed in.
+RETAIL_SITES = ["Amazon", "Best Buy", "Pokemon Center", "Target", "Walmart", "Topps", "Shopify", "Menards",
+                "Crunchyroll", "Bandai", "Riot"]
+FIELDS = ["bot", "first_name", "last_name", "phone", "email", "ship_address1", "ship_address2", "ship_city", "ship_state",
+          "ship_zip", "ship_country", "bill_address1", "bill_address2", "bill_city", "bill_state", "bill_zip",
+          "bill_country", "card_last4", "raw", "card_brand", "card_exp", "fmt"]
+
+
+def ingest(con, text, bot="", site="", group=""):
+    """Import a bot's profile export. A profile already saved under the same name is updated in place, so its
+    linked card stays; the retail site and group are set when given."""
+    site, group = (site or "").strip(), (group or "").strip()
+    if group:
+        con.execute("INSERT OR IGNORE INTO profile_groups VALUES (?)", (group,))
+    extra = [("site", site)] * bool(site) + [("group_name", group)] * bool(group)
+    cols = ["name", *FIELDS, *(k for k, _ in extra)]
     n = 0
     for p in parse_profiles(text, bot):
         if not p["name"]:
             continue
-        con.execute(
-            """INSERT OR REPLACE INTO profiles (name, bot, first_name, last_name, phone, email,
-             ship_address1, ship_address2, ship_city, ship_state, ship_zip, ship_country,
-             bill_address1, bill_address2, bill_city, bill_state, bill_zip, bill_country,
-             card_last4, raw, card_brand, card_exp, fmt) VALUES
-            (:name,:bot,:first_name,:last_name,:phone,:email,
-             :ship_address1,:ship_address2,:ship_city,:ship_state,:ship_zip,:ship_country,
-             :bill_address1,:bill_address2,:bill_city,:bill_state,:bill_zip,:bill_country,
-             :card_last4,:raw,:card_brand,:card_exp,:fmt)""", p)
+        values = {**p, **dict(extra)}
+        con.execute(f"INSERT INTO profiles ({', '.join(cols)}) VALUES ({', '.join(':' + c for c in cols)})"
+                    f" ON CONFLICT(name) DO UPDATE SET {', '.join(f'{c} = excluded.{c}' for c in cols[1:])}", values)
         n += 1
     con.commit()
     return n
