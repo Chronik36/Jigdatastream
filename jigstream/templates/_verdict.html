@@ -2,3 +2,16 @@
    an order email the AI learns from the correction (see app.drop_verdict). #}
 {% macro verdict(c) %}{% if c.status == "success" %}<form method="post" action="/drop/{{c.id}}/verdict" style="margin:0"><select name="verdict" onchange="this.form.submit()" title="Correct this result; it sticks" aria-label="Correct this checkout">
 <option value="auto"{{' selected' if not c.verdict}}>{{'Auto' if not c.verdict else 'Back to auto'}}</option><option value="good"{{' selected' if c.verdict == 'good'}}>Good</option><option value="cancelled"{{' selected' if c.verdict == 'cancelled'}}>Bad (cancelled)</option><option value="not_order"{{' selected' if c.verdict == 'not_order'}}>Not an order</option></select></form>{% if c.verdict %}<div class="muted" style="font-size:12px">Set by you</div>{% endif %}{% endif %}{% endmacro %}
+
+{# Every checkout of one profile or address, each leading on: its order email, its profile, its address. #}
+{% set outcome_labels = {"confirmed": ("Good", "s-delivered"), "no_email": ("Unsure", "s-ordered"), "cancelled": ("Cancelled", "s-cancelled"), "decline": ("Declined", "s-cancelled"), "failure": ("Failed", "s-cancelled"), "not_order": ("Not an order", "s-unknown")} %}
+{% macro checkout_table(rows) %}<table><thead><tr><th>Result</th><th>Correct it</th><th>Site / drop</th><th>Profile</th><th>Address</th><th>Proxy</th><th>Product / order #</th></tr></thead><tbody>
+{% for c in rows %}{% set l = outcome_labels.get(c.outcome, ("?", "s-unknown")) %}<tr>
+<td>{% if c.order %}<a href="/orders#order-{{c.order.id}}" title="Open its order email"><span class="pill {{l[1]}}">{{l[0]}}</span></a>{% else %}<span class="pill {{l[1]}}">{{l[0]}}</span>{% endif %}{% if c.outcome in ("decline", "failure") and c.reason %}<div class="muted" style="font-size:12px">{{c.reason[:80]}}</div>{% endif %}</td>
+<td>{{ verdict(c) }}</td>
+<td><a href="/drop?site={{(c.site or '')|urlencode}}&day={{c.day}}"><b>{{c.site or "-"}}</b></a><div class="muted" style="font-size:12px;white-space:nowrap">{{c.day}} {{(c.ts or "")[11:16]}} · {{c.bot or ""}}</div></td>
+<td>{% if c.profile %}<a href="/profile-orders?profile={{c.profile|urlencode}}">{{c.profile}}</a>{% else %}-{% endif %}</td>
+<td>{% if c.address %}<a href="/address?name={{c.address|urlencode}}" data-private>{{c.address}}</a>{% if c.address_full and c.address_full|upper != c.address|upper %}<div class="muted" style="font-size:12px" data-private>{{c.address_full}}</div>{% endif %}{% else %}<span class="muted">-</span>{% endif %}</td>
+<td class="muted">{{c.proxy_group or ""}}{% if c.proxy %}<div style="font-size:12px">{{c.proxy}}</div>{% endif %}</td>
+<td>{{c.product or "-"}}{% if c.order_number %}<div class="muted">{{c.order_number}}</div>{% endif %}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">No checkout webhooks here yet.</td></tr>{% endfor %}</tbody></table>{% endmacro %}

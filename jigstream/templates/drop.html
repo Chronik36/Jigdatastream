@@ -18,7 +18,7 @@ If one is wrong, pick Good, Bad or Not an order next to it: it sticks, and when 
 <div class="card" style="--c:var(--orange)">Unsure <b style="color:var(--orange)">{{r.tally.no_email}}</b></div><div class="card bad">Cancelled <b>{{r.tally.cancelled}}</b></div><div class="card bad">Declined <b>{{r.tally.declines}}</b></div></div>
 {% if day or by %}
 <div class="toolbar"><a class="pill" href="{{ link(day=None, by=None, name=None) }}">← All dates</a><b style="margin:0 8px">{{day or "Every date"}}</b>
-{% if by %}<a class="pill s-shipped" href="{{ link(by=None, name=None) }}" title="Show every checkout{{' on ' ~ day if day}}">{{kinds[by]}}: {{name}} ✕</a>{% endif %}
+{% if by %}<a class="pill s-shipped" href="{{ link(by=None, name=None) }}" title="Show every checkout{{' on ' ~ day if day}}">{{kinds[by]}}: {{name}} ✕</a>{% if by == "profile" %} <a class="pill" href="/profile-orders?profile={{name|urlencode}}">Open profile ›</a>{% elif by == "address" %} <a class="pill" href="/address?name={{name|urlencode}}">Everything at this address ›</a>{% endif %}{% endif %}
 <span class="muted">Sort by</span><a class="pill{{' s-shipped' if sort == 'proxy'}}" href="{{ link(sort='proxy') }}">Proxy</a><a class="pill{{' s-shipped' if sort == 'profile'}}" href="{{ link(sort='profile') }}">Profile</a><a class="pill{{' s-shipped' if sort == 'address'}}" href="{{ link(sort='address') }}">Address</a></div>
 <div class="panel pickers" style="margin:14px 0"><div class="pick-row">{% for kind, label in [("group", "Proxy group"), ("proxy", "Proxy"), ("profile", "Profile"), ("address", "Address")] %}
 <label><span class="muted">{{label}}</span><select onchange="if (this.value) location.href = this.value" aria-label="{{label}}">
