@@ -363,6 +363,24 @@ marked a checkout good still turns it red.</p>
 only the host and port.</p>
 </section>
 
+<section id="card-check" data-title="Card check">
+<h2>Card check</h2>
+<div class="where">Sidebar → Bot tools → <b>Drops</b> → <b>Card check</b></div>
+<p>Shows how many checkouts really went through, from what your cards were charged and refunded. It needs your card statements or
+a linked bank on the <a href="#bank">Bank</a> page, and each profile's card last 4 digits. For each card, charges at a store are grouped
+by their exact amount, and charges of one amount within about ten days of each other count as one drop.</p>
+<ul>
+<li><b>Went through</b> is charges minus refunds. A refund counts when it's the same amount, on the same card, at the same store, after the charge.</li>
+<li><b>Bot checkouts</b> are the successful webhooks that fit: the same site, a profile on that card, the price plus tax and shipping (or the order email's exact total), and checked out up to two weeks before the charge.</li>
+<li><b>Never charged</b> is bot checkouts minus charges: the site took the order but never billed it (yet).</li>
+<li><b>Likely product</b> comes from the bot checkouts, an order email with that exact total, or, with no checkout, any checkout at that store whose price fits.</li>
+</ul>
+<p>A charge is only tied to one checkout when that's certain: your bank gave the charge a time (Plaid does for many cards) within 30 minutes of the
+checkout, the charge paid that checkout's order email, or it's the only charge and the only checkout. Statement files only have dates, so most
+drops show counts, not which checkout is which. A tied charge that wasn't refunded turns an Unsure checkout <b>Good</b> on By date, and a refunded
+one turns it <b>Cancelled</b>. Each drop date on By date also shows what the cards say. Bank data never leaves your Mac.</p>
+</section>
+
 <section id="profiles" data-title="Profiles">
 <h2>Profiles</h2>
 <div class="where">Sidebar → Bot tools → <b>Profiles</b></div>

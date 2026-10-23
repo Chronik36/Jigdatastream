@@ -25,11 +25,13 @@ If one is wrong, pick Good or Cancelled next to it: it sticks, and when the chec
 {% for s in r.drops %}{% for d in s.days %}<section class="panel" style="margin:14px 0;overflow-x:auto">
 <h3 style="margin-top:0">{{s.site}} · {{d.day or "No date"}}{% if d.products %} <span class="muted" style="font-weight:400;font-size:14px">· {{d.products|join(", ")}}</span>{% endif %}</h3>
 <p style="margin:6px 0">{{ counts(d.tally) }}</p>
+{% if d.card %}<p style="margin:6px 0" title="From your card charges and refunds (Card check tab)">Cards say <b class="ok">{{d.card.went_through}} went through</b>: {{d.card.charged}} charged{% if d.card.refunded %}, <span class="bad">{{d.card.refunded}} refunded</span>{% endif %}, for {{d.card.bot}} bot checkout{{'s' if d.card.bot != 1}}{% if d.card.never_charged %}, <span style="color:var(--orange)">{{d.card.never_charged}} never charged</span>{% endif %}. <a href="/drop/cards">Card check</a></p>{% endif %}
 <table><thead><tr><th>Result</th><th>Correct it</th><th>Proxy group</th><th>Proxy</th><th>Profile</th><th>Time</th><th>Bot</th><th>Product / order #</th></tr></thead><tbody>
 {% for c in d.checkouts %}{% set l = labels[c.outcome] %}<tr>
 <td>{% if c.order %}<a href="/orders#order-{{c.order.id}}" title="{{l[2]}}"><span class="pill {{l[1]}}">{{l[0]}}</span></a>{% else %}<span class="pill {{l[1]}}" title="{{l[2]}}">{{l[0]}}</span>{% endif %}
 {% if c.outcome in ("decline", "failure") and c.reason %}<div class="muted" style="font-size:12px">{{c.reason[:80]}}</div>{% endif %}
-{% if c.refund %}<div class="muted" style="font-size:12px">Refund {{(-c.refund.amount)|money}}</div>{% endif %}
+{% if c.refund %}<div class="muted" style="font-size:12px">Refund {{(-c.refund.amount)|money}}</div>
+{% elif c.card %}<div class="muted" style="font-size:12px" title="Tied by {{c.card.by}}">Card {{'refunded' if c.card.refunded else 'charged'}} {{c.card.tx.amount|money}}</div>{% endif %}
 {% if c.bot_update %}<div class="muted" style="font-size:12px">{{c.bot_update.bot or "Bot"}} says {{c.bot_update.verdict}}</div>{% endif %}</td>
 <td>{% if c.status == "success" %}<form method="post" action="/drop/{{c.id}}/verdict" style="margin:0"><select name="verdict" onchange="this.form.submit()" title="Correct this result; it sticks">
 <option value="auto"{{' selected' if not c.verdict}}>{{'Auto' if not c.verdict else 'Back to auto'}}</option><option value="good"{{' selected' if c.verdict == 'good'}}>Good</option><option value="cancelled"{{' selected' if c.verdict == 'cancelled'}}>Cancelled</option></select></form>{% if c.verdict %}<div class="muted" style="font-size:12px">Set by you</div>{% endif %}{% endif %}</td>
