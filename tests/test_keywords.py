@@ -85,3 +85,71 @@ def test_ai_negatives_merged(tmp_path, monkeypatch):
     html = client.post("/keywords", data={"url": "https://kicks.example/p/0", "ai": "1"}).get_data(as_text=True)
     assert "A sneaker product page." in html and "-reimagined" in html and "+panda" in html
     assert "-panda" not in html  # the model may not exclude the product's own words
+
+
+def test_model_failures_never_crash_the_page(tmp_path, monkeypatch):
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
+
+    def slow(self, system, user):
+        raise TimeoutError("timed out")
+
+    odd_answers = [slow, lambda self, s, u: {"negative_keywords": 5, "positive_keywords": "panda", "main_keywords": None},
+                   lambda self, s, u: ["not", "a", "dict"], lambda self, s, u: {}.get("x")["y"]]
+    for answer in odd_answers:
+        monkeypatch.setattr(keywords.LLMClient, "chat_json", answer)
+        r = client.post("/keywords", data={"url": "https://kicks.example/p/0", "ai": "1"})
+        assert r.status_code == 200 and "553558-040" in r.get_data(as_text=True)
+
+
+def test_plain_string_negatives_from_model(tmp_path, monkeypatch):
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
+    monkeypatch.setattr(keywords.LLMClient, "chat_json", lambda self, s, u: {"negative_keywords": ["reimagined", 7]})
+    assert "-reimagined" in client.post("/keywords", data={"url": "https://x.example/p", "ai": "1"}).get_data(as_text=True)
+
+
+def test_render_failure_shows_friendly_error(tmp_path, monkeypatch):
+    client = create_app(str(tmp_path / "k.db")).test_client()
+    monkeypatch.setattr(keywords, "fetch", lambda url: (url, PAGE))
+    monkeypatch.setattr(keywords, "monitor_line", lambda *a: (_ for _ in ()).throw(KeyError("boom")))
+    r = client.post("/keywords", data={"url": "https://x.example/p"})
+    assert r.status_code == 200 and "show the results for that page" in r.get_data(as_text=True)
+
+
+def test_llm_client_null_reply_is_llm_error(monkeypatch):
+    import io
+    from jigstream import llm
+
+    class Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", lambda req, timeout: Resp(b'{"choices":[{"message":{"content":null}}]}'))
+    try:
+        llm.LLMClient("http://localhost:1/v1", "m").chat_json("s", "u")
+    except llm.LLMError:
+        pass
+    else:
+        raise AssertionError("expected LLMError")
+
+    def slow(req, timeout):
+        raise TimeoutError("timed out")
+    monkeypatch.setattr(llm.urllib.request, "urlopen", slow)
+    try:
+        llm.LLMClient("http://localhost:1/v1", "m", timeout=5).chat_json("s", "u")
+    except llm.LLMError as e:
+        assert "longer than 5 seconds" in str(e)
+
+
+def test_shopify_variants_are_not_lookalikes():
+    ld = {"@type": "ProductGroup", "name": "Nee Doh Dig It Pig", "brand": {"name": "Schylling"},
+          "hasVariant": [{"@type": "Product", "name": "Nee Doh Dig It Pig - Default Title", "sku": "NDDIP"}]}
+    html = ('<html><head><script type="application/ld+json">%s</script></head><body><h1>Nee Doh Dig It Pig</h1>'
+            '<a href="/a">Nee Doh Dig It Pig Mini</a></body></html>' % json.dumps(ld))
+    r = keywords.analyze(html, "https://gotoytime.com/products/nee-doh-dig-it-pig")
+    negs = [w for w, _ in r["negatives"]]
+    assert "mini" in negs and "default" not in negs and "title" not in negs
