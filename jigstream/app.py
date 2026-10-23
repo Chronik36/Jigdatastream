@@ -104,6 +104,8 @@ def create_app(db_path=None):
         finally:
             sync_state["running"] = False
 
+    app.add_template_filter(parsers.tidy, "tidy")  # bot text: entities decoded, markdown links reduced to text
+
     @app.template_filter("money")
     def money(amount, currency="USD"):
         if amount is None:
