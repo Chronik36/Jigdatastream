@@ -28,6 +28,8 @@
 <div class="card">Last month <b>{{o.last_month|money}}</b></div>
 <div class="card">Recurring per month <b>{{rec.per_month|money}}</b></div>
 <div class="card">Renewing next 30 days <b>{{rec.next30|money}}</b></div>
+<div class="card{{' ok' if profit.net >= 0 and profit.sales else (' bad' if profit.net < 0 else '')}}">Profit in {{o.month_name}} <b>{{"+" if profit.net > 0 else ("−" if profit.net < 0 else "")}}{{profit.net|abs|money}}</b>
+<small class="mtext">{{profit.sales}} sale{{"" if profit.sales == 1 else "s"}} minus costs and expenses</small></div>
 <div class="card{{' bad' if look}}">Needs a look <b>{{look}}</b></div>
 </div>
 
