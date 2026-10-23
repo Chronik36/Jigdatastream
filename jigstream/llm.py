@@ -29,7 +29,8 @@ def parse_json(text):
 
 
 class LLMClient:
-    def __init__(self, base_url, model, api_key="ollama", timeout=180, adapter=None):
+    def __init__(self, base_url, model, api_key="ollama", timeout=180, adapter=None, max_tokens=None):
+        self.max_tokens = max_tokens  # caps each reply; None leaves it to the engine
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key
@@ -60,6 +61,8 @@ class LLMClient:
             user = f"{user}\n/no_think"
         messages.append({"role": "user", "content": user})
         payload = {"model": self.model, "temperature": 0, "messages": messages}
+        if self.max_tokens:
+            payload["max_tokens"] = self.max_tokens
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
         if self.adapter:
@@ -92,8 +95,10 @@ class LLMClient:
 
 def from_config(config):
     """The client for the model chosen on Setup (with its trained adapter, if one is in use)."""
+    # Reading an email: the longest real answer (an order with a dozen items) is well under 1200 tokens, and
+    # the cap stops a model that starts repeating itself from holding the engine for minutes.
     return LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, config.llm_timeout,
-                     adapter=config.llm_adapter or None)
+                     adapter=config.llm_adapter or None, max_tokens=1200)
 
 
 def installed_models(base_url, timeout=5):
