@@ -14,8 +14,9 @@ from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, current_app, jsonify, redirect, render_template, request
 
+from . import db, keywordrules, tasks
 from .config import Config
 from .llm import LLMClient, LLMError
 
@@ -36,33 +37,59 @@ she should shouldn't so some such than that that's the their theirs them themsel
 through to too under until up us very was wasn't we were weren't what when where which while who whom why will with won't
 would you your yours yourself yourselves one two may might must shall via per etc new use used using within without also
 www http https com html amp nbsp quot click here more less see view page site skip content menu close open toggle
+sorry stock item items sold cart bag basket add quick shop price prices sale regular unit available unavailable notify
+choose option options select quantity qty review reviews rating ratings expand collapse child translation missing icon
+icons free shipping order orders checkout account login wishlist share tweet pin pinterest facebook instagram email
 """.split())
 
-SKIP_TAGS = {"script", "style", "noscript", "svg", "template", "iframe", "canvas"}
+SKIP_TAGS = {"script", "style", "noscript", "svg", "template", "iframe", "canvas", "select", "button", "form"}
+# Site chrome: menus, footers, drawers. Their text is the same on every page, so it says nothing about the product.
+CHROME_TAGS = {"nav", "footer", "aside", "dialog"}
+CHROME_NAMES = re.compile(r"(?:^|[\s_-])(?:nav|navbar|navigation|menu|menus|megamenu|footer|drawer|breadcrumbs?|"
+                          r"announcement|newsletter|cookie|popup|modal|predictive-search|search-results)(?:$|[\s_-])", re.I)
+VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
 HEADINGS = {"h1", "h2", "h3"}
 WORD = re.compile(r"[a-z0-9][a-z0-9'’&+.-]*[a-z0-9]|[a-z0-9]", re.I)
 # Product codes: "DZ5485-612", "FQ8232 100", "1203A243-020", or what follows "SKU:" / "Style:".
 CODE = re.compile(r"\b(?=[A-Z0-9-]*\d)(?=[A-Z0-9-]*[A-Z])[A-Z0-9]{4,}-[A-Z0-9]{2,4}\b")
 LABELLED = re.compile(r"\b(?:SKU|Style(?:\s*(?:code|#|no\.?))?|Model(?:\s*(?:#|no\.?))?|Item\s*(?:#|no\.?)|MPN|UPC)\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{3,24})", re.I)
+# Shop wording that ends up inside product links and cards: stock notices, prices, buttons.
+SHOP_NOISE = re.compile(r"sorry,?\s+this item is (?:currently )?(?:out of stock|unavailable)\.?|\b(?:sold out|out of stock|in stock|"
+                        r"add to (?:cart|bag|basket)|quick (?:view|shop|add)|choose options|notify me|pre-?order|"
+                        r"(?:regular|sale|unit) price|translation missing[^ ]*)\b|[$£€]\s?\d[\d,.]*", re.I)
 
 
 class FetchError(Exception):
     pass
 
 
+def clean_item_text(text):
+    """A link or card's text reduced to the item name: no stock notices or prices, no repeated name."""
+    text = " ".join(SHOP_NOISE.sub(" ", text).split()).strip(" -|/:,")
+    half = len(text) // 2
+    if half and text[:half].strip() == text[half:].strip():  # name shown twice (visible + screen-reader copy)
+        text = text[:half].strip()
+    return text
+
+
 class PageParser(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.title, self.meta, self.headings, self.alts, self.text, self.ld = "", {}, [], [], [], []
-        self._skip = 0  # depth inside tags whose text isn't shown
-        self._in_title = self._in_ld = False
+        self._stack = []  # (tag, hides its text)
+        self._in_title = self._in_ld = self._title_done = False
         self._heading = None
         self.links, self._link = [], None  # link texts: on a product page these are mostly other products
 
+    @property
+    def _skip(self):
+        return any(hidden for _, hidden in self._stack)
+
     def handle_starttag(self, tag, attrs):
         a = {k.lower(): (v or "") for k, v in attrs}
-        if tag == "title":
-            self._in_title = True
+        names = " ".join((a.get("class", ""), a.get("id", ""), a.get("role", "")))
+        if tag == "title" and not self._skip and not self._title_done:
+            self._in_title = True  # the page title; <title> inside icons doesn't count
         elif tag == "meta":
             key = (a.get("name") or a.get("property") or "").lower()
             if key in ("description", "keywords", "og:title", "og:description", "twitter:title", "og:site_name",
@@ -70,18 +97,28 @@ class PageParser(HTMLParser):
                 self.meta.setdefault(key, a["content"].strip())
         elif tag == "script" and "ld+json" in a.get("type", "").lower():
             self._in_ld = True
-        elif tag == "img" and a.get("alt", "").strip():
+        elif tag == "img" and a.get("alt", "").strip() and not self._skip:
             self.alts.append(a["alt"].strip())
+        if tag in VOID_TAGS:
+            return
+        hidden = (tag in SKIP_TAGS or tag in CHROME_TAGS or bool(CHROME_NAMES.search(names))
+                  or "hidden" in a or a.get("aria-hidden") == "true" or a.get("role") == "navigation"
+                  or re.search(r"display\s*:\s*none", a.get("style", "")) is not None
+                  or (tag == "header" and not any(t in ("main", "article") for t, _ in self._stack)))
+        self._stack.append((tag, hidden))
         if tag in HEADINGS and not self._skip:
             self._heading = [tag, []]
         if tag == "a" and not self._skip:
             self._link = [a.get("title", "")]
-        if tag in SKIP_TAGS:
-            self._skip += 1
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in VOID_TAGS:
+            self.handle_endtag(tag)
 
     def handle_endtag(self, tag):
-        if tag == "title":
-            self._in_title = False
+        if tag == "title" and self._in_title:
+            self._in_title, self._title_done = False, True
         elif tag == "script":
             self._in_ld = False
         if tag in HEADINGS and self._heading and self._heading[0] == tag:
@@ -90,12 +127,13 @@ class PageParser(HTMLParser):
                 self.headings.append((tag, text))
             self._heading = None
         if tag == "a" and self._link is not None:
-            text = " ".join(" ".join(self._link).split())
+            text = clean_item_text(" ".join(" ".join(self._link).split()))
             if 2 <= len(text) <= 160:
                 self.links.append(text)
             self._link = None
-        if tag in SKIP_TAGS and self._skip:
-            self._skip -= 1
+        if any(t == tag for t, _ in self._stack):  # close it, and anything left open inside it
+            while self._stack and self._stack.pop()[0] != tag:
+                pass
 
     def handle_data(self, data):
         if self._in_title:
@@ -171,8 +209,10 @@ def _ld_products(blobs):
                     brand = brand.get("name")
                 if isinstance(brand, str) and brand.strip():
                     found.setdefault("brand", brand.strip())
-                if isinstance(node.get("name"), str) and node["name"].strip() != found.get("name"):
-                    others.append(node["name"].strip())
+                other = node.get("name").strip() if isinstance(node.get("name"), str) else ""
+                # Variants of the same product ("Pig - Default Title", "Pig - Red") are options, not look-alikes.
+                if other and not other.startswith(found.get("name") or "\0"):
+                    others.append(other)
             for v in node.values():
                 if isinstance(v, (list, dict)):
                     walk(v)
@@ -215,7 +255,7 @@ def product_codes(text, ld):
     for key in ("sku", "mpn", "model", "productID", "gtin", "gtin12", "gtin13"):
         if ld.get(key):
             codes.append(ld[key])
-    codes += LABELLED.findall(text)
+    codes += [c for c in LABELLED.findall(text) if any(ch.isdigit() for ch in c)]  # not "Model Kits"
     codes += CODE.findall(text)
     seen, out = set(), []
     for c in codes:
@@ -246,12 +286,37 @@ VARIANT_TERMS = {
 CATCH_ALLS = ["gs", "ps", "td", "used", "replica"]
 
 
+def strip_site(name):
+    """"Air Jordan 1 Low | Nike.com" -> "Air Jordan 1 Low"."""
+    return re.split(r"\s+[|–—]\s+|\s+-\s+(?=[^-]*$)", unescape(name or "").strip())[0].strip()
+
+
+def name_variants(p, ld):
+    """Every way the page names its own product: page data, og:title, H1 and title tag."""
+    return [n for n in (strip_site(x) for x in (ld.get("name"), p.meta.get("og:title"),
+                                                  next((h for t, h in p.headings if t == "h1"), ""), p.title)) if n]
+
+
 def target_name(p, ld):
-    for name in (ld.get("name"), p.meta.get("og:title"), next((h for t, h in p.headings if t == "h1"), ""), p.title):
-        if name and name.strip():
-            # "Air Jordan 1 Low | Nike.com" -> "Air Jordan 1 Low"
-            return re.split(r"\s+[|–—]\s+|\s+-\s+(?=[^-]*$)", unescape(name).strip())[0].strip()
-    return ""
+    names = name_variants(p, ld)
+    return names[0] if names else ""
+
+
+def site_words(p, url):
+    """The store's own name ("ToyTime", "gotoytime"), which shows up next to every item it sells."""
+    out = set(words(p.meta.get("og:site_name", "")))
+    for title in (p.title, p.meta.get("og:title", "")):
+        parts = re.split(r"\s+[|–—]\s+|\s+-\s+(?=[^-]*$)", unescape(title or "").strip())
+        if len(parts) > 1:
+            out |= set(words(parts[-1]))
+    host = urlparse(url).netloc.lower().split(":")[0]
+    labels = [x for x in host.split(".") if x not in ("www", "shop", "store", "com", "net", "org", "co", "uk", "us", "ca")]
+    return out, labels
+
+
+def with_joins(tokens):
+    """Tokens plus each adjacent pair written together, so "nee doh" also counts as "needoh"."""
+    return set(tokens) | {a + b for a, b in zip(tokens, tokens[1:])}
 
 
 # Name words that say what kind of thing it is but not which one; a monitor gains nothing from them.
@@ -263,22 +328,34 @@ def similar_items(name, related):
     core = {w for w in words(name) if _meaningful(w)}
     out = []
     for text in dict.fromkeys(related):
-        toks = set(words(text))
+        toks = with_joins(words(text))
         if text.strip().lower() != name.lower() and len(core & toks) >= max(1, min(2, len(core) // 2)):
             out.append((text, toks))
     return out
 
 
-def positive_keywords(name, similar, brand="", codes=(), top=8):
+def spaced_form(word, text):
+    """How the page writes `word` with a space in it ("Nee Doh" for needoh), or ""."""
+    for i in range(2, len(word) - 1):
+        m = re.search(r"\b" + re.escape(word[:i]) + r"[\s-]+" + re.escape(word[i:]) + r"\b", text, re.I)
+        if m:
+            return m.group(0)
+    return ""
+
+
+def positive_keywords(name, similar, brand="", codes=(), top=8, page_text="", skip=()):
     """[(word, reason, in_line)]: words a monitor should require. in_line=False ones are shown but not put
     in the +/- line (a style code only matches where the site lists it)."""
     brand_words = set(words(brand))
     out = []
     for w in dict.fromkeys(words(name)):
-        if w in GENERIC or not (_meaningful(w) or w.isdigit() or w in VARIANT_TERMS):
+        if w in GENERIC or w in skip or not (_meaningful(w) or w.isdigit() or w in VARIANT_TERMS):
             continue
         shared = sum(w in toks for _, toks in similar)
-        if w in brand_words:
+        spaced = spaced_form(w, page_text) if len(w) >= 5 and not w.isdigit() else ""
+        if spaced:
+            reason = f"product line; the site also writes it “{spaced}”, so those words are never negatives"
+        elif w in brand_words:
             reason = "brand"
         elif w.isdigit():
             reason = "model number"
@@ -297,27 +374,39 @@ def positive_keywords(name, similar, brand="", codes=(), top=8):
     return out
 
 
-def negative_keywords(name, related, page_words, top=20, similar=None):
+def negative_keywords(name, related, top=20, similar=None, also=(), site=(), host_labels=()):
     """Words that show up on similar items but not in the target's name, most telling first.
 
     related: names of other items on the page (links, image alts, other products in the page data).
+    also: other ways the page names the target (H1, title), whose words are never negatives.
+    site / host_labels: the store's name and domain, which appear next to every item.
     Returns [(negative word, reason)].
     """
     target = set(words(name))
+    for other in also:
+        target |= set(words(other))
+    joined_target = target | with_joins(words(name))
+
+    def is_store(w):
+        return w in site or any(len(w) >= 4 and w in label for label in host_labels)
+
     seen, similar_name = Counter(), {}
-    for text, toks in similar if similar is not None else similar_items(name, related):
-        for w in toks - target:
-            if _meaningful(w) or w in VARIANT_TERMS:
+    for text, _ in similar if similar is not None else similar_items(name, related):
+        toks, counted = words(text), set()
+        for i, w in enumerate(toks):
+            if w in target or is_store(w) or not (_meaningful(w) or w in VARIANT_TERMS):
+                continue
+            # Half of a target word written with a space ("Nee Doh" when the item is "NeeDoh").
+            if (i + 1 < len(toks) and w + toks[i + 1] in joined_target) or (i and toks[i - 1] + w in joined_target):
+                continue
+            if w not in counted:
+                counted.add(w)
                 seen[w] += 1
                 similar_name.setdefault(w, text)
     out = []
     for w, n in sorted(seen.items(), key=lambda kv: (kv[0] not in VARIANT_TERMS, -kv[1], kv[0])):
         reason = VARIANT_TERMS.get(w, "on a similar item")
         out.append((w, f"{reason}: “{similar_name[w][:70]}”" + (f" and {n - 1} more" if n > 1 else "")))
-    present = set(page_words)
-    for w, reason in VARIANT_TERMS.items():
-        if w in present and w not in target and w not in seen:
-            out.append((w, f"{reason} (mentioned on the page)"))
     for w in CATCH_ALLS:
         if w not in target and all(w != o for o, _ in out):
             out.append((w, VARIANT_TERMS[w] + " (common wrong match)"))
@@ -347,8 +436,11 @@ def analyze(html, url=""):
     related = p.links + p.alts + ld_others + [h for t, h in p.headings if t != "h1"]
     similar = similar_items(name, related)
     codes = product_codes(body + " " + title, ld)
-    positives = positive_keywords(name, similar, ld.get("brand", ""), codes)
-    negatives = negative_keywords(name, related, words(body), similar=similar)
+    site, host_labels = site_words(p, url)
+    page_text = " ".join([title, body, *related, *name_variants(p, ld)])
+    positives = positive_keywords(name, similar, ld.get("brand", ""), codes, page_text=page_text, skip=site)
+    negatives = negative_keywords(name, related, similar=similar, also=name_variants(p, ld)[1:], site=site,
+                                  host_labels=host_labels)
     return {
         "url": url, "host": urlparse(url).netloc, "title": title,
         "description": p.meta.get("description") or p.meta.get("og:description", ""),
@@ -360,42 +452,69 @@ def analyze(html, url=""):
     }
 
 
-def ai_summary(result, config):
-    """Ask the local model which keywords the page is targeting. Returns dict or raises LLMError."""
-    client = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, timeout=config.llm_timeout)
-    page = {
+def page_summary(result):
+    """What the model is shown about a page (also what a saved example keeps)."""
+    return {
         "title": result["title"], "description": result["description"], "meta_keywords": result["meta_keywords"],
         "headings": [h for _, h in result["headings"][:15]], "product": result["product"], "codes": result["codes"],
         "top_words": [w for w, *_ in result["words"][:25]], "top_phrases": [p for p, *_ in result["phrases"][:20]],
         "target_item": result["name"], "similar_items_on_page": result["related"][:20],
     }
-    system = ("You read keyword data pulled from one web page. Reply with JSON only: "
-              '{"summary": "one or two sentences on what the page is about", '
-              '"main_keywords": ["the 5-12 keywords or phrases the page is built around, most important first"], '
-              '"product": "product name if it is a product page, else empty", '
-              '"positive_keywords": [{"word": "a word from the target item name a monitor should require", '
-              '"reason": "short reason"}], '
-              '"negative_keywords": [{"word": "a word that appears in the names of similar but wrong items '
-              '(other sizing runs like GS/PS/TD, other genders, other cuts or colourways, apparel, accessories, used '
-              'or replica) and NOT in the target item name", "reason": "short reason"}]}. '
-              "Negative keywords are for a restock monitor that must match the target item and skip look-alikes.")
-    answer = client.chat_json(system, json.dumps(page, ensure_ascii=False))
-    kws = answer.get("main_keywords") or []
+
+
+AI_SYSTEM = ("You read keyword data pulled from one web page. Reply with JSON only: "
+             '{"summary": "one or two sentences on what the page is about", '
+             '"main_keywords": ["the 5-12 keywords or phrases the page is built around, most important first"], '
+             '"product": "product name if it is a product page, else empty", '
+             '"positive_keywords": [{"word": "a word from the target item name a monitor should require", '
+             '"reason": "short reason"}], '
+             '"negative_keywords": [{"word": "a word that appears in the names of similar but wrong items '
+             '(other sizing runs like GS/PS/TD, other genders, other cuts or colourways, apparel, accessories, used '
+             'or replica) and NOT in the target item name", "reason": "short reason"}]}. '
+             "Negative keywords are for a restock monitor that must match the target item and skip look-alikes. "
+             "Earlier pages may follow with the keywords the user settled on; learn from them.")
+
+
+def ai_summary(result, config, con):
+    """Ask the local model which keywords the page is targeting. Returns dict or raises LLMError.
+
+    Runs as the "Keyword finder" task on the Training page, so pages you corrected are shown to the
+    model first, and its instructions can be edited there."""
+    client = LLMClient(config.llm_base_url, config.llm_model, config.llm_api_key, timeout=config.llm_timeout)
+    t = keywordrules.keyword_task(con, AI_SYSTEM)
+    answer = json.loads(tasks.answer(client, con, t, json.dumps(page_summary(result), ensure_ascii=False)))
+    if not isinstance(answer, dict):
+        raise LLMError("The model's answer wasn't in the expected format.")
+
+    def listed(key):
+        value = answer.get(key)
+        return value if isinstance(value, list) else []
+
+    def pairs(key):
+        # Models sometimes give plain strings instead of {"word", "reason"} objects; take either.
+        out = []
+        for n in listed(key):
+            word, reason = (n.get("word"), n.get("reason")) if isinstance(n, dict) else (n, "")
+            if isinstance(word, (str, int, float)) and str(word).strip():
+                out.append((str(word).strip(), str(reason or "").strip()))
+        return out
+
     target = set(words(result["name"]))
-    negs = [(str(n.get("word", "")).strip(), str(n.get("reason", "")).strip()) for n in answer.get("negative_keywords") or []
-            if isinstance(n, dict)]
-    negs = [(w, r) for w, r in negs if w and w.lower() not in target][:15]  # never exclude the item's own words
-    poss = [(str(n.get("word", "")).strip(), str(n.get("reason", "")).strip()) for n in answer.get("positive_keywords") or []
-            if isinstance(n, dict)]
+    negs = [(w, r) for w, r in pairs("negative_keywords") if w.lower() not in target][:15]  # never exclude the item's own words
     return {"summary": str(answer.get("summary") or ""), "product": str(answer.get("product") or ""), "negatives": negs,
-            "positives": [(w, r) for w, r in poss if w][:10],
-            "main_keywords": [str(k) for k in kws if str(k).strip()][:15] if isinstance(kws, list) else []}
+            "positives": pairs("positive_keywords")[:10],
+            "main_keywords": [str(k) for k in listed("main_keywords") if str(k).strip()][:15]}
 
 
 @bp.route("/keywords", methods=["GET", "POST"])
 def keywords_page():
     if request.method == "GET":
-        return render_template("keywords.html", result=None, error=None, url="", use_ai=False)
+        try:
+            saved = keywordrules.all_rules(rules_db())
+        except Exception:
+            logger.exception("keyword finder: couldn't load saved keyword rules")
+            saved = []
+        return render_template("keywords.html", result=None, error=None, url="", use_ai=False, saved=saved)
     url, use_ai = request.form.get("url", ""), bool(request.form.get("ai"))
     result = error = ai = ai_error = None
     try:
@@ -411,13 +530,77 @@ def keywords_page():
     except Exception as e:  # odd markup should never take the page down
         error = f"Couldn't read that page: {e}"
         logger.exception("keyword finder: unexpected error for %s", url)
+    rules = []
+    if result:
+        try:
+            con = rules_db()
+            rules = keywordrules.rules_for(con, result["host"], result["product"].get("brand", ""))
+            keywordrules.apply(result, rules)
+        except Exception:  # the suggestions still show without your saved rules
+            logger.exception("keyword finder: couldn't load saved keyword rules")
+            con = None
     if result and use_ai:
         try:
-            ai = ai_summary(result, Config.from_env())
+            ai = keywordrules.filter_ai(ai_summary(result, Config.from_env(), con or rules_db()), rules)
+            merge_ai(result, ai)
             logger.info("keyword finder: local AI picked %d main keywords for %s", len(ai["main_keywords"]), url)
-        except (LLMError, ValueError, AttributeError) as e:
+        except LLMError as e:
             ai_error = str(e)
             logger.warning("keyword finder: local AI summary failed: %s", e)
-    line = monitor_line(result["positives"], result["negatives"] + (ai["negatives"] if ai else [])) if result else ""
-    return render_template("keywords.html", result=result, error=error, url=url, use_ai=use_ai, ai=ai, ai_error=ai_error,
-                           line=line)
+        except Exception as e:  # the keyword results still show without the AI part
+            ai_error = f"Something went wrong asking the model ({type(e).__name__}: {e})."
+            logger.exception("keyword finder: local AI summary crashed for %s", url)
+    try:
+        line = monitor_line(result["positives"], result["negatives"]) if result else ""
+        return render_template("keywords.html", result=result, error=error, url=url, use_ai=use_ai, ai=ai,
+                               ai_error=ai_error, line=line, summary=page_summary(result) if result else None)
+    except Exception as e:
+        logger.exception("keyword finder: couldn't show results for %s", url)
+        return render_template("keywords.html", result=None, url=url, use_ai=use_ai, ai=None, ai_error=None, line="",
+                               error=f"Couldn't show the results for that page ({type(e).__name__}: {e}). "
+                                     "Details are in Logs; please send them over.")
+
+
+def merge_ai(result, ai):
+    """Put the model's extra + and - keywords into the same lists, so they can be kept or removed like the rest."""
+    have = {w.lower() for w, *_ in result["positives"]} | {w.lower() for w, _ in result["negatives"]}
+    for w, r in ai["positives"]:
+        if w.lower() not in have:
+            result["positives"].append((w.lower(), "local AI" + (f": {r}" if r else ""), True))
+            have.add(w.lower())
+    for w, r in ai["negatives"]:
+        if w.lower() not in have:
+            result["negatives"].append((w.lower(), "local AI" + (f": {r}" if r else "")))
+            have.add(w.lower())
+
+
+def rules_db():
+    return keywordrules.ensure(db.connect(current_app.config.get("DB_PATH")))
+
+
+@bp.post("/keywords/feedback")
+def keywords_feedback():
+    """Keep or drop one suggestion. Saves a rule for the store and brand, and the page as a training example."""
+    data = request.get_json(silent=True) or {}
+    try:
+        con = rules_db()
+        word, rule_id = keywordrules.save_rule(con, data.get("host", ""), data.get("brand", ""), data.get("kind", ""),
+                                      str(data.get("word", "")), data.get("action", ""), data.get("url", ""),
+                                      data.get("product", ""))
+        if isinstance(data.get("page"), dict):
+            keywordrules.save_example(con, AI_SYSTEM, data["page"], [str(w) for w in data.get("positives") or []],
+                                      [str(w) for w in data.get("negatives") or []])
+    except ValueError as e:
+        return jsonify(ok=False, error=str(e)), 400
+    except Exception as e:
+        logger.exception("keyword finder: couldn't save feedback")
+        return jsonify(ok=False, error=f"Couldn't save that ({type(e).__name__})."), 500
+    return jsonify(ok=True, word=word, rule_id=rule_id)
+
+
+@bp.post("/keywords/rules/<int:rule_id>/delete")
+def keywords_rule_delete(rule_id):
+    keywordrules.delete_rule(rules_db(), rule_id)
+    if request.is_json or request.accept_mimetypes.best == "application/json":
+        return jsonify(ok=True)
+    return redirect("/keywords#rules")

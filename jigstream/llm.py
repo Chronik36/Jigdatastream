@@ -75,7 +75,10 @@ class LLMClient:
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = json.load(resp)
-        except urllib.error.URLError as e:
+        except TimeoutError as e:
+            logger.error("model %s took over %ss to answer", self.model, self.timeout)
+            raise LLMError(f"The local model took longer than {self.timeout} seconds to answer.") from e
+        except (urllib.error.URLError, OSError) as e:  # OSError: connections dropped mid-reply
             logger.error("cannot reach model server at %s: %s", self.base_url, e)
             raise LLMError(
                 f"Could not reach the local model at {self.base_url} ({e}). Is Ollama running?"
