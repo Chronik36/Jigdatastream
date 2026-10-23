@@ -1,7 +1,8 @@
 """Products: research what to buy, what it costs at retail, what it resells for, and where the profit is.
 
-You describe the kind of product you're after; the local AI suggests matching products (type, SKU, MSRP,
-where it's sold, whether it's still in production) and similar items. For each tracked product BotTrack
+You describe the kind of product you're after; BotTrack searches what stores list right now (Target and
+Shopify stores) for real names, SKUs, prices and stock, with the local AI only choosing the search words and
+dropping results that don't fit. For each tracked product BotTrack
 looks up resale prices on the selling sites you use, once per click, with requests spaced out. A site that
 refuses (403, 429, a bot check) is reported and left alone for a while; nothing here uses proxies, solves
 CAPTCHAs or tries to get around bot protection. Sites that can't be read (app-only ones like Tradepost,
@@ -21,6 +22,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from base64 import b64encode
 from datetime import datetime
 from html import unescape
@@ -67,7 +69,7 @@ _last = {}  # host -> time of last request
 _paused = {}  # host -> time a block pause ends
 _page_inputs = {}  # (product id, platform key) -> what the local AI was shown, so a correction can teach it
 update_state = {"running": False, "done": 0, "total": 0, "current": "", "finished": None}
-last_research = {"query": "", "type": "", "items": [], "error": None, "for": None}
+last_research = {"query": "", "searches": [], "items": [], "errors": {}, "error": None, "for": None}
 
 
 class SourceError(Exception):
@@ -133,15 +135,22 @@ def money(v):
     return round(v, 2) if 0 < v < 1_000_000 else None
 
 
-def new_product(name, ptype="", sku="", msrp=None, retailers=(), in_production=None, why=""):
+def new_product(name, ptype="", sku="", msrp=None, retailers=(), in_production=None, why="", offers=(), image="",
+                sku_label=""):
+    """retailers + msrp: stores typed in by hand. offers: real store listings from research."""
     p = {"id": uuid.uuid4().hex[:10], "name": name.strip()[:200], "type": ptype.strip()[:80], "sku": sku.strip()[:60],
-         "in_production": in_production, "why": why.strip()[:300], "added": today(), "retail": [], "market": {}}
+         "sku_label": sku_label, "in_production": in_production, "why": why.strip()[:300], "added": today(),
+         "image": image, "retail": [], "market": {}}
+    for o in offers:
+        p["retail"].append({"store": o["store"], "price": o["price"], "kind": "msrp", "link": o.get("link", ""),
+                            "from": "store listing" + (", sold out" if o.get("available") is False else ""),
+                            "when": today()})
     for store in retailers:
         if str(store).strip():
             p["retail"].append({"store": str(store).strip()[:60], "price": money(msrp), "kind": "msrp", "link": "",
-                                "from": "AI guess", "when": today()})
+                                "from": "typed in", "when": today()})
     if msrp is not None and not p["retail"] and money(msrp):
-        p["retail"].append({"store": "MSRP", "price": money(msrp), "kind": "msrp", "link": "", "from": "AI guess",
+        p["retail"].append({"store": "MSRP", "price": money(msrp), "kind": "msrp", "link": "", "from": "typed in",
                             "when": today()})
     return p
 
@@ -214,17 +223,19 @@ def platform_name(key):
 
 # --- Fetching ---------------------------------------------------------------------------------
 
-def _pace(host):
+def _pace(host, gap=None):
+    """Keeps requests to one site spaced out (other sites aren't held up), and refuses while it's paused."""
+    gap = MIN_GAP if gap is None else min(gap, MIN_GAP)
     with _lock:
         until = _paused.get(host, 0)
         if until > time.time():
             mins = max(1, round((until - time.time()) / 60))
             raise Blocked(f"{host} refused a request a few minutes ago, so BotTrack is leaving it alone for about "
                           f"{mins} more minute{'s' if mins != 1 else ''}.")
-        wait = _last.get(host, 0) + MIN_GAP - time.time()
-        if wait > 0:
-            time.sleep(wait)
-        _last[host] = time.time()
+        slot = max(time.time(), _last.get(host, 0) + gap)
+        _last[host] = slot
+    if slot > time.time():
+        time.sleep(slot - time.time())
 
 
 def _pause(host, why):
@@ -256,18 +267,19 @@ def fetch_page(url):
     return html
 
 
-def _get_json(url, headers=None, data=None):
+def _get_json(url, headers=None, data=None, gap=None):
     host = urlparse(url).netloc
-    _pace(host)
+    _pace(host, gap)
     req = urllib.request.Request(url, data=data, headers={"User-Agent": keywords.USER_AGENT,
                                                           "Accept": "application/json", **(headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=keywords.TIMEOUT) as resp:
             return json.loads(resp.read(3_000_000).decode("utf-8", errors="replace"))
     except urllib.error.HTTPError as e:
-        if e.code == 429:
-            _pause(host, "HTTP 429")
-            raise Blocked(f"{host} says the daily limit is used up (HTTP 429).") from e
+        if e.code in (403, 429):
+            _pause(host, f"HTTP {e.code}")
+            raise Blocked(f"{host} refused the request (HTTP {e.code}); BotTrack will leave it alone for "
+                          f"{BLOCK_PAUSE // 60} minutes.") from e
         raise SourceError(f"{host} answered HTTP {e.code}.") from e
     except (urllib.error.URLError, OSError, ValueError) as e:
         raise SourceError(f"Couldn't reach {host}: {e}") from e
@@ -400,41 +412,201 @@ def teach(c, pid, key, prices):
     return True
 
 
-RESEARCH_PROMPT = (
-    "You help a reseller decide what to buy at retail and resell. Reply with JSON only: "
-    '{"product_type": "the kind of product asked about", "products": [{"name": "exact retail product name", '
-    '"type": "category", "sku": "SKU, style code, UPC or model number if known, else empty", '
-    '"msrp": number in US dollars or null, "retailers": ["stores that sell it at retail"], '
-    '"in_production": true if still being made or restocked, false if discontinued, null if unsure, '
-    '"why": "one short sentence on why it resells"}]}. '
-    "List up to 10 real products, the ones most likely to resell above MSRP first. Never invent SKUs.")
+# Research only shows what stores actually list right now: names, SKUs, prices and stock come from the stores'
+# own product search (Target's, and Shopify stores' public search). The local AI only turns your description
+# into search words and drops results that don't fit it; it never supplies a price or SKU. Unknown stays unknown.
+DEFAULT_SHOPS = [("Kith", "kith.com"), ("Undefeated", "undefeated.com"), ("Bodega", "bdgastore.com"),
+                 ("Concepts", "cncpts.com"), ("Shoe Palace", "shoepalace.com"), ("A Ma Maniere", "amamaniere.com"),
+                 ("Jimmy Jazz", "jimmyjazz.com")]
+TARGET_SEARCH = "https://redsky.target.com/redsky_aggregations/v1/web/plp_search_v2"
+SHOP_GAP = 1.0  # Shopify product pages are light; still one request a second per store
+SKU_LOOKUPS = 3  # per store and search: how many results get their product page read for SKUs
+
+WORDS_PROMPT = (
+    "You turn a reseller's description of what they want to buy into store search words. Reply with JSON only: "
+    '{"searches": ["2 to 4 short searches a store search box understands, most specific first"], '
+    '"skip_words": ["words in listing names that mean it is NOT what they want, e.g. sticker, case, used"]}. '
+    "Use product names, lines and model names people search for. No prices, SKUs or dates.")
+FILTER_PROMPT = (
+    "You check store search results against what a reseller asked for. Reply with JSON only: "
+    '{"keep": [numbers of the results that are the kind of product asked for]}. '
+    "Drop accessories, toys, clothing and other things that only share a word with the request.")
 
 
-def research(query, config=None):
-    answer = _client(config).chat_json(RESEARCH_PROMPT, f"Find products for: {query}")
-    return answer.get("product_type") or "", _clean_items(answer.get("products"))
+def shops(data=None):
+    data = data or load()
+    if "shops" not in data:
+        data["shops"] = [{"name": n, "domain": d} for n, d in DEFAULT_SHOPS]
+    return data["shops"]
 
 
-def similar(p, config=None):
-    known = p["name"] + (f" (SKU {p['sku']})" if p.get("sku") else "")
-    answer = _client(config).chat_json(
-        RESEARCH_PROMPT, f"List products similar to {known}, {p.get('type') or 'same category'}, that are still in "
-                         f"production or being restocked now. Don't list the product itself.")
-    return answer.get("product_type") or p.get("type", ""), _clean_items(answer.get("products"))
+def search_words_for(query, config=None):
+    """(searches, skip words) for a description, from the local AI; the description itself if the AI is off."""
+    try:
+        answer = _client(config).chat_json(WORDS_PROMPT, query)
+        searches = [str(s).strip()[:80] for s in answer.get("searches") or [] if str(s).strip()][:4]
+        skip = {str(w).strip().lower() for w in answer.get("skip_words") or [] if str(w).strip()}
+        if searches:
+            return searches, skip
+    except (LLMError, ValueError, AttributeError) as e:
+        logger.info("products: local AI didn't make search words (%s); searching the description as typed", e)
+    return [" ".join(query.split()[:8])], set()
 
 
-def _clean_items(items):
+def _offer(store, name, price, sku="", sku_label="SKU", available=None, link="", image="", brand="", ptype=""):
+    return {"store": store, "name": " ".join(unescape(str(name)).split())[:200], "price": money(price),
+            "sku": str(sku or "").strip()[:60], "sku_label": sku_label, "available": available, "link": link,
+            "image": image, "brand": str(brand or "")[:60], "type": str(ptype or "")[:80]}
+
+
+def target_search(words):
+    params = {"keyword": words, "channel": "WEB", "count": 24, "offset": 0, "default_purchasability_filter": "true",
+              "page": "/s/" + words, "pricing_store_id": stock.TARGET_PRICING_STORE, "platform": "desktop",
+              "visitor_id": uuid.uuid4().hex.upper()}
+    try:
+        data = stock._target_request(TARGET_SEARCH, params)
+    except stock.StockError as e:
+        raise SourceError(f"Target: {e}") from e
+    found = (((data.get("data") or {}).get("search") or {}).get("products")) or []
     out = []
-    for it in items if isinstance(items, list) else []:
-        if not isinstance(it, dict) or not str(it.get("name") or "").strip():
+    for p in found:
+        item = p.get("item") or {}
+        tcin = p.get("tcin") or item.get("tcin")
+        title = stock._find(item, ["title"])
+        if not tcin or not title:
             continue
-        retailers = it.get("retailers") if isinstance(it.get("retailers"), list) else []
-        out.append({"name": str(it["name"]).strip()[:200], "type": str(it.get("type") or "")[:80],
-                    "sku": str(it.get("sku") or "")[:60], "msrp": money(it.get("msrp")),
-                    "retailers": [str(r)[:60] for r in retailers][:6],
-                    "in_production": it.get("in_production") if isinstance(it.get("in_production"), bool) else None,
-                    "why": str(it.get("why") or "")[:300]})
-    return out[:12]
+        price = stock._find(p.get("price") or {}, ["current_retail", "current_retail_min", "reg_retail"])
+        status = str(stock._find(p.get("fulfillment") or {}, ["availability_status"]) or "")
+        out.append(_offer("Target", title, price, tcin, "Target TCIN",
+                          None if not status else status.upper() in stock.IN_STOCK or "IN_STOCK" in status.upper(),
+                          f"https://www.target.com/p/-/A-{tcin}", stock._find(item, ["primary_image_url"]) or "",
+                          stock._find(item.get("primary_brand") or {}, ["name"]) or "",
+                          stock._find(item.get("product_classification") or {}, ["name"]) or ""))
+    return out
+
+
+def shop_search(shop, words, lookups=SKU_LOOKUPS):
+    """A Shopify store's public product search, then each top result's product page for its SKU and price."""
+    base = "https://" + shop["domain"].strip("/")
+    data = _get_json(f"{base}/search/suggest.json?" + urlencode(
+        {"q": words, "resources[type]": "product", "resources[limit]": 8,
+         "resources[options][unavailable_products]": "last"}), gap=SHOP_GAP)
+    found = (((data.get("resources") or {}).get("results") or {}).get("products")) or []
+    out = []
+    for i, p in enumerate(found):
+        if not p.get("title") or not p.get("handle"):
+            continue
+        link = base + "/products/" + p["handle"]
+        image = p.get("image") or p.get("featured_image") or ""
+        image = image.get("url", "") if isinstance(image, dict) else image
+        offer = _offer(shop["name"], p["title"], p.get("price") or p.get("price_min"), "", "SKU", p.get("available"),
+                       link, ("https:" + image) if str(image).startswith("//") else image, p.get("vendor"),
+                       p.get("type") or p.get("product_type"))
+        if i < lookups:
+            try:
+                full = _get_json(link + ".js", gap=SHOP_GAP)
+                variants = full.get("variants") or []
+                sku = next((v.get("sku") for v in variants if v.get("sku")), "")
+                offer["sku"] = style_code(sku, p["title"]) or str(sku)[:60]
+                if full.get("price") is not None:
+                    offer["price"] = money(full["price"] / 100)  # product pages give cents
+                offer["available"] = full.get("available", offer["available"])
+            except SourceError as e:
+                logger.info("products: %s product page %s: %s", shop["name"], p["handle"], e)
+        out.append(offer)
+    return out
+
+
+def style_code(sku, title=""):
+    """A sneaker style code like FV5029-100 out of a size-level SKU ("FV5029-100-10.5") or the title."""
+    for text in (sku or "", title or ""):
+        m = keywords.CODE.search(str(text).upper())
+        if m:
+            return m.group(0)
+    return ""
+
+
+def _key(o):
+    code = style_code(o["sku"], o["name"])
+    return code or " ".join(sorted(core_words(o["name"])))
+
+
+def group_offers(offers, skip=()):
+    """One row per product: the same style code, or the same main words, at any number of stores."""
+    groups = {}
+    for o in offers:
+        if not o["price"]:
+            continue
+        toks = set(keywords.words(o["name"]))
+        if toks & set(skip):
+            continue
+        g = groups.setdefault(_key(o), [])
+        if all(x["store"] != o["store"] for x in g):
+            g.append(o)
+    items = []
+    for g in groups.values():
+        g.sort(key=lambda o: (o["available"] is False, o["price"]))
+        first = g[0]
+        sku_offer = next((o for o in g if o["sku"]), None)
+        selling = [o for o in g if o["available"] is not False]
+        facts = ", ".join(f"{o['store']} ${o['price']:,.2f}" + (" (sold out)" if o["available"] is False else "")
+                          for o in g)
+        items.append({"name": first["name"], "type": next((o["type"] for o in g if o["type"]), ""),
+                      "brand": next((o["brand"] for o in g if o["brand"]), ""),
+                      "image": next((o["image"] for o in g if o["image"]), ""),
+                      "sku": sku_offer["sku"] if sku_offer else "",
+                      "sku_label": sku_offer["sku_label"] if sku_offer else "",
+                      "offers": g, "low": min(o["price"] for o in (selling or g)), "selling": len(selling),
+                      "why": f"Listed at {facts}."})
+    items.sort(key=lambda it: (-it["selling"], -len(it["offers"]), it["low"]))
+    return items
+
+
+def ai_filter(query, items, config=None):
+    """Asks the local AI which results fit the request; keeps everything if it can't answer."""
+    if len(items) < 2:
+        return items
+    listing = "\n".join(f"{i + 1}. {it['name']}" + (f" ({it['type']})" if it["type"] else "")
+                        for i, it in enumerate(items[:40]))
+    try:
+        keep = _client(config).chat_json(FILTER_PROMPT, f"Request: {query}\n\nResults:\n{listing}").get("keep")
+        idx = {int(k) - 1 for k in keep if str(k).strip().isdigit()} if isinstance(keep, list) else set()
+    except (LLMError, ValueError, AttributeError, TypeError) as e:
+        logger.info("products: local AI didn't filter results (%s); showing all", e)
+        return items
+    kept = [it for i, it in enumerate(items) if i in idx or i >= 40]
+    return kept or items
+
+
+def research(query, config=None, data=None, use_ai=True):
+    """Real listings for a description: (search words used, products, store errors)."""
+    data = data or load()
+    searches, skip = search_words_for(query, config) if use_ai else ([" ".join(query.split()[:8])], set())
+    offers, errors = [], {}
+    jobs = [("Target", lambda w: target_search(w))] + [
+        (s["name"], lambda w, s=s: shop_search(s, w)) for s in shops(data) if not s.get("off")]
+    for words in searches:
+        with ThreadPoolExecutor(max_workers=6) as pool:  # different stores at once; each store stays paced
+            futures = {pool.submit(fn, words): name for name, fn in jobs if name not in errors}
+            for fut, name in futures.items():
+                try:
+                    offers += fut.result()
+                except Exception as e:  # one store's failure or odd answer leaves the others' results
+                    errors[name] = str(e) if isinstance(e, SourceError) else f"unexpected answer ({e})"
+                    logger.info("products: research search at %s: %s", name, e)
+    items = group_offers(offers, skip)
+    if use_ai:
+        items = ai_filter(query, items, config)
+    logger.info("products: research “%s” searched %s -> %d products from %d listings", query[:80], searches,
+                len(items), len(offers))
+    return searches, items[:30], errors
+
+
+def similar(p, config=None, data=None):
+    q = f"products similar to {p['name']}" + (f", {p['type']}" if p.get("type") else "") + ", sold now"
+    searches, items, errors = research(q, config, data)
+    own = core_words(p["name"])
+    return searches, [it for it in items if core_words(it["name"]) != own], errors
 
 
 # --- Looking up prices ------------------------------------------------------------------------
@@ -590,10 +762,20 @@ def products_page():
     elif sort == "margin":
         rows.sort(key=lambda pa: (pa[1]["margin"] is None, -(pa[1]["margin"] or 0)))
     return render_template("products.html", rows=rows, focus=focus(data["products"]), research=last_research,
+                           shops=shops(data),
                            platforms=platforms(data), off=data["off"], status=data["status"], sort=sort,
                            state=update_state, has_ebay=all(ebay_keys()), error=request.args.get("error"),
                            note=request.args.get("note"), open=request.args.get("open"), app_note=APP_NOTE,
                            tracked={p["name"].lower() for p in data["products"]})
+
+
+def _run_research(query, pid=None, run=None):
+    last_research.update(query=query, searches=[], items=[], errors={}, error=None, **{"for": pid})
+    try:
+        last_research["searches"], last_research["items"], last_research["errors"] = (run or research)(query)
+    except Exception as e:  # a store's odd answer should never take the page down
+        last_research["error"] = str(e)
+        logger.exception("products: research failed")
 
 
 @bp.post("/products/research")
@@ -601,13 +783,7 @@ def research_route():
     query = (request.form.get("query") or "").strip()
     if not query:
         return _back(error="Describe what you're looking for first.")
-    last_research.update(query=query, type="", items=[], error=None, **{"for": None})
-    try:
-        last_research["type"], last_research["items"] = research(query)
-        logger.info("products: research “%s” -> %d products", query[:80], len(last_research["items"]))
-    except (LLMError, ValueError) as e:
-        last_research["error"] = str(e)
-        logger.warning("products: research failed: %s", e)
+    _run_research(query)
     return _back("research")
 
 
@@ -617,11 +793,7 @@ def similar_route(pid):
     p = find(data, pid)
     if not p:
         return _back()
-    last_research.update(query=f"Similar to {p['name']}", type="", items=[], error=None, **{"for": pid})
-    try:
-        last_research["type"], last_research["items"] = similar(p)
-    except (LLMError, ValueError) as e:
-        last_research["error"] = str(e)
+    _run_research(f"Similar to {p['name']}", pid, lambda q: similar(p, data=data))
     return _back("research")
 
 
@@ -631,24 +803,49 @@ def add_route():
     data = load()
     picks = f.getlist("pick")
     items = [last_research["items"][int(i)] for i in picks if i.isdigit() and int(i) < len(last_research["items"])]
+    have = {p["name"].lower() for p in data["products"]}
     if not picks:
         name = (f.get("name") or "").strip()
         if not name:
             return _back(error="Give the product a name.")
-        items = [{"name": name, "type": f.get("type", ""), "sku": f.get("sku", ""), "msrp": money(f.get("msrp")),
-                  "retailers": [f.get("store")] if f.get("store") else [], "in_production": None, "why": ""}]
-    have = {p["name"].lower() for p in data["products"]}
+        new = [new_product(name, f.get("type", ""), f.get("sku", ""), money(f.get("msrp")),
+                           [f.get("store")] if f.get("store") else [])]
+    else:
+        new = [new_product(it["name"], it["type"], it["sku"], offers=it["offers"], image=it["image"],
+                           sku_label=it["sku_label"], why=it["why"],
+                           in_production=True if it["selling"] else None) for it in items]
     added = 0
-    for it in items:
-        if it["name"].lower() in have:
-            continue
-        data["products"].insert(0, new_product(it["name"], it.get("type", ""), it.get("sku", ""), it.get("msrp"),
-                                               it.get("retailers") or [], it.get("in_production"), it.get("why", "")))
-        added += 1
+    for p in new:
+        if p["name"].lower() not in have:
+            data["products"].insert(0, p)
+            added += 1
     save(data)
     logger.info("products: tracking %d new product%s", added, "" if added == 1 else "s")
     return _back("tracked", note=f"Added {added} product{'' if added == 1 else 's'}." if added else
                  "Those products are already tracked.")
+
+
+@bp.post("/products/shops/add")
+def shop_add_route():
+    data = load()
+    name, domain = (request.form.get("name") or "").strip()[:40], (request.form.get("domain") or "").strip().lower()
+    domain = re.sub(r"^https?://", "", domain).split("/")[0]
+    if not name or not re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}", domain):
+        return _back("research", error="Give the store a name and its web address, e.g. kith.com.")
+    if any(s["domain"] == domain for s in shops(data)):
+        return _back("research", error="That store is already searched.")
+    shops(data).append({"name": name, "domain": domain})
+    save(data)
+    logger.info("products: research also searches %s (%s)", name, domain)
+    return _back("research")
+
+
+@bp.post("/products/shops/<domain>/remove")
+def shop_remove_route(domain):
+    data = load()
+    data["shops"] = [s for s in shops(data) if s["domain"] != domain]
+    save(data)
+    return _back("research")
 
 
 @bp.post("/products/<pid>/edit")

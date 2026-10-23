@@ -1,4 +1,6 @@
+import io
 import json
+import urllib.error
 
 import pytest
 
@@ -36,7 +38,9 @@ def fresh(monkeypatch, tmp_path):
     products._last.clear()
     products._paused.clear()
     products._page_inputs.clear()
-    products.last_research.update(query="", type="", items=[], error=None, **{"for": None})
+    products.last_research.update(query="", searches=[], items=[], errors={}, error=None, **{"for": None})
+    monkeypatch.setattr(products.stock, "MIN_GAP", {"target": 0, "bestbuy": 0})
+    monkeypatch.setattr(products, "SHOP_GAP", 0)
     products.update_state.update(running=False, done=0, total=0, current="", finished=None)
 
 
@@ -135,24 +139,98 @@ def test_ai_reads_page_and_learns_from_corrections(monkeypatch, tmp_path):
     assert len(ex) == 1 and json.loads(ex[0]["output"]) == {"prices": [90.0]}
 
 
+TARGET_SEARCH = {"data": {"search": {"products": [
+    {"tcin": "94300069", "item": {"product_description": {"title": "Pokemon Prismatic Evolutions Elite Trainer Box"},
+                                  "primary_brand": {"name": "Pokemon"},
+                                  "enrichment": {"images": {"primary_image_url": "https://img/t.jpg"}},
+                                  "product_classification": {"item_type": {"name": "Trading Cards"}}},
+     "price": {"current_retail": 49.99}, "fulfillment": {"shipping_options": {"availability_status": "IN_STOCK"}}},
+    {"tcin": "111", "item": {"product_description": {"title": "Pokemon Prismatic Evolutions Sticker Collection"}},
+     "price": {"current_retail": 9.99}}]}}}
+SHOP_SUGGEST = {"resources": {"results": {"products": [
+    {"title": "Pokemon Prismatic Evolutions Elite Trainer Box", "handle": "pkmn-pe-etb", "price": "54.99",
+     "available": True, "vendor": "Pokemon", "type": "Collectibles", "image": "//cdn/kith.jpg"},
+    {"title": "Air Jordan 4 Retro White Cement", "handle": "aj4-wc", "price": "215.00", "available": False}]}}}
+SHOP_PRODUCT = {"pkmn-pe-etb": {"price": 5499, "available": True, "variants": [{"sku": ""}]},
+                "aj4-wc": {"price": 21500, "available": False, "variants": [{"sku": "FV5029-100-10"}]}}
+
+
+class FakeAI:
+    def chat_json(self, system, user, examples=()):
+        if "search words" in system:
+            return {"searches": ["prismatic evolutions elite trainer box"], "skip_words": ["sticker"]}
+        return {"keep": [1, 2]}
+
+
+def stores(monkeypatch, blocked=()):
+    def fake(req, timeout=None):
+        url = req.full_url
+        host = url.split("/")[2]
+        if host in blocked:
+            raise urllib.error.HTTPError(url, 403, "Forbidden", {}, io.BytesIO(b""))
+        if "redsky" in url:
+            body = TARGET_SEARCH
+        elif "suggest.json" in url:
+            body = SHOP_SUGGEST if host == "kith.com" else {"resources": {"results": {"products": []}}}
+        else:
+            body = SHOP_PRODUCT[url.rsplit("/", 1)[1][:-3]]
+        return FakeResp(json.dumps(body).encode())
+    monkeypatch.setattr(products.urllib.request, "urlopen", fake)
+    monkeypatch.setattr(products.stock.urllib.request, "urlopen", fake)
+
+
+class FakeResp(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_research_uses_real_listings(monkeypatch):
+    stores(monkeypatch, blocked={"undefeated.com"})
+    monkeypatch.setattr(products, "_client", lambda config=None: FakeAI())
+    searches, items, errors = products.research("pokemon prismatic etb")
+    assert searches == ["prismatic evolutions elite trainer box"]
+    etb = items[0]
+    assert etb["name"] == "Pokemon Prismatic Evolutions Elite Trainer Box"
+    assert [(o["store"], o["price"]) for o in etb["offers"]] == [("Target", 49.99), ("Kith", 54.99)]
+    assert etb["sku"] == "94300069" and etb["sku_label"] == "Target TCIN" and etb["low"] == 49.99
+    assert "Target $49.99" in etb["why"] and "Kith $54.99" in etb["why"]
+    assert not any("Sticker" in it["name"] for it in items)  # the AI's skip word
+    aj4 = next(it for it in items if "Jordan" in it["name"])
+    assert aj4["sku"] == "FV5029-100" and aj4["selling"] == 0  # style code from a size SKU; sold out everywhere
+    assert "Undefeated" in errors
+
+
+def test_research_without_ai_searches_the_words_typed(monkeypatch):
+    stores(monkeypatch)
+
+    class Off:
+        def chat_json(self, *a, **k):
+            raise products.LLMError("Could not reach the local model")
+    monkeypatch.setattr(products, "_client", lambda config=None: Off())
+    searches, items, _ = products.research("prismatic evolutions elite trainer box")
+    assert searches == ["prismatic evolutions elite trainer box"] and items
+
+
 def test_page_flow(monkeypatch, tmp_path):
     client = create_app(str(tmp_path / "a.db")).test_client()
     assert "Products" in client.get("/products").get_data(as_text=True)
 
-    monkeypatch.setattr(products, "research", lambda q, config=None: ("Sealed Pokémon", [
-        {"name": NAME, "type": "Trading cards", "sku": "", "msrp": 49.99, "retailers": ["Target", "Best Buy"],
-         "in_production": True, "why": "Sells out on release"},
-        {"name": "Pokemon Surging Sparks Booster Box", "type": "Trading cards", "sku": "", "msrp": 160.0,
-         "retailers": [], "in_production": True, "why": ""}]))
-    client.post("/products/research", data={"query": "sealed pokemon"})
+    stores(monkeypatch)
+    monkeypatch.setattr(products, "_client", lambda config=None: FakeAI())
+    client.post("/products/research", data={"query": "pokemon prismatic evolutions elite trainer box"})
     page = client.get("/products").get_data(as_text=True)
-    assert "Track selected" in page and "Sells out on release" in page
+    assert "Track selected" in page and "Target TCIN" in page and "Kith $" in page
 
-    client.post("/products/add", data={"pick": ["0"]})
+    i = next(i for i, it in enumerate(products.last_research["items"]) if it["name"] == NAME)
+    client.post("/products/add", data={"pick": [str(i)]})
     data = products.load()
     assert len(data["products"]) == 1
     p = data["products"][0]
-    assert [r["store"] for r in p["retail"]] == ["Target", "Best Buy"] and p["retail"][0]["price"] == 49.99
+    assert [(r["store"], r["price"]) for r in p["retail"]] == [("Target", 49.99), ("Kith", 54.99)]
+    assert p["sku"] == "94300069" and p["sku_label"] == "Target TCIN"
 
     client.post(f"/products/{p['id']}/retail", data={"store": "Walmart", "price": "44.97", "kind": "cost"})
     pages(monkeypatch, lambda url: EBAY_PAGE if "ebay" in url else
