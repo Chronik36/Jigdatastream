@@ -80,3 +80,29 @@ def test_repair_folds_lone_cancel_orders_into_the_original(tmp_path):
     assert store.repair_cancels() == (1, 1)
     rows = store.db.execute("SELECT * FROM tracked_orders").fetchall()
     assert len(rows) == 1 and rows[0]["shipping_status"] == "cancelled" and "<2>" in rows[0]["message_ids"]
+
+
+def test_cancel_that_arrives_before_the_confirmation_stays_cancelled(tmp_path):
+    store = Store(db.connect(tmp_path / "t.db"))
+    cancel = mail("<2>", "Order #5551234 cancelled", "", "2026-10-20T09:00:00+00:00")
+    store.save(cancel, normalize({"kind": "order", "retailer": "Target", "order_number": "5551234"}, cancel))
+    first = mail("<1>", "Thanks for your order #5551234", "", "2026-10-20T09:02:00+00:00")
+    store.save(first, normalize({"kind": "order", "retailer": "Target", "order_number": "5551234",
+                                 "shipping_status": "ordered"}, first))
+    rows = store.db.execute("SELECT * FROM tracked_orders").fetchall()
+    assert len(rows) == 1 and rows[0]["shipping_status"] == "cancelled"
+
+
+def test_cancel_with_no_number_first_then_confirmation_joins_it(tmp_path):
+    store = Store(db.connect(tmp_path / "t.db"))
+    cancel = mail("<2>", "Your order has been cancelled", "We're sorry.", "2026-10-20T09:00:00+00:00")
+    store.save(cancel, normalize({"kind": "order", "retailer": "Target", "shipping_status": "unknown"}, cancel))
+    first = mail("<1>", "Thanks for your order", "", "2026-10-20T09:03:00+00:00")
+    store.save(first, normalize({"kind": "order", "retailer": "Target.com", "order_number": "A1B2C3D4",
+                                 "shipping_status": "ordered"}, first))
+    other = mail("<3>", "Thanks for your order", "", "2026-10-20T09:04:00+00:00", to="buyer2@x.com")
+    store.save(other, normalize({"kind": "order", "retailer": "Target", "order_number": "Z9Y8X7W6",
+                                 "shipping_status": "ordered"}, other))
+    rows = {r["recipient_email"]: (r["order_number"], r["shipping_status"])
+            for r in store.db.execute("SELECT * FROM tracked_orders")}
+    assert rows == {"buyer1@x.com": ("A1B2C3D4", "cancelled"), "buyer2@x.com": ("Z9Y8X7W6", "ordered")}
