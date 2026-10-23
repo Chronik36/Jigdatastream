@@ -38,14 +38,14 @@ QUICK_FILTERS = {
 SKIPPED = "AI skipped"
 
 
-def skipped(store, limit=200):
+def skipped(store, limit=50, offset=0):
     """Emails the AI read and decided were neither an order nor an expense (or that had no purchase
-    words at all), newest first, leaving out ones you've already labelled."""
-    mine = store.inbox_labels()
-    rows = store.db.execute("SELECT message_id, account, sender, subject, date, kind FROM emails"
-                            " WHERE kind IN ('other', 'skipped', 'not_an_order') ORDER BY date DESC LIMIT ?",
-                            (limit * 2,)).fetchall()
-    return [dict(r, spam=False) for r in rows if r["message_id"] not in mine][:limit]
+    words at all), newest first, leaving out ones you've already labelled. Returns (rows, next offset)."""
+    rows = store.db.execute("SELECT e.message_id, e.account, e.sender, e.subject, e.date, e.kind FROM emails e"
+                            " WHERE e.kind IN ('other', 'skipped', 'not_an_order')"
+                            " AND NOT EXISTS (SELECT 1 FROM inbox_labels l WHERE l.message_id = e.message_id)"
+                            " ORDER BY e.date DESC LIMIT ? OFFSET ?", (limit + 1, offset)).fetchall()
+    return [dict(r, spam=False) for r in rows[:limit]], (offset + limit if len(rows) > limit else None)
 
 
 def corrected_answer(raw, label):
@@ -60,24 +60,48 @@ def corrected_answer(raw, label):
     return out
 
 
-def search(config, query, limit=50):
-    """Header rows from every inbox for a Gmail search, newest first."""
+def search(config, query, limit=50, after=None):
+    """One page of header rows from every inbox for a Gmail search, newest first.
+    after is the cursor from the previous page: {address: {"f", "u"}} where each inbox left off, or
+    "done" once it has nothing more. Returns (rows, errors, next cursor or None at the end)."""
     from concurrent.futures import ThreadPoolExecutor
-    rows, errors = [], []
+    after = after or {}
+    accounts = [a for a in config.accounts if after.get(a[0]) != "done"]
+    found, errors = {}, []
 
     def one(account):
         address, password = account
         try:
-            return search_headers(config, address, password, query, limit), None
+            return address, search_headers(config, address, password, query, limit, after.get(address)), None
         except Exception as e:
             logger.warning("inbox search failed for %s: %s", address, e)
-            return [], f"{address}: {e}"
-    with ThreadPoolExecutor(max_workers=max(1, min(6, len(config.accounts)))) as pool:  # all inboxes at once
-        for found, error in pool.map(one, config.accounts):
-            rows += found
-            errors += [error] if error else []
-    rows.sort(key=lambda r: r["date"] or "", reverse=True)
-    return rows[:limit], errors
+            return address, None, f"{address}: {e}"
+    with ThreadPoolExecutor(max_workers=max(1, min(6, len(accounts) or 1))) as pool:  # all inboxes at once
+        for address, rows, error in pool.map(one, accounts):
+            if error:
+                errors.append(error)
+            else:
+                found[address] = rows
+    # Merge newest first, taking each inbox's rows in its own order, so every inbox's next page starts
+    # right after the last row it gave here.
+    taken, pos = [], {a: 0 for a in found}
+    while len(taken) < limit:
+        live = [a for a in found if pos[a] < len(found[a])]
+        if not live:
+            break
+        a = max(live, key=lambda a: found[a][pos[a]]["date"] or "")
+        taken.append(found[a][pos[a]])
+        pos[a] += 1
+    nxt = {a: c for a, c in after.items() if a not in found}  # failed inboxes retry from where they were
+    for a, rows in found.items():
+        if pos[a]:
+            nxt[a] = {"f": rows[pos[a] - 1]["f"], "u": rows[pos[a] - 1]["uid"]}
+        elif after.get(a):
+            nxt[a] = after[a]
+        if pos[a] == len(rows) and len(rows) < limit:
+            nxt[a] = "done"  # it gave everything it had
+    more = any(c != "done" for c in nxt.values()) or any(a not in nxt for a, _ in config.accounts)
+    return taken, errors, (nxt if more and taken else None)
 
 
 def open_email(config, account, message_id):
