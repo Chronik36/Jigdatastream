@@ -13,7 +13,8 @@ import re
 from collections import Counter
 from datetime import datetime, timezone
 
-from . import cardcheck, parsers, stuck
+from . import address as A
+from . import cardcheck, parsers, profilematch, stuck
 
 GROUP_FIELDS = ["proxy group", "proxy list", "proxylist", "proxy profile", "proxy set"]
 PROXY_FIELDS = ["proxy", "proxies", "proxy used", "ip"]
@@ -93,11 +94,35 @@ def outcome(c):
     return "decline" if c["status"] == "decline" else "failure"
 
 
+def _address_key(line1, zip_):
+    base = A.base_line1(line1)
+    return f"{base} · {A.zip5(zip_)}" if base and A.zip5(zip_) else base
+
+
+def profile_addresses(con):
+    """profile name -> the base street address it ships to (jig units and prefixes dropped), with its ZIP."""
+    out = {}
+    for p in con.execute("SELECT name, ship_address1, ship_zip, bill_address1, bill_zip FROM profiles"):
+        line1, zip_ = (p[1], p[2]) if (p[1] or "").strip() else (p[3], p[4])
+        if _address_key(line1, zip_):
+            out[p[0]] = _address_key(line1, zip_)
+    return out
+
+
+def order_address(order):
+    """The base street address from the order email the checkout matched, when its profile has none."""
+    if not order or not order.get("shipping_address"):
+        return ""
+    text = order["shipping_address"]
+    return _address_key(text, profilematch.parse_order_address(text)["zip"])
+
+
 def rows(con, matched=None, links=None):
     """Every checkout webhook with its proxy group, proxy, profile, drop day, the card charge tied to it (Card check)
     and outcome."""
     matched = {c["id"]: c for c in (matched if matched is not None else stuck.cross_reference(con))}
     links = links if links is not None else cardcheck.report(con, list(matched.values()))["links"]
+    homes = profile_addresses(con)
     out = []
     for r in con.execute("SELECT * FROM checkouts ORDER BY ts"):
         c = matched.get(r["id"]) or dict(r, order=None, refund=None, state=None)
@@ -106,6 +131,7 @@ def rows(con, matched=None, links=None):
         c.pop("raw", None)
         c["day"], c["outcome"] = day_of(c["ts"]), outcome(c)
         c["product"] = parsers.tidy(c["product"])  # for showing; the stored row is untouched
+        c["address"] = homes.get(c["profile"]) or order_address(c["order"])
         out.append(c)
     return out
 
@@ -120,7 +146,8 @@ def tally(items):
 
 
 SORTS = {"proxy": lambda c: (c["proxy_group"].lower() or "~", c["proxy"] or "~", (c["profile"] or "~").lower()),
-         "profile": lambda c: ((c["profile"] or "~").lower(), c["proxy_group"].lower() or "~", c["proxy"] or "~")}
+         "profile": lambda c: ((c["profile"] or "~").lower(), c["proxy_group"].lower() or "~", c["proxy"] or "~"),
+         "address": lambda c: (c["address"] or "~", (c["profile"] or "~").lower(), c["proxy_group"].lower() or "~")}
 RANK = {"confirmed": 0, "no_email": 1, "cancelled": 2, "decline": 3, "failure": 4}
 
 
@@ -159,7 +186,7 @@ def drops(items, sort="proxy", cards=None):
 
 # The groups a drop's checkouts can be looked at by; the name of each is what the leaderboards show.
 GROUPS = {"group": lambda c: c["proxy_group"] or "No group", "proxy": lambda c: c["proxy"] or "No proxy",
-          "profile": lambda c: c["profile"] or "No profile"}
+          "profile": lambda c: c["profile"] or "No profile", "address": lambda c: c["address"] or "No address"}
 
 
 def report(con, site=None, sort="proxy", day=None, by=None, name=None):
@@ -184,6 +211,7 @@ def report(con, site=None, sort="proxy", day=None, by=None, name=None):
         "groups": leaderboard(items, GROUPS["group"]),
         "proxies": leaderboard(items, GROUPS["proxy"]),
         "profiles": leaderboard(items, GROUPS["profile"]),
+        "addresses": leaderboard(items, GROUPS["address"]),
         "combos": [t for t in leaderboard(items, lambda c: f"{c['proxy_group'] or c['proxy'] or 'No proxy'} + "
                                                          f"{c['profile'] or 'No profile'}") if t["real"]][:10],
         "drops": drops(items, sort, cards),
