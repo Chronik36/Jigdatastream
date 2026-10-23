@@ -39,8 +39,8 @@ details>summary{cursor:pointer;color:var(--accent)}
 </style>
 
 <h2>Products</h2>
-<p class="muted">Tell the local AI what kind of product you're after. It suggests products with their type, SKU and MSRP; BotTrack then looks up what
-they resell for on your selling sites and works out the profit: the going market price minus what it costs at each store. When stores charge
+<p class="muted">Tell BotTrack what kind of product you're after. It searches what Target and Shopify stores list right now, with their real SKUs,
+prices and stock; then it looks up what they resell for on your selling sites and works out the profit: the going market price minus what it costs at each store. When stores charge
 different prices, all of them are listed and the cheapest one is recommended. Prices are looked up only when you click, with requests spaced out;
 a site that blocks automated visits is reported and you can type its price in.</p>
 
@@ -61,35 +61,47 @@ a site that blocks automated visits is reported and you can type its price in.</
 
 <div class="panel" id="research">
   <div class="pr-head"><h3>Research</h3></div>
-  <form class="pr-form" method="post" action="/products/research" data-loader="Asking the local AI" data-loader-msg="A 14B model can take a minute or two.">
-    <textarea name="query" placeholder="What are you looking for? e.g. Pokémon sealed product that resells over MSRP, or Jordan 1 retros releasing this fall" required>{{research.query if not research['for']}}</textarea>
+  <form class="pr-form" method="post" action="/products/research" data-loader="Searching the stores" data-loader-msg="Target and {{shops|length}} Shopify stores, a few searches each. This takes up to a minute.">
+    <textarea name="query" placeholder="What are you looking for? e.g. Pokémon elite trainer boxes, or Jordan 4 retro" required>{{research.query if not research['for']}}</textarea>
     <button>Research</button>
   </form>
-  <p class="pr-sub" style="margin:8px 0 0">The AI's MSRPs and SKUs come from what it learned in training, so they can be out of date. Add a store link below to read the real price.</p>
-  {% if research.error %}<p class="bad" style="margin-top:12px">The local AI couldn't answer: {{research.error}}</p>{% endif %}
+  <p class="pr-sub" style="margin:8px 0 0">Names, SKUs, prices and stock come from what each store lists right now. The local AI only picks the search words and drops results that don't fit; it never supplies a price or SKU.</p>
+  {% if research.error %}<p class="bad" style="margin-top:12px">Research failed: {{research.error}}</p>{% endif %}
+  {% if research.query and not research.error %}
+  <p class="muted" style="margin:14px 0 8px"><b style="color:var(--text)">{{research.query}}</b>{% if research.searches %} · searched {% for w in research.searches %}“{{w}}”{{', ' if not loop.last}}{% endfor %}{% endif %}</p>
+  {% if research.errors %}<p class="pr-sub">Couldn't search: {% for name, e in research.errors.items() %}<span title="{{e}}">{{name}}</span>{{', ' if not loop.last}}{% endfor %} (hover for why).</p>{% endif %}
   {% if research['items'] %}
-  <form method="post" action="/products/add" style="display:block;margin:16px 0 0">
-    <p class="muted" style="margin:0 0 8px"><b style="color:var(--text)">{{research.query}}</b>{% if research.type %} · {{research.type}}{% endif %}</p>
-    <table class="pr-table"><thead><tr><th></th><th>Product</th><th>SKU</th><th class="num">MSRP</th><th>Sold at</th><th>In production</th><th>Why</th></tr></thead><tbody>
+  <form method="post" action="/products/add" style="display:block;margin:8px 0 0">
+    <table class="pr-table"><thead><tr><th></th><th>Product</th><th>SKU</th><th class="num">Lowest price</th><th>Stores listing it</th></tr></thead><tbody>
     {% for it in research['items'] %}{% set have = it.name.lower() in tracked %}<tr>
-      <td><input type="checkbox" name="pick" value="{{loop.index0}}" {{'disabled' if have else 'checked'}}></td>
-      <td><b>{{it.name}}</b>{% if it.type %}<div class="pr-sub">{{it.type}}</div>{% endif %}{% if have %}<div class="pr-sub">Already tracked</div>{% endif %}</td>
-      <td>{{it.sku or '-'}}</td>
-      <td class="num money">{{'$%.2f'|format(it.msrp) if it.msrp else '-'}}</td>
-      <td>{{it.retailers|join(', ') or '-'}}</td>
-      <td>{{'Yes' if it.in_production == true else ('No' if it.in_production == false else 'Not sure')}}</td>
-      <td class="pr-sub">{{it.why}}</td>
+      <td><input type="checkbox" name="pick" value="{{loop.index0}}" {{'disabled' if have}}></td>
+      <td style="white-space:normal;min-width:220px"><div style="display:flex;gap:10px;align-items:center">{% if it.image %}<img src="{{it.image}}" alt="" loading="lazy" style="width:44px;height:44px;border-radius:8px;background:#fff;object-fit:contain;flex:none">{% endif %}
+        <div><b>{{it.name}}</b><div class="pr-sub">{{[it.brand, it.type]|select|join(' · ') or 'No type listed'}}{% if have %} · already tracked{% endif %}</div></div></div></td>
+      <td>{% if it.sku %}{{it.sku}}<div class="pr-sub">{{it.sku_label}}</div>{% else %}<span class="muted">Not listed</span>{% endif %}</td>
+      <td class="num money">${{'{:,.2f}'.format(it.low)}}</td>
+      <td><div class="chips">{% for o in it.offers %}<a class="chip{{' best' if loop.first and o.available is not false}}{{' err' if o.available is false}}" href="{{o.link}}" target="_blank" rel="noopener" title="{{o.name}}{% if o.sku %} · {{o.sku_label}} {{o.sku}}{% endif %}">{{o.store}} ${{'{:,.2f}'.format(o.price)}}{{' · sold out' if o.available is false}}</a>{% endfor %}</div></td>
     </tr>{% endfor %}</tbody></table>
     <button style="margin-top:10px">Track selected</button>
   </form>
+  {% else %}<p class="muted">No store listed anything matching. Try different words, or add stores below.</p>{% endif %}
   {% endif %}
-  <details style="margin-top:14px"><summary>Add a product by hand</summary>
+  <details style="margin-top:14px"><summary>Stores searched ({{shops|length + 1}})</summary>
+    <p class="muted" style="margin:10px 0 8px">Target, plus these Shopify stores. Most sneaker and collectibles boutiques run on Shopify; add any by its web address.</p>
+    <div class="chips" style="margin-bottom:10px"><span class="chip">Target</span>{% for s in shops %}<span class="chip">{{s.name}} <small class="muted">{{s.domain}}</small>
+      <form method="post" action="/products/shops/{{s.domain}}/remove" style="margin:0"><button class="ghost" style="padding:0 6px;font-size:11px;border:0" title="Stop searching {{s.name}}">✕</button></form></span>{% endfor %}</div>
+    <form class="pr-form" method="post" action="/products/shops/add">
+      <input name="name" placeholder="Store name" style="width:150px" required>
+      <input name="domain" placeholder="example.com" style="width:200px" required>
+      <button class="ghost">Add store</button>
+    </form>
+  </details>
+  <details style="margin-top:10px"><summary>Add a product by hand</summary>
     <form class="pr-form" method="post" action="/products/add" style="margin-top:10px">
       <input name="name" placeholder="Product name" required style="flex:1;min-width:240px">
       <input name="type" placeholder="Type (e.g. sneakers)" style="width:160px">
       <input name="sku" placeholder="SKU" style="width:130px">
       <input name="store" placeholder="Store" style="width:120px">
-      <input name="msrp" placeholder="MSRP" inputmode="decimal" style="width:100px">
+      <input name="msrp" placeholder="Price" inputmode="decimal" style="width:100px">
       <button class="ghost">Add</button>
     </form>
   </details>
@@ -110,7 +122,7 @@ a site that blocks automated visits is reported and you can type its price in.</
   {% for p, a in rows %}
   <tr id="p-{{p.id}}">
     <td style="white-space:normal;min-width:200px"><b>{{p.name}}</b>
-      <div class="pr-sub">{{p.type or 'No type'}}{% if p.sku %} · SKU {{p.sku}}{% endif %}{% if p.in_production == false %} · <span class="bad">not in production</span>{% endif %}</div></td>
+      <div class="pr-sub">{{p.type or 'No type'}}{% if p.sku %} · {{p.sku_label or 'SKU'}} {{p.sku}}{% endif %}{% if p.in_production == false %} · <span class="bad">not in production</span>{% endif %}</div></td>
     <td>{% if a.best %}<span class="chip best">{{a.best.store}} ${{'{:,.2f}'.format(a.best.price)}}</span>
       {% for s in a.stores[1:] %}<div class="pr-sub">{{s.store}} ${{'{:,.2f}'.format(s.price)}}</div>{% endfor %}
       {% else %}<span class="muted">No store price</span>{% endif %}</td>
@@ -163,9 +175,9 @@ a site that blocks automated visits is reported and you can type its price in.</
           <option value="yes" {{'selected' if p.in_production == true}}>In production</option>
           <option value="no" {{'selected' if p.in_production == false}}>Not in production</option></select>
         <button class="ghost mini-btn">Save</button></form>
-      {% if p.why %}<p class="pr-sub" style="margin:8px 0 0">AI: {{p.why}}</p>{% endif %}
+      {% if p.why %}<p class="pr-sub" style="margin:8px 0 0">When added: {{p.why}}</p>{% endif %}
       <div class="acts" style="margin-top:10px">
-        <form method="post" action="/products/{{p.id}}/similar" data-loader="Asking the local AI for similar products"><button class="ghost mini-btn">Find similar products</button></form>
+        <form method="post" action="/products/{{p.id}}/similar" data-loader="Searching the stores for similar products"><button class="ghost mini-btn">Find similar products</button></form>
         <form method="post" action="/products/{{p.id}}/remove" onsubmit="return confirm('Stop tracking {{p.name|e}}?')"><button class="ghost mini-btn">Remove</button></form>
       </div>
       <p class="pr-sub" style="margin:8px 0 0">Added {{p.added}}{% if p.updated %} · prices updated {{p.updated}}{% endif %}</p>

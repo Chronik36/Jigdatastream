@@ -277,16 +277,23 @@ def seed_products():
         "vinted": {"state": "error", "note": "No matching listings found on Vinted.", "when": "Oct 22, 4:02 PM"},
         "alias": {"state": "app", "note": products.APP_NOTE["alias"], "when": "Oct 22"}}}
     products.save(data)
-    products.last_research.update(query="Pokemon sealed product that resells over MSRP", type="Sealed Pokémon TCG",
-                                  items=[{"name": "Pokemon Prismatic Evolutions Elite Trainer Box", "type": "Trading cards",
-                                          "sku": "87510", "msrp": 49.99, "retailers": ["Target", "Best Buy", "Walmart"],
-                                          "in_production": True, "why": "Sells out on every restock."},
-                                         {"name": "Pokemon 151 Ultra Premium Collection", "type": "Trading cards",
-                                          "sku": "", "msrp": 119.99, "retailers": ["Target", "Pokemon Center"],
-                                          "in_production": False, "why": "Discontinued; sealed copies keep rising."},
-                                         {"name": "Pokemon Destined Rivals Booster Bundle", "type": "Trading cards",
-                                          "sku": "", "msrp": 26.94, "retailers": ["Target", "Walmart"],
-                                          "in_production": True, "why": "New set with strong chase cards."}])
+    def found(name, ptype, sku, label, offers, image=""):
+        offers = [{"store": st, "name": name, "price": pr, "sku": sku if st == "Target" or label != "Target TCIN" else "",
+                   "sku_label": label, "available": av, "link": "#", "image": "", "brand": "", "type": ptype}
+                  for st, pr, av in offers]
+        selling = [o for o in offers if o["available"]]
+        return {"name": name, "type": ptype, "brand": "", "image": image, "sku": sku, "sku_label": label,
+                "offers": offers, "low": min(o["price"] for o in selling or offers), "selling": len(selling),
+                "why": "Listed at " + ", ".join(f"{o['store']} ${o['price']:,.2f}" for o in offers) + "."}
+    products.last_research.update(query="Pokemon sealed product", searches=["pokemon elite trainer box",
+                                                                            "pokemon booster bundle"], errors={},
+                                  items=[found("Pokemon Prismatic Evolutions Elite Trainer Box", "Trading cards",
+                                               "94300069", "Target TCIN", [("Target", 49.99, True),
+                                                                            ("Bodega", 64.99, False)]),
+                                         found("Pokemon Destined Rivals Booster Bundle", "Trading cards", "94681785",
+                                               "Target TCIN", [("Target", 26.94, True), ("Kith", 30.0, True)]),
+                                         found("Pokemon Surging Sparks Elite Trainer Box", "Trading cards", "",
+                                               "", [("Concepts", 59.99, True)])])
 
 
 # Each shot: (name, page path, [(marker target, number)], options). A target is a CSS selector, or
