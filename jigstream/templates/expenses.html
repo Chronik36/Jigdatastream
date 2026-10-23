@@ -15,11 +15,16 @@
 .look a{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);color:var(--text)}.look a:last-child{border:0}
 .look a b{color:var(--orange)}.look a:hover{color:var(--accent)}
 .mini td{padding:9px 12px}
+.card .meter{height:6px;border-radius:999px;background:var(--line);margin-top:10px;overflow:hidden}
+.card .meter span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--green))}
+.card .meter span.near{background:var(--orange)}.card .meter span.over{background:var(--red)}
+.card .mtext{display:block;margin-top:6px;text-transform:none;letter-spacing:0;font-weight:500;font-size:12px}
 </style>
 {% include "_expense_tabs.html" %}
 {% set look = (counts.charge_only or 0) + (counts.receipt_only or 0) + (counts.close or 0) %}
 <div class="stats">
-<div class="card">Spent in {{o.month_name}} <b>{{o.this_month|money}}</b></div>
+<div class="card{{' bad' if month.state == 'over'}}">Spent in {{o.month_name}} <b>{{o.this_month|money}}</b>
+{% if month.budget %}<div class="meter"><span class="{{month.state}}" style="width:{{[month.pct, 100]|min}}%"></span></div><small class="mtext">{{"%.0f"|format(month.pct)}}% of your {{month.budget|money}} budget</small>{% endif %}</div>
 <div class="card">Last month <b>{{o.last_month|money}}</b></div>
 <div class="card">Recurring per month <b>{{rec.per_month|money}}</b></div>
 <div class="card">Renewing next 30 days <b>{{rec.next30|money}}</b></div>

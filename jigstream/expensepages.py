@@ -3,9 +3,9 @@ import logging
 import re
 from datetime import date
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, url_for
 
-from . import db, ledger, recurring
+from . import budget, db, ledger, recurring
 from .extract import BILLING_PERIODS, EXPENSE_CATEGORIES
 from .orderstore import Store
 
@@ -14,7 +14,7 @@ pages = Blueprint("expenses", __name__)
 
 
 def _con():
-    return recurring.ensure(db.connect(current_app.config["DB_PATH"]))
+    return budget.ensure(db.connect(current_app.config["DB_PATH"]))
 
 
 def _back():
@@ -33,6 +33,7 @@ def overview():
     return render_template("expenses.html", tab="overview", o=ledger.overview(c), chart=ledger.month_chart(c),
                            counts=ledger.counts(items), recent=[r for r in items if r["kind"] == "expense"][:8],
                            rec=recurring.totals(subs), soon=recurring.upcoming(subs)[:6], sync=_sync(),
+                           month=budget.month_view(c, budget.month_of(date.today())),
                            **_dialogs())
 
 
@@ -114,6 +115,41 @@ def recurring_action(sub_id, action):
 def recurring_dismiss():
     recurring.dismiss(_con(), request.form.get("key", ""))
     return _back()
+
+
+@pages.get("/expenses/budget")
+def budget_page():
+    c = _con()
+    recurring.refresh(c)
+    this = budget.month_of(date.today())
+    month = request.args.get("month", this)
+    month = month if re.fullmatch(r"\d{4}-\d{2}", month) and month <= this else this
+    items = ledger.rows(c)
+    return render_template("expense_budget.html", tab="budget", counts=ledger.counts(items),
+                           rec=recurring.totals(recurring.subscriptions(c)), m=budget.month_view(c, month),
+                           plan=budget.budgets(c, this), hist=budget.history(c, width=480, height=220), this=this,
+                           prev=budget.shift(month, -1), next=budget.shift(month, 1) if month < this else None,
+                           **_dialogs())
+
+
+@pages.post("/expenses/budget")
+def budget_save():
+    amounts = {}
+    for cat in EXPENSE_CATEGORIES:
+        if f"b_{cat}" in request.form:
+            amounts[cat] = _amount(f"b_{cat}")
+    budget.set_budgets(_con(), amounts)
+    logger.info("budgets saved")
+    flash("Budgets saved from this month on.")
+    return _back()
+
+
+@pages.get("/expenses/export.csv")
+def export():
+    month = request.args.get("month")
+    month = month if month and re.fullmatch(r"\d{4}-\d{2}", month) else None
+    return Response(budget.export_csv(_con(), month), mimetype="text/csv", headers={
+        "Content-Disposition": f"attachment; filename=botting-expenses{'-' + month if month else ''}.csv"})
 
 
 @pages.post("/expenses/ledger/<int:tx_id>/close")
