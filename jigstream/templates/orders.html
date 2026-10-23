@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block body %}
-<h2>Orders</h2><div class="stats"><div class="card">Orders <b>{{stats.order_count}}</b></div><div class="card">Spend <b>{{stats.order_total|money}}</b></div>
+<h2>Orders</h2><div class="stats"><div class="card">Orders <b>{{stats.order_count}}</b></div><div class="card" title="Orders that stuck. Cancelled, refunded and returned orders aren't counted.">Spend <b>{{stats.order_total|money}}</b>{% if stats.not_spent %}<span class="muted" style="font-size:12px;text-transform:none;letter-spacing:0">{{stats.not_spent}} cancelled or refunded not counted</span>{% endif %}</div>
 <div class="card">On the way <b>{{stats.in_flight}}</b></div><div class="card ok">Delivered <b>{{stats.by_status.get("delivered", 0)}}</b></div></div>
 {% if not configured %}<div class="flash">No Gmail inbox connected yet. <a href="/setup">Add one on the Setup page</a> to start finding orders.</div>{% endif %}
 {% include "sync.html" %}

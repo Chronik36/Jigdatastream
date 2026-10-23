@@ -44,6 +44,15 @@ def register(app, db_path=None):
 
     app.start_sync = start_sync
 
+    def sync_banks_now():  # Sync everything: linked banks now, not only when they're due
+        c = con()
+        if plaid.state["running"] or not plaid.keys(c) or not plaid.items(c):
+            return False
+        threading.Thread(target=plaid.run, args=(c,), daemon=True).start()
+        return True
+
+    app.config.setdefault("SYNC_ALL", []).append(("linked banks", sync_banks_now))
+
 
 def _con():
     from flask import current_app
