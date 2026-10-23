@@ -43,6 +43,17 @@ def register(reader):
     _reader = reader
 
 
+def release():
+    """Blank the hidden window after a round, so a carrier's page (scripts, trackers, animations) doesn't
+    keep running in the background until the next one."""
+    blank = getattr(_reader, "release", None)
+    if blank:
+        try:
+            blank()
+        except Exception:
+            logger.debug("couldn't blank the tracking window", exc_info=True)
+
+
 def ready(env):
     """True in the Mac app unless key-free checks were turned off on Setup."""
     return _reader is not None and env.get("BROWSER_TRACKING", "1") != "0"

@@ -180,8 +180,13 @@ def pull(model):
 def start_ai(bundle, models_dir, model):
     """Run the bundled Ollama on a private port with its models in BotTrack's folder."""
     engine = bundle / "Contents/Resources/ollama/ollama"
+    # Tuned for one 14B model on a 16 GB Mac. 8K context fits the prompt, a long email and two examples
+    # (the 4K default cut prompts short); flash attention and an 8-bit cache keep that context small and fast;
+    # one model and one request at a time, so a second copy never pushes the Mac into swap.
     env = dict(os.environ, OLLAMA_HOST=f"127.0.0.1:{AI_PORT}", OLLAMA_MODELS=str(models_dir),
-               OLLAMA_KEEP_ALIVE="10m", OLLAMA_NOPRUNE="1")
+               OLLAMA_KEEP_ALIVE="10m", OLLAMA_NOPRUNE="1", OLLAMA_CONTEXT_LENGTH="8192",
+               OLLAMA_FLASH_ATTENTION="1", OLLAMA_KV_CACHE_TYPE="q8_0", OLLAMA_NUM_PARALLEL="1",
+               OLLAMA_MAX_LOADED_MODELS="1")
     log = open(DATA / "logs" / "ai-engine.log", "ab")
     proc = subprocess.Popen([str(engine), "serve"], env=env, stdout=log, stderr=log)
 

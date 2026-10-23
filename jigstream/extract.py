@@ -51,7 +51,7 @@ For orders, a cancellation email ("your order was cancelled", "we couldn't proce
 
 For botting expenses, "vendor" is the business that sold the product, not the payment processor. If the receipt comes from Stripe, PayPal, Paddle, Sellix, Shopify, Whop, Gumroad or similar, use the product's or community's own name shown in the receipt (for whop.com, the community or product name). Only use the processor's name if no other seller is named.
 
-JSON keys (use null when unknown, never invent values):
+JSON keys. Leave out any key that is unknown or doesn't apply to the kind, and never invent values; for kind "other" reply {{"kind": "other"}} and nothing more:
 {{
   "kind": "order" | "botting_expense" | "sale" | "other",
   "retailer": store or brand name for orders,
@@ -375,10 +375,35 @@ def platforms_named(email, platforms=()):
             if p and re.search(rf"(?<![a-z0-9]){re.escape(p)}(?![a-z0-9])", head, re.I)]
 
 
+FOOTER = re.compile(r"\bunsubscribe\b|\bprivacy (policy|notice)\b|\bmanage (your )?(email )?preferences\b|"
+                    r"\ball rights reserved\b|\bthis (e-?mail|message) was sent to\b", re.I)
+
+
+def compact(body):
+    """The email text with what costs the model time but tells it nothing taken out: the empty cells and
+    spacer rows receipt HTML leaves behind, repeated lines, and the legal footer at the end. Every token
+    counts on a local model: it reads the whole prompt before it can answer."""
+    lines, last = [], None
+    for line in (body or "").splitlines():
+        line = re.sub(r"(\s*\|)+\s*", " | ", line).strip(" |")
+        line = re.sub(r"[ \t]{2,}", " ", line)
+        # A repeated line with a number in it may be a second of the same item, so only wording repeats go.
+        if not re.search(r"\w", line) or (line == last and not re.search(r"\d", line)):
+            continue
+        lines.append(line)
+        last = line
+    text = "\n".join(lines)
+    # Footers come after the order details; only cut one that starts in the back half of a long email.
+    m = next((m for m in FOOTER.finditer(text) if m.start() > max(2000, len(text) // 2)), None)
+    if m:
+        text = text[:text.rfind("\n", 0, m.start()) + 1 or m.start()].rstrip()
+    return text
+
+
 def email_prompt(email, max_body_chars=12000, platforms=()):
     user = (
         f"From: {email.sender}\nSubject: {email.subject}\nDate: {email.date}\n\n"
-        f"{email.body[:max_body_chars]}"
+        f"{compact(email.body)[:max_body_chars]}"
     )
     signals = botting_signals(email)
     if signals:

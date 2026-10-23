@@ -78,6 +78,12 @@ def page_reader(webview):
                     break
                 time.sleep(1.5)
             return text
+
+    def release():
+        with lock:
+            if hidden.get("window") is not None:
+                hidden["window"].load_url("about:blank")
+    read.release = release
     return read
 
 

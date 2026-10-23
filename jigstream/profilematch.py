@@ -159,14 +159,31 @@ def best_match(o, keys, checkouts):
     return top[0][1], " + ".join(top[0][2]), []
 
 
+# Answers from the last runs, reused while the profiles and bot checkouts stay the same: many pages call
+# match_orders on every load, and most orders' answers never change between loads.
+_memo = {"sig": None, "answers": {}}
+MATCH_FIELDS = ("order_number", "shipping_address", "shipping_name", "recipient_email", "account")
+
+
 def match_orders(con):
     """Match every order that wasn't assigned by hand. Returns how many changed."""
     profiles = con.execute("SELECT * FROM profiles").fetchall()
     keys = KeyIndex([_profile_key(p) for p in profiles])
     checkouts = _checkout_profiles(con, {p["name"] for p in profiles})
+    sig = (tuple(tuple((k, tuple(sorted(v)) if isinstance(v, set) else v) for k, v in key.items()) for key in keys),
+           tuple(sorted(checkouts.items())))
+    if _memo["sig"] != sig:
+        _memo.update(sig=sig, answers={})
+    answers = _memo["answers"]
     changed = 0
-    for o in con.execute("SELECT * FROM tracked_orders WHERE COALESCE(profile_manual, 0) = 0").fetchall():
-        name, reason, candidates = best_match(dict(o), keys, checkouts)
+    for o in con.execute("SELECT id, profile_name, profile_match, profile_candidates, " + ", ".join(MATCH_FIELDS) +
+                         " FROM tracked_orders WHERE COALESCE(profile_manual, 0) = 0").fetchall():
+        inputs = tuple(o[f] for f in MATCH_FIELDS)
+        if inputs not in answers:
+            if len(answers) > 50000:
+                answers.clear()
+            answers[inputs] = best_match(dict(zip(MATCH_FIELDS, inputs)), keys, checkouts)
+        name, reason, candidates = answers[inputs]
         cands = json.dumps(candidates) if candidates else None
         if (name, reason, cands) != (o["profile_name"], o["profile_match"], o["profile_candidates"]):
             con.execute("UPDATE tracked_orders SET profile_name=?, profile_match=?, profile_candidates=? WHERE id=?",
