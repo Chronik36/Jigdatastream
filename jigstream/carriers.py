@@ -205,6 +205,7 @@ def refresh(con, env, only_id=None):
             logger.warning("%s tracking for order %s: %s", carrier, order["id"], e)
             con.execute("UPDATE tracked_orders SET carrier_status=?, carrier_checked_at=? WHERE id=?",
                         (f"Couldn't check: {e}"[:300], now, order["id"]))
+            con.commit()
             continue
         checked += 1
         con.execute("UPDATE tracked_orders SET carrier_status=?, carrier_checked_at=? WHERE id=?",
@@ -214,6 +215,7 @@ def refresh(con, env, only_id=None):
             changed += 1
             logger.info("order %s: %s says %r, status %s -> %s", order["id"], carrier, text,
                         order["shipping_status"], status)
+        con.commit()  # save each order as it's checked, never holding the database across a page load
         if not by_page:
             time.sleep(0.3)  # stay well inside the carriers' free rate limits
     con.commit()

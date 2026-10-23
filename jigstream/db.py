@@ -79,6 +79,8 @@ def setup_once(con, part, setup):
 
 
 def _setup(con):
+    if con.execute("PRAGMA database_list").fetchone()[2]:
+        con.execute("PRAGMA journal_mode = WAL")  # stays set in the file
     con.executescript(SCHEMA)
     for table, column, kind in MIGRATIONS:
         if column not in {r[1] for r in con.execute(f"PRAGMA table_info({table})")}:
@@ -96,6 +98,14 @@ def connect(path=None):
     d = os.path.dirname(path)
     if d:
         os.makedirs(d, exist_ok=True)
-    con = sqlite3.connect(path, check_same_thread=False)  # handed to background threads (one user at a time)
+    # Pages, the sync, carrier tracking, Plaid and the keyword finder all use the database at once, from
+    # their own threads. Three settings keep them from failing with "database is locked":
+    # - autocommit (isolation_level=None): each write is saved as it's made, so no thread holds a write
+    #   lock while it waits on Gmail, a carrier page or the model (nothing here rolls back a transaction);
+    # - WAL: reading never waits for a write, and a write never waits for a page that is reading;
+    # - a 30 s busy timeout instead of 5 s, for the rare moment two writes meet.
+    con = sqlite3.connect(path, check_same_thread=False, timeout=30, isolation_level=None)
     con.row_factory = sqlite3.Row
+    if path != ":memory:":
+        con.execute("PRAGMA synchronous = NORMAL")  # safe with WAL; saves a disk flush per write
     return setup_once(con, "core", _setup)
