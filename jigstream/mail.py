@@ -83,6 +83,77 @@ def message_text(msg):
     return (plain or "").strip()
 
 
+ADDRESS = re.compile(r"[\w.+'=-]+@[\w-]+(?:\.[\w-]+)+")
+FORWARD_SUBJECT = re.compile(r"^\s*((fwd?|fw|tr|wg|rv)\s*:\s*|\[fwd?:?\s*)+", re.I)
+FORWARD_MARK = re.compile(r"-{2,}\s*(forwarded message|original message|message transf\w+)\s*-{2,}|"
+                          r"^\s*begin forwarded message:", re.I | re.M)
+FORWARD_HEADER = re.compile(r"^\s*\*?(from|sent|date|to|subject|cc)\s*:\s*\*?\s*(.*)$", re.I)
+
+
+def _clean_address_text(text):
+    # Outlook writes "Target <mailto:orders@target.com>" or "orders@target.com [mailto:orders@target.com]".
+    text = re.sub(r"\s*\[mailto:[^\]]*\]", "", text, flags=re.I)
+    return re.sub(r"mailto:", "", text, flags=re.I).strip()
+
+
+def _forward_date(text):
+    text = re.sub(r"\s+at\s+", " ", (text or "").strip())
+    try:
+        return parsedate_to_datetime(text).isoformat()
+    except (TypeError, ValueError, IndexError):
+        pass
+    from datetime import datetime
+    for fmt in ("%A, %B %d, %Y %I:%M %p", "%a, %b %d, %Y %I:%M %p", "%B %d, %Y %I:%M:%S %p %Z",
+                "%B %d, %Y %I:%M %p", "%a, %b %d, %Y, %I:%M %p", "%m/%d/%Y %I:%M %p"):
+        try:
+            return datetime.strptime(text[:40].strip(), fmt).isoformat()
+        except ValueError:
+            pass
+    return ""
+
+
+def forwarded_headers(body):
+    """The original From / To / Subject / Date of a forwarded email, read from the block that Gmail,
+    Outlook and Apple Mail put at the top of a forward. {} when the body has no such block."""
+    lines = (body or "").splitlines()[:80]
+    mark = FORWARD_MARK.search("\n".join(lines))
+    start = "\n".join(lines)[:mark.end()].count("\n") + 1 if mark else 0
+    found, key = {}, None
+    for line in lines[start:start + 30]:
+        clean = line.strip(" |").lstrip("> ").strip()
+        m = FORWARD_HEADER.match(clean)
+        if m:
+            key = m.group(1).lower()
+            key = "date" if key == "sent" else key
+            if key not in found:
+                found[key] = _clean_address_text(m.group(2))
+            continue
+        if found and not clean:
+            continue
+        if found:
+            if key in ("to", "cc") and ADDRESS.search(clean) and ":" not in clean[:12]:
+                found[key] += " " + _clean_address_text(clean)  # a To list wrapped onto the next line
+                continue
+            break
+    # Without a "Forwarded message" line, only trust a block that looks like one: From plus Subject or Sent.
+    if not mark and not ("from" in found and ("subject" in found or "date" in found)):
+        return {}
+    return found if "from" in found else {}
+
+
+def original_recipients(msg, forwarded=None):
+    """Who the store really sent this to, best first: the address in a forwarded block, then
+    X-Original-To and Gmail's X-Forwarded-For (set when another inbox forwards here), then To.
+    iCloud Hide My Email keeps the hidden address in To, so it comes through as is."""
+    out = []
+    for text in ((forwarded or {}).get("to"), msg["X-Original-To"],
+                 (str(msg["X-Forwarded-For"] or "").split() or [""])[0], msg["To"], msg["Delivered-To"]):
+        for a in ADDRESS.findall(str(text or "")):
+            if a.lower() not in out:
+                out.append(a.lower())
+    return ", ".join(out)
+
+
 def parse_message(raw):
     msg = email.message_from_bytes(raw, policy=policy.default)
     date = ""
@@ -91,13 +162,21 @@ def parse_message(raw):
             date = parsedate_to_datetime(str(msg["Date"])).isoformat()
         except (TypeError, ValueError):
             pass
+    body = message_text(msg)
+    sender, subject = str(msg["From"] or ""), str(msg["Subject"] or "")
+    forwarded = forwarded_headers(body) if (FORWARD_SUBJECT.match(subject) or FORWARD_MARK.search(body[:4000])) else {}
+    if forwarded:
+        # A forward from Outlook (or by hand): the store's own sender and subject are inside.
+        sender = forwarded.get("from") or sender
+        subject = forwarded.get("subject") or subject
+        date = date if not forwarded.get("date") else (_forward_date(forwarded["date"]) or date)
     return Email(
         message_id=str(msg["Message-ID"] or "").strip(),
-        sender=str(msg["From"] or ""),
-        subject=str(msg["Subject"] or ""),
+        sender=sender,
+        subject=FORWARD_SUBJECT.sub("", subject).strip() or subject,
         date=date,
-        body=message_text(msg),
-        to=str(msg["To"] or msg["Delivered-To"] or ""),
+        body=body,
+        to=original_recipients(msg, forwarded),
     )
 
 
