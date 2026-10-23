@@ -1,0 +1,13 @@
+<style>
+body .xtabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:-4px 0 22px;overflow-x:auto}
+body .xtabs a{position:relative;padding:10px 16px;border-radius:10px 10px 0 0;color:var(--muted);font-weight:500;white-space:nowrap}
+body .xtabs a:hover{color:var(--text)}
+body .xtabs a.on{color:var(--text);background:linear-gradient(180deg,rgba(61,216,239,.14),transparent)}
+body .xtabs a.on:after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;background:linear-gradient(90deg,var(--accent),var(--green))}
+</style>
+<h2>Drops</h2>
+<nav class="xtabs">
+<a href="/drop" class="{{'on' if tab == 'drops'}}">By date</a>
+<a href="/stuck" class="{{'on' if tab == 'stuck'}}">Stuck &amp; cancelled</a>
+<a href="/checkouts" class="{{'on' if tab == 'checkouts'}}">Every webhook</a>
+</nav>

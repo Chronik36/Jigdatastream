@@ -9,9 +9,9 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import (analysis, bankpages, browsertrack, carriers, db, discord, emailbook, engines, expensepages, export, inbox,
-               keywords, logs, manual, mobile, parsers, products, profilebook, profilematch, profiles, recurring, stock,
-               stuck, tasks, training, updater, wallet)
+from . import (analysis, bankpages, browsertrack, carriers, db, discord, drop, emailbook, engines, expensepages, export,
+               inbox, keywords, logs, manual, mobile, parsers, products, profilebook, profilematch, profiles, recurring,
+               stock, stuck, tasks, training, updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
@@ -166,6 +166,37 @@ def create_app(db_path=None):
         return render_template("stuck.html", rows=[r for r in rows if keep is None or r["state"] in keep],
                                counts=stuck.counts(rows), show=show)
 
+    @app.get("/drop")
+    def drop_page():
+        site, day, sort = request.args.get("site") or None, request.args.get("day") or None, request.args.get("sort")
+        sort = sort if sort in drop.SORTS else "proxy"
+        return render_template("drop.html", r=drop.report(Store(con()).db, site, sort, day), site=site, day=day,
+                               sort=sort)
+
+    @app.post("/drop/<int:checkout_id>/verdict")
+    def drop_verdict(checkout_id):
+        verdict = request.form.get("verdict", "")
+        store = Store(con())
+        row = next((c for c in stuck.cross_reference(store.db) if c["id"] == checkout_id), None)
+        back = request.referrer if (request.referrer or "").startswith(request.host_url) else url_for("drop_page")
+        if row is None or verdict not in ("good", "cancelled", "auto"):
+            flash("Couldn't save that.")
+            return redirect(back)
+        drop.set_verdict(store.db, checkout_id, verdict)
+        o, said = row["order"], f"{row['site'] or 'That'} checkout"
+        logger.info("checkout %s marked %s by hand", checkout_id, verdict)
+        # When the order email said otherwise, correct the order too, so the AI learns from its emails.
+        cancelled = o and (o["shipping_status"] or "") in stuck.CANCELLED
+        if o and verdict == "cancelled" and not cancelled:
+            relabel(store, o, "cancelled")
+            flash(f"{said} marked cancelled. Its order is set to cancelled too, and its emails become training examples.")
+        elif o and verdict == "good" and cancelled:
+            relabel(store, o, "ordered")
+            flash(f"{said} marked good. Its order is set back to ordered, and its emails become training examples.")
+        else:
+            flash(f"{said} marked {'automatic' if verdict == 'auto' else verdict}.")
+        return redirect(back)
+
     @app.get("/orders")
     def orders():
         store = Store(con())
@@ -220,6 +251,12 @@ def create_app(db_path=None):
             logger.exception("rescan failed")
             store.set_rescan_state(label_id, f"Re-scan failed: {e}")
 
+    def relabel(store, order, status):
+        """Set an order's status by hand, then find its emails in the inboxes to learn from (training.rescan)."""
+        label_id = store.set_status_manually(order["id"], status)
+        logger.info("order %s (%s %s) set to %s by hand", order["id"], order["retailer"], order["order_number"], status)
+        threading.Thread(target=background_rescan, args=(label_id, order), daemon=True).start()
+
     @app.post("/orders/<int:order_id>/label")
     def label_order(order_id):
         status = request.form.get("status", "")
@@ -240,9 +277,7 @@ def create_app(db_path=None):
         if not order or status not in STATUSES:
             flash("Couldn't save that status.")
             return redirect(url_for("orders"))
-        label_id = store.set_status_manually(order_id, status)
-        logger.info("order %s (%s %s) set to %s by hand", order_id, order["retailer"], order["order_number"], status)
-        threading.Thread(target=background_rescan, args=(label_id, order), daemon=True).start()
+        relabel(store, order, status)
         flash(f"{order['retailer']} {order['order_number'] or ''} set to {status}. Searching your inboxes for its "
               "emails to learn from; refresh in a minute.")
         return redirect(url_for("orders") + f"#order-{order_id}")

@@ -15,9 +15,12 @@ from . import bank, profilematch
 CANCELLED = ("cancelled", "refunded")
 # A refund posts soon after a cancel (Target refunds almost at once). It may carry tax and shipping on top
 # of the price the bot reported, so it can be a little more than that price.
-REFUND_DAYS, REFUND_EXTRA = 10, 0.15
+# Pokemon Center can cancel (and refund) a month or more after the order, so refunds are looked for up to 60 days on.
+REFUND_DAYS, REFUND_EXTRA = 60, 0.15
 # How far an order email's date may sit from the checkout when matching on site and profile.
 BEFORE, AFTER = timedelta(days=1), timedelta(days=4)
+# A cancelled order with no order date is dated by its last email, the cancel, which can come weeks after the checkout.
+LATE_CANCEL = timedelta(days=60)
 SITE_FILLER = re.compile(r"^(www\.)|\.(com|net|co|us|ca|co\.uk)$|\s+(us|usa|store|online|inc)$")
 
 
@@ -120,7 +123,8 @@ def cross_reference(con):
             if _number(c["order_number"]) and _number(o["order_number"]):
                 continue
             ot = times[o["id"]]
-            if t and ot and not (t - BEFORE <= ot <= t + AFTER):
+            after = LATE_CANCEL if not o["order_date"] and state_of(o) == "cancelled" else AFTER
+            if t and ot and not (t - BEFORE <= ot <= t + after):
                 continue
             # The To address is the surest sign it's this checkout's order; then the profile, then the inbox.
             rank = ("To email", "profile", "inbox").index(buyer)
@@ -133,11 +137,29 @@ def cross_reference(con):
         taken.add(i)
         used.add(oid)
     _match_refunds(con, checkouts)
+    verdicts = {r[0]: (r[1], r[2]) for r in con.execute("SELECT checkout_id, verdict, set_at FROM checkout_verdicts")}
     for c in checkouts:
         c["state"] = "cancelled" if c["refund"] else state_of(c["order"])
+        # Set by hand on the Drops page: "good" counts as a confirmed order, "cancelled" as cancelled.
+        c["verdict"] = verdicts.get(c["id"])
+        if c["verdict"] and c["verdict"][0] == "good" and c["state"] == "cancelled" and _cancelled_after(c, c["verdict"][1]):
+            c["verdict"] = None  # marked good, but a cancel email or refund came in since: the cancel wins
+        c["verdict"] = c["verdict"] and c["verdict"][0]
+        if c["verdict"]:
+            c["state"] = {"good": "emailed", "cancelled": "cancelled"}[c["verdict"]]
         out.append(c)
     out.sort(key=lambda c: c["ts"] or "", reverse=True)
     return out
+
+
+def _cancelled_after(c, set_at):
+    """Whether the cancel email or bank refund that cancels this checkout came after set_at."""
+    mark = when(set_at)
+    if c["refund"]:
+        day = when(c["refund"]["date"])
+        return bool(mark and day and day.date() > mark.date())
+    news = when((c["order"] or {}).get("last_email_date"))
+    return bool(mark and news and news > mark)
 
 
 def _cards(con):
