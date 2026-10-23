@@ -1,17 +1,67 @@
 {% extends "base.html" %}{% block body %}
-<h2>Botting expenses</h2><div class="stats"><div class="card">Total botting spend <b>{{stats.expense_total|money}}</b></div>
-{% for c, v in stats.expense_by_category.items() %}<div class="card">{{c|replace("_", " ")|title}} <b>{{v|money}}</b></div>{% endfor %}</div>
-{% if stats.expense_by_month %}<p class="muted">By month: {% for m, v in stats.expense_by_month.items() %}{% if loop.index <= 6 %}{{m}}: {{v|money}}{% if not loop.last and loop.index < 6 %} · {% endif %}{% endif %}{% endfor %}</p>{% endif %}
-{% if stats.expense_by_vendor %}<p class="muted">Top vendors: {% for v, amt in stats.expense_by_vendor.items() %}{% if loop.index <= 8 %}{{v}} {{amt|money}}{% if loop.index < 8 and not loop.last %} · {% endif %}{% endif %}{% endfor %}</p>{% endif %}
+<style>
+.xgrid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:1000px){.xgrid{grid-template-columns:minmax(0,1fr)}}
+.panel h4{margin:0 0 12px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+.panel h4 .sp{flex:1}.panel h4 a{font-weight:500;font-size:12.5px}
+.chart text{fill:var(--muted);font:11px Inter,sans-serif}
+.chart .bar rect{transition:opacity .15s}.chart .bar:hover rect{opacity:.8}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.crow{display:grid;grid-template-columns:120px minmax(0,1fr) 92px;gap:10px;align-items:center;padding:7px 0;font-size:13px}
+.crow .track{height:8px;border-radius:999px;background:var(--line);overflow:hidden}.crow .track span{display:block;height:100%;border-radius:inherit}
+.crow .v{text-align:right;font-variant-numeric:tabular-nums}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px}
+.look a{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);color:var(--text)}.look a:last-child{border:0}
+.look a b{color:var(--orange)}.look a:hover{color:var(--accent)}
+.mini td{padding:9px 12px}
+</style>
+{% include "_expense_tabs.html" %}
+{% set look = (counts.charge_only or 0) + (counts.receipt_only or 0) + (counts.close or 0) %}
+<div class="stats">
+<div class="card">Spent in {{o.month_name}} <b>{{o.this_month|money}}</b></div>
+<div class="card">Last month <b>{{o.last_month|money}}</b></div>
+<div class="card">Last 12 months <b>{{o.last_year|money}}</b></div>
+<div class="card{{' bad' if look}}">Needs a look <b>{{look}}</b></div>
+</div>
+
+<div class="xgrid">
+<div class="panel"><h4>Spend by month<span class="sp"></span><span class="muted" style="font-weight:400">last 12 months</span></h4>
+{% if chart.legend %}
+<div style="overflow-x:auto"><svg class="chart" viewBox="0 0 {{chart.width}} {{chart.height}}" width="100%" style="min-width:520px" role="img" aria-label="Botting spend per month by category">
+{% for g in chart.grid %}<line x1="{{chart.left}}" x2="{{chart.width - chart.right}}" y1="{{g.y}}" y2="{{g.y}}" stroke="{{'#2c3d7c' if loop.first else '#1f2d63'}}"/>
+<text x="{{chart.left - 8}}" y="{{g.y + 4}}" text-anchor="end">${{"{:,.0f}".format(g.v)}}</text>{% endfor %}
+{% for b in chart.bars %}<g class="bar"><title>{{b.label}} {{b.month[:4]}}: {{b.total|money}}{% for s in b.segs %}&#10;{{s.cat|replace("_", " ")|capitalize}} {{s.amount|money}}{% endfor %}</title>
+{% for s in b.segs %}<rect x="{{b.x}}" y="{{s.y}}" width="{{b.w}}" height="{{s.h}}" fill="{{s.color}}" rx="2"/>{% endfor %}
+<text x="{{b.x + b.w / 2}}" y="{{chart.height - 8}}" text-anchor="middle"{% if loop.last %} style="fill:var(--text)"{% endif %}>{{b.label}}</text></g>{% endfor %}
+</svg></div>
+<div class="legend">{% for c, col in chart.legend %}<span><i style="background:{{col}}"></i>{{c|replace("_", " ")|capitalize}}</span>{% endfor %}</div>
+{% else %}<p class="muted">No botting receipts in the last 12 months yet. Sync your inboxes, or add an expense by hand.</p>{% endif %}
+</div>
+
+<div>
+<div class="panel"><h4>{{o.month_name}} by category</h4>
+{% set top = o.categories[0].total if o.categories else 0 %}
+{% for c in o.categories %}<div class="crow"><span><span class="dot" style="background:{{c.color}}"></span>{{c.category|replace("_", " ")|capitalize}}</span>
+<div class="track"><span style="width:{{(c.total / top * 100) if top else 0}}%;background:{{c.color}}"></span></div><span class="v">{{c.total|money}}</span></div>
+{% else %}<p class="muted">Nothing spent this month yet.</p>{% endfor %}
+</div>
+<div class="panel look"><h4>Needs a look<span class="sp"></span><a href="/expenses/ledger">Ledger →</a></h4>
+<a href="/expenses/ledger?show=charge_only">Card charges with no receipt <b>{{counts.charge_only or 0}}</b></a>
+<a href="/expenses/ledger?show=receipt_only">Receipts with no card charge <b>{{counts.receipt_only or 0}}</b></a>
+<a href="/expenses/ledger?show=close">Amounts that are close, not exact <b>{{counts.close or 0}}</b></a>
+</div>
+</div>
+</div>
+
+<div class="xgrid">
+<div class="panel"><h4>Recent receipts<span class="sp"></span><a href="/expenses/ledger">All →</a></h4>
+<table class="mini"><tbody>{% for r in recent %}<tr><td>{{r.date or "-"}}</td><td><b>{{r.name or "-"}}</b> <span class="muted">{{r.detail or (r.category or "")|replace("_", " ")}}</span></td><td class="num">{{r.amount|money(r.currency)}}</td></tr>
+{% else %}<tr><td class="muted">No botting receipts yet.</td></tr>{% endfor %}</tbody></table></div>
+<div class="panel"><h4>Top vendors<span class="sp"></span><span class="muted" style="font-weight:400">last 90 days</span></h4>
+<table class="mini"><tbody>{% for v in o.vendors %}<tr><td><b>{{v.vendor or "?"}}</b> <span class="muted">{{(v.category or "")|replace("_", " ")}}</span></td><td class="num muted">{{v.n}}×</td><td class="num">{{v.total|money}}</td></tr>
+{% else %}<tr><td class="muted">Nothing in the last 90 days.</td></tr>{% endfor %}</tbody></table></div>
+</div>
 {% include "sync.html" %}
-<p><a href="/bank">Bank &amp; card charges →</a> <span class="muted">Import card statements (or link your bank) to see which receipts and orders each charge paid for.</span></p>
-{% set paid = bank_paid("expense") %}
-<input id="q" placeholder="Search vendor or description" size="40">
-<select id="f"><option value="">All categories</option>{% for c in stats.expense_by_category %}<option value="{{c}}">{{c|replace("_", " ")}}</option>{% endfor %}</select>
-<table><thead><tr><th>Date</th><th>Vendor</th><th>Category</th><th>Description</th><th>Billing</th><th>Amount</th><th>Card charge</th><th>Inbox</th></tr></thead><tbody>
-{% for e in rows %}<tr data-f="{{e.category}}"><td>{{e.date or "-"}}</td><td><b>{{e.vendor or "-"}}</b></td><td>{{e.category|replace("_", " ")}}</td>
-<td>{{e.description or "-"}}</td><td>{{(e.billing_period or "")|replace("_", " ")}}</td><td class="num">{{e.amount|money(e.currency)}}</td>
-<td class="muted">{% if paid[e.id] %}<a href="/bank?show=matched">{{paid[e.id].date}}</a> {{paid[e.id].account_name or ""}}{% else %}-{% endif %}</td><td class="muted">{{e.account or ""}}</td></tr>
-{% else %}<tr><td colspan="8" class="muted">No botting receipts yet.</td></tr>{% endfor %}</tbody></table>
-{% include "filter.html" %}
+{% include "_expense_dialog.html" %}
 {% endblock %}
