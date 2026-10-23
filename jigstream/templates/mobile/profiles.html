@@ -1,9 +1,0 @@
-{% extends "mobile/base.html" %}{% block title %}Profiles{% endblock %}
-{% block action %}<a class="add" href="{{url_for('mobile.profile_new')}}">+ Add</a>{% endblock %}{% block body %}
-<ul class="list">{% for p in rows %}
-<li><a class="row" href="{{url_for('mobile.profile_edit', name=p.name)}}">
-<div class="top"><b>{{p.name}}</b>{% if p.bot %}<span class="pill">{{p.bot}}</span>{% endif %}</div>
-<div class="muted small">{{p.first_name or ""}} {{p.last_name or ""}}{% if p.ship_city %} · {{p.ship_city}}, {{p.ship_state or ""}}{% endif %}</div>
-{% if p.card_last4 %}<div class="small" style="margin-top:3px">{{p.card_brand or "Card"}} •••• {{p.card_last4}}</div>{% endif %}
-</a></li>{% else %}<li class="muted">No profiles yet. Import them from a bot on your Mac, or add one here.</li>{% endfor %}</ul>
-{% endblock %}

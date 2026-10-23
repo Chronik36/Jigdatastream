@@ -11,6 +11,7 @@ so nothing goes through anyone's server, and it only works while BotTrack is ope
 <input type="email" name="email" value="{{phone.email}}" placeholder="Email to sign in with" size="30" autocomplete="off">
 <input type="password" name="password" placeholder="{{'New password (leave blank to keep)' if phone.password_hash else 'Password, 10+ characters'}}" size="30" autocomplete="new-password"><br>
 <label><input type="checkbox" name="allow_lan" {{"checked" if phone.allow_lan}}> Also allow phones on the same Wi-Fi without Tailscale <span class="muted">(less private: traffic on your Wi-Fi isn't encrypted)</span></label><br>
+<label><input type="checkbox" name="no_lockout" {{"checked" if not phone.lockout}}> Don't lock phones out after wrong passwords <span class="muted">(for testing; normally 5 wrong tries wait 15 minutes)</span></label><br>
 <button>Save</button></form>
 {% if phone_needs_restart %}<form method="post" action="{{url_for('mobile.restart')}}" class="banner" style="display:flex"><input type="hidden" name="csrf" value="{{csrf_token()}}">
 <span>Restart BotTrack to turn phone access {{"on" if phone.on else "off"}}.</span><span style="flex:1"></span><button>Restart now</button></form>
