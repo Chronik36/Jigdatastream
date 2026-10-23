@@ -36,6 +36,8 @@ LOCK_AFTER, LOCK_WINDOW = 5, 15 * 60  # failed sign-ins per address, and for how
 # show full card numbers, or export cards. Everything else in BotTrack works from a phone.
 PHONE_BLOCKED = ("/setup", "/logs", "/bank/plaid", "/update/rollback", "/profiles/export", "/m/api/link")
 PHONE_BLOCKED_ENDPOINTS = {"cards_reveal"}
+# Inside a blocked path but fine from a phone: sending the (scrubbed) logs, without browsing them.
+PHONE_ALLOWED = {"send_logs_page", "send_logs"}
 failures = {}  # ip -> [times of recent failed sign-ins]
 
 
@@ -165,7 +167,8 @@ def init_app(app):
             return None
         if not signed_in():
             return redirect(url_for("mobile.login"))
-        if request.path.startswith(PHONE_BLOCKED) or request.endpoint in PHONE_BLOCKED_ENDPOINTS:
+        if (request.path.startswith(PHONE_BLOCKED) and request.endpoint not in PHONE_ALLOWED) \
+                or request.endpoint in PHONE_BLOCKED_ENDPOINTS:
             logger.info("phone asked for Mac-only %s", request.path)
             if request.method == "GET" and request.endpoint not in PHONE_BLOCKED_ENDPOINTS:
                 flash("That part of BotTrack only opens on your Mac.")

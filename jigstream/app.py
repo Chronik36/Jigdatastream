@@ -887,6 +887,8 @@ def create_app(db_path=None):
         if error:  # show the page again with what they typed
             return send_logs_page(note, error)
         try:
+            if not mobile.from_this_mac():  # so the developer knows where it was seen
+                note += f"\n\n(Sent from a phone: {request.headers.get('User-Agent', '')[:200]})"
             to = logs.send_logs(sender, accounts[sender], note, logs_about())
         except Exception as e:  # SMTP errors and the like; never include the password
             logger.warning("sending logs failed: %s", logs.redact(str(e)))
@@ -894,7 +896,7 @@ def create_app(db_path=None):
                                         "You can download them and send them yourself.")
         logger.info("logs sent to the developer from %s", sender)
         flash(f"Logs sent to {to}. Thanks, that helps fix things faster.")
-        return redirect(url_for("show_logs"))
+        return redirect(url_for("show_logs") if mobile.from_this_mac() else url_for("mobile.app_page"))
 
     @app.post("/update/check")
     def update_check():
