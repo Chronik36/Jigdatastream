@@ -17,15 +17,23 @@
     padding-top:env(safe-area-inset-top,0px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 12px)}
   .side .snav{flex:none;overflow:visible}
   .side .aicard,.side .collapse{display:none}
-  main textarea{max-width:100%;box-sizing:border-box}
+  main textarea,main input,main select{max-width:100%;box-sizing:border-box}
   main input,main select,main textarea{font-size:16px}  /* stops iOS zooming into fields */
   button,a.btn{min-height:40px}
+  /* Nothing may push the page wider than the screen: charts shrink, wide tables scroll inside a box. */
+  main{min-width:0;max-width:100vw;overflow-x:clip}
+  main .cols>*,main .grid>*{min-width:0}
+  main svg:not(.i){max-width:100%;height:auto}
+  main img{max-width:100%;height:auto}
+  .pwide{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 }
 @media (max-width:700px){
   table.cardy,table.cardy tbody{display:block;border:0;background:none;overflow:visible}
   table.cardy thead{display:none}
   table.cardy tr{display:block;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px}
-  table.cardy td{display:flex;gap:12px;justify-content:space-between;align-items:baseline;border:0;padding:5px 0;text-align:right;white-space:normal}
+  table.cardy td{display:flex;flex-wrap:wrap;gap:6px 12px;justify-content:space-between;align-items:baseline;border:0;padding:5px 0;text-align:right;white-space:normal}
+  table.cardy td>*{min-width:0;max-width:100%;overflow-wrap:anywhere}
+  table.cardy td>form,table.cardy td>select{margin-left:auto}
   table.cardy td:first-child{white-space:normal}
   table.cardy td:before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:600;text-align:left;flex:none;max-width:40%}
   table.cardy td[data-label=""]:before{display:none}
@@ -73,12 +81,19 @@ tr.pg-more{display:none !important}
   // and show long tables 40 rows at a time.
   var PAGE = 40;
   document.querySelectorAll('main table').forEach(function (t) {
+    var first = t.querySelector('tbody tr');
+    if (!t.tHead && first && first.children.length && Array.prototype.every.call(first.children, function (c) { return c.tagName === 'TH'; })) {
+      t.createTHead().appendChild(first);  // a header row written inside the body still names the columns
+    }
     var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) { return th.textContent.trim(); });
     if (heads.length >= 3 && !t.classList.contains('nocard')) {
       t.querySelectorAll('tbody tr').forEach(function (tr) {
         Array.prototype.forEach.call(tr.children, function (td, i) { td.setAttribute('data-label', td.colSpan > 1 ? '' : (heads[i] || '')); });
       });
       t.classList.add('cardy');
+    } else if (t.scrollWidth > t.parentElement.clientWidth + 1) {
+      var box = document.createElement('div');  // a short table that's still too wide scrolls on its own
+      box.className = 'pwide'; t.before(box); box.appendChild(t);
     }
     var rows = t.querySelectorAll('tbody tr');
     if (rows.length <= PAGE + 10) return;

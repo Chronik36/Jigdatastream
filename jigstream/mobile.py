@@ -196,10 +196,14 @@ def watch_changes(c):
     c.commit()
 
 
+# A new value every time BotTrack starts, so a phone waiting on an update knows the Mac has restarted.
+BOOT = secrets.token_hex(6)
+
+
 @bp.get("/api/changes")
 def changes():
     row = con().execute("SELECT n FROM change_count WHERE id = 1").fetchone()
-    return jsonify(n=row[0] if row else 0), 200, {"Cache-Control": "no-store"}
+    return jsonify(n=row[0] if row else 0, boot=BOOT), 200, {"Cache-Control": "no-store"}
 
 
 def android_app_version():
@@ -432,7 +436,7 @@ def update_install():
         return redirect(url_for("mobile.app_page"))
     logger.info("update started from a phone")
     updater.restart_soon()
-    return render_template("mobile/updating.html")
+    return render_template("mobile/updating.html", boot=BOOT)
 
 
 # The earlier phone-only pages now open the real ones, which fit a phone screen.
