@@ -3,15 +3,15 @@
 <p class="muted">The logs show what the app was doing so problems can be found and fixed in the next update.
 They're emailed from your own Gmail, so nothing goes through anyone else's server.</p>
 {% if not to %}
-<p>No developer address is set in this version yet. You can <a href="/logs/download">download the logs</a> and send them yourself.</p>
+<p>No developer address is set in this version yet. {% if on_phone %}On your Mac, open Logs to download them{% else %}You can <a href="/logs/download">download the logs</a>{% endif %} and send them yourself.</p>
 {% else %}
 <h3>What's included</h3>
-<ul>{% for f in files %}<li><a href="/logs?file={{f}}">{{f}}</a> <span class="muted">({{ (sizes.get(f, 0) / 1024)|round(1) }} KB)</span></li>{% else %}<li class="muted">No log files yet.</li>{% endfor %}
+<ul>{% for f in files %}<li>{% if on_phone %}{{f}}{% else %}<a href="/logs?file={{f}}">{{f}}</a>{% endif %} <span class="muted">({{ (sizes.get(f, 0) / 1024)|round(1) }} KB)</span></li>{% else %}<li class="muted">No log files yet.</li>{% endfor %}
 <li>about.txt: {% for k, v in about.items() %}{{k}} {{v}}{{ ", " if not loop.last }}{% endfor %}</li></ul>
 <p class="muted">Before sending, app passwords, bot and API tokens, Plaid keys and anything shaped like a card number are replaced with ********.
 Your database, saved cards, bank data, profiles and emails are never sent. Logs can mention store names, order numbers and your email address.</p>
 {% if not accounts %}
-<p>Connect a Gmail inbox on <a href="/setup">Setup</a> first: the logs are sent from it.</p>
+<p>Connect a Gmail inbox on {% if on_phone %}Setup on your Mac{% else %}<a href="/setup">Setup</a>{% endif %} first: the logs are sent from it.</p>
 {% else %}
 <form method="post" action="/logs/send" style="display:block" onsubmit="this.querySelector('button').textContent='Sending...'">
 <p>To: <b>{{to}}</b></p>
@@ -23,7 +23,7 @@ Your database, saved cards, bank data, profiles and emails are never sent. Logs 
 placeholder="What were you doing, what did you expect, and what happened instead? For example: I pressed Sync now and my Target order from yesterday never showed up.">{{note}}</textarea><br>
 <span class="muted" id="note-count"></span></p>
 <p><label><input type="checkbox" name="consent" value="yes" required> I've seen what's included and want to send it</label></p>
-<p><button id="send-btn">Send logs</button> <a href="/logs">Cancel</a></p>
+<p><button id="send-btn">Send logs</button> <a href="{{'/m/app' if on_phone else '/logs'}}">Cancel</a></p>
 </form>
 <script>
 (function () {

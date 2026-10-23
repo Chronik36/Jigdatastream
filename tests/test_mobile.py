@@ -317,3 +317,23 @@ def test_phone_link_address_goes_to_the_private_topic(monkeypatch):
     monkeypatch.setenv("PHONE_PAIR_TOPIC", "bottrack-abc123")
     tunnel.announce("https://a-b.trycloudflare.com", post=lambda req, timeout: sent.append(req) or Done())
     assert sent[0].full_url == "https://ntfy.sh/bottrack-abc123" and sent[0].data == b"https://a-b.trycloudflare.com"
+
+
+def test_phone_can_send_logs_but_not_read_them(app, monkeypatch):
+    from jigstream import logs
+    sent = []
+    monkeypatch.setenv("GMAIL_ACCOUNTS", "me@gmail.com:abcd efgh ijkl mnop")
+    monkeypatch.setattr(logs, "developer_email", lambda: "dev@example.com")
+    monkeypatch.setattr(logs, "send_logs", lambda sender, pw, note, about: sent.append((sender, note)) or "dev@example.com")
+    c = phone(app)
+    pair(c)
+    assert 'href="/logs/send"' in c.get("/m/app").get_data(as_text=True)
+    page = c.get("/logs/send").get_data(as_text=True)
+    assert "What went wrong?" in page and 'href="/logs?file=' not in page
+    for path in ("/logs", "/logs/download"):
+        assert c.get(path).headers["Location"] == "/"
+    t = csrf(c, "/logs/send")
+    r = c.post("/logs/send", data={"csrf": t, "note": "The orders page froze after I pressed sync on my phone",
+                                   "consent": "yes", "sender": "me@gmail.com"}, headers={"User-Agent": "x BotTrackApp/5"})
+    assert r.headers["Location"].endswith("/m/app")
+    assert sent[0][0] == "me@gmail.com" and "Sent from a phone: x BotTrackApp/5" in sent[0][1]
