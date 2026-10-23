@@ -10,7 +10,9 @@ import platform
 import re
 import smtplib
 import ssl
+import time
 import zipfile
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -123,6 +125,62 @@ def zip_logs(log_dir=None, about=None, note=""):
     return buf.getvalue()
 
 
+RECORD_RE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})[,.]?\d*\s+([A-Z]+)\b")
+EMAIL_TAIL_LINES = 200
+EMAIL_MAX_ERRORS = 50  # newest error blocks kept in the email body
+EMAIL_MAX_CHARS = 60_000  # per section, so the email stays readable
+
+
+def recent_errors(log_dir=None, hours=24, now=None):
+    """ERROR/CRITICAL records and anything with a Traceback from the last `hours`, oldest first, scrubbed."""
+    d = Path(log_dir or LOG_DIR)
+    now = now or datetime.now()
+    since = now - timedelta(hours=hours)
+    found = []
+    for name in sorted(log_files(d), key=lambda n: (d / n).stat().st_mtime):
+        path = d / name
+        file_recent = path.stat().st_mtime >= time.mktime(since.timetuple())
+        block, when, level = [], None, ""
+
+        def flush():
+            text = "\n".join(block).rstrip()
+            recent = when >= since if when else file_recent
+            if text and recent and (level in ("ERROR", "CRITICAL") or "Traceback (most recent call last)" in text):
+                found.append((when or datetime.fromtimestamp(path.stat().st_mtime), name, text))
+
+        for line in path.read_text("utf-8", "replace").splitlines():
+            m = RECORD_RE.match(line)
+            if m:
+                flush()
+                block, level = [line], m.group(2)
+                try:
+                    when = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    when = None
+            else:
+                block.append(line)
+        flush()
+    found.sort(key=lambda f: f[0])
+    return [(name, scrub(text)) for _, name, text in found[-EMAIL_MAX_ERRORS:]]
+
+
+def _cap(text, limit=EMAIL_MAX_CHARS):
+    return text if len(text) <= limit else "[... cut, the full logs are in the zip ...]\n" + text[-limit:]
+
+
+def email_body(note, info, log_dir=None):
+    """The email text: the note, versions, recent errors and the end of app.log, so it can be read without the zip."""
+    d = Path(log_dir or LOG_DIR)
+    errors = recent_errors(d)
+    tail_text = scrub(tail("app.log", EMAIL_TAIL_LINES, d))
+    parts = ["What went wrong:", note, "", "".join(f"{k}: {v}\n" for k, v in info.items())]
+    parts += [f"===== Errors and tracebacks, last 24 hours ({len(errors)}) =====",
+              _cap("\n\n".join(f"[{name}] {text}" for name, text in errors)) if errors else "None.", ""]
+    parts += [f"===== Last {EMAIL_TAIL_LINES} lines of app.log =====", _cap(tail_text) or "app.log is empty.", "",
+              "The full logs are in the attached zip."]
+    return "\n".join(parts)
+
+
 def developer_email():
     return (os.environ.get("BOTTRACK_LOGS_TO") or DEVELOPER_EMAIL).strip()
 
@@ -153,7 +211,7 @@ def send_logs(sender, password, note, about_info=None, log_dir=None, to=None, sm
     msg = EmailMessage()
     msg["Subject"] = f"BotTrack logs ({info.get('BotTrack', 'unknown build')})"
     msg["From"], msg["To"], msg["Reply-To"] = sender, to, sender
-    msg.set_content("What went wrong:\n" + note + "\n\n" + "".join(f"{k}: {v}\n" for k, v in info.items()))
+    msg.set_content(email_body(note, info, log_dir))
     msg.add_attachment(zip_logs(log_dir, info, note), maintype="application", subtype="zip",
                        filename="bottrack-logs.zip")
     if smtp is None:
