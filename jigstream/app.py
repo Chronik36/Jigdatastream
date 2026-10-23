@@ -37,6 +37,10 @@ TRACK_URLS = {
 }
 
 
+class StopSync(Exception):
+    """Someone pressed Stop sync (or an update is installing): skip the steps after reading emails."""
+
+
 def create_app(db_path=None):
     app = Flask(__name__)
     app.secret_key = "local-only"
@@ -56,8 +60,10 @@ def create_app(db_path=None):
         return db.connect(db_path)
 
     # Email sync calls the local model once per email, so it runs in the background.
-    sync_state = {"running": False, "last": None}
+    sync_state = {"running": False, "last": None, "full": False, "stop": threading.Event()}
     app.config["SYNC_STATE"] = sync_state
+    # An update stops a running sync and leaves this note, so the sync carries on after the restart.
+    resume_note = Path(db_path or db.DB_PATH).with_name("resume-sync")
 
     def progress(text):
         sync_state["last"] = text
@@ -79,8 +85,12 @@ def create_app(db_path=None):
                     parts.append(f"Discord sync failed: {e}.")
             if config.accounts:
                 try:
-                    counts = run_sync(config, Store(con()), log=lambda *a, **k: None, progress=progress)
-                    parts.append(f"Gmail{' (whole mailbox)' if full else ''}: {summary(counts)}")
+                    counts = run_sync(config, Store(con()), log=lambda *a, **k: None, progress=progress,
+                                      stop=sync_state["stop"].is_set)
+                    parts.append(f"Gmail{' (whole mailbox)' if full else ''}"
+                                 f"{' stopped part way' if counts.get('stopped') else ''}: {summary(counts)}")
+                    if counts.get("stopped"):
+                        raise StopSync
                     try:
                         marked, merged = Store(con()).repair_cancels()
                         if marked or merged:
@@ -97,10 +107,14 @@ def create_app(db_path=None):
                         recurring.refresh(con())  # new receipts move renewal dates forward
                     except Exception:
                         logger.exception("updating recurring expenses failed")
+                except StopSync:
+                    pass
                 except Exception as e:
                     logger.exception("Gmail sync failed")
                     parts.append(f"Gmail sync failed: {e}")
-            sync_state["last"] = "Last sync. " + " ".join(parts)
+            stopped = sync_state["stop"].is_set()
+            sync_state["last"] = ("Sync stopped. Press Sync now to carry on where it left off. " if stopped
+                                  else "Last sync. ") + " ".join(parts)
         finally:
             sync_state["running"] = False
 
@@ -596,12 +610,39 @@ def create_app(db_path=None):
         if sync_state["running"] or not (config.accounts or has_discord) or (ai and not ai["ready"]) \
                 or engines.compare_state["running"]:
             return False
+        if resume_note.exists():  # carry on with the sync an update stopped
+            full = full or resume_note.read_text().strip() == "full"
+            resume_note.unlink(missing_ok=True)
         sync_state["running"] = True
+        sync_state["full"] = full
+        sync_state["stop"].clear()
         sync_state["last"] = "Starting Gmail sync..."
         threading.Thread(target=background_sync, args=(full,), daemon=True).start()
         return True
 
+    def stop_sync(wait=0):
+        """Ask a running sync to stop after the email it's reading. Waits up to `wait` seconds for it."""
+        if not sync_state["running"]:
+            return False
+        sync_state["stop"].set()
+        sync_state["last"] = "Stopping the sync after the email it's reading..."
+        logger.info("sync stop requested")
+        deadline = time.monotonic() + wait
+        while sync_state["running"] and time.monotonic() < deadline:
+            time.sleep(0.2)
+        return True
+
+    def pause_sync_for_update():
+        """Updates restart BotTrack, so stop a running sync first and pick it up again after the restart.
+        Emails already read are saved, so at most the one being read when it restarts is read again."""
+        if not sync_state["running"]:
+            return
+        resume_note.write_text("full" if sync_state["full"] else "normal")
+        stop_sync(wait=20)
+
     app.start_sync = start_sync
+    app.stop_sync = stop_sync
+    app.pause_sync_for_update = pause_sync_for_update
     app.sync_state = sync_state  # the phone's Update button checks it too
 
     @app.get("/inbox")
@@ -684,6 +725,13 @@ def create_app(db_path=None):
         elif app.config.get("AI_STATE") and not app.config["AI_STATE"]["ready"]:
             flash("The AI model is still getting ready; syncing starts by itself when it is.")
         return redirect(url_for("orders"))
+
+    @app.post("/sync/stop")
+    def sync_stop():
+        if stop_sync():
+            flash("Stopping the sync after the email it's reading. Everything read so far is kept; "
+                  "Sync now carries on from there.")
+        return redirect(request.referrer or url_for("orders"))
 
     # The bot's name and channel list come from Discord's API; asking on every Setup visit made the page slow.
     discord_cache = {}
@@ -937,13 +985,12 @@ def create_app(db_path=None):
         if not updater.can_self_update():
             flash("This copy runs from a git checkout, so it doesn't update itself. Use git pull.")
             return redirect(url_for("setup"))
-        if sync_state["running"]:
-            flash("A sync is running. Try the update again when it finishes.")
-            return redirect(request.referrer or url_for("setup"))
+        pause_sync_for_update()
         try:
             updater.install()
         except Exception as e:
             logger.exception("update failed")
+            start_sync()  # nothing changed, so carry on with the sync the update stopped
             flash(f"Update failed, nothing was changed: {e}")
             return redirect(url_for("setup"))
         updater.restart_soon()

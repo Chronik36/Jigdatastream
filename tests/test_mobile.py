@@ -199,9 +199,10 @@ def test_update_from_the_phone(app, monkeypatch):
     assert c.post("/m/update").status_code == 400  # needs the page token
     assert "Updating BotTrack" in c.post("/m/update", data={"csrf": t}).get_data(as_text=True)
     assert calls == ["install", "restart"]
-    app.sync_state["running"] = True
-    c.post("/m/update", data={"csrf": t})
-    assert calls == ["install", "restart"]
+    paused = []
+    monkeypatch.setattr(app, "pause_sync_for_update", lambda: paused.append(1))
+    c.post("/m/update", data={"csrf": t})  # a running sync is paused for the update, not a reason to refuse
+    assert paused and calls == ["install", "restart", "install", "restart"]
 
 
 def test_android_app_is_offered_its_update(app, monkeypatch):

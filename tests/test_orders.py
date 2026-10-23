@@ -257,6 +257,36 @@ class InboxTests(unittest.TestCase):
         self.assertIsNone(dict(self.calls)["a@gmail.com"])  # whole mailbox
         self.assertTrue(store.account_state("a@gmail.com")["backfilled_at"])
 
+    def test_stop_keeps_what_was_read_and_the_next_sync_carries_on(self):
+        store = Store(db.connect(":memory:"))
+        config = Config(accounts=[("a@gmail.com", "x"), ("b@gmail.com", "x")])
+        stopping = {"now": False}
+
+        def stop():
+            return stopping["now"]
+
+        real_process = self.sync.process
+
+        def process_then_stop(*a, **k):  # Stop pressed while the first email is being read
+            real_process(*a, **k)
+            stopping["now"] = True
+
+        self.sync.process = process_then_stop
+        try:
+            counts = self.sync.run_sync(config, store, llm=self.llm, log=lambda *a, **k: None, stop=stop)
+        finally:
+            self.sync.process = real_process
+        self.assertTrue(counts["stopped"])
+        self.assertEqual([c[0] for c in self.calls], ["a@gmail.com"])  # b's inbox wasn't started
+        self.assertEqual(len(store.orders()), 1)  # the email read before stopping is kept
+        self.assertIsNone(store.account_state("a@gmail.com"))  # not marked synced, so its range is redone
+
+        self.calls.clear()
+        counts = self.sync.run_sync(config, store, llm=self.llm, log=lambda *a, **k: None)
+        self.assertNotIn("stopped", counts)
+        self.assertEqual([c[0] for c in self.calls], ["a@gmail.com", "b@gmail.com"])
+        self.assertEqual((len(store.orders()), len(store.expenses())), (1, 1))  # nothing read twice
+
 
 if __name__ == "__main__":
     unittest.main()
