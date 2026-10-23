@@ -1,11 +1,13 @@
 """The Expenses area: Overview and Ledger tabs, plus adding and editing botting expenses on the desktop."""
 import logging
 import re
+import threading
 from datetime import date
 
 from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, url_for
 
-from . import budget, db, ledger, recurring, sales
+from . import budget, db, inbox, ledger, recurring, sales
+from .config import Config
 from .extract import BILLING_PERIODS, EXPENSE_CATEGORIES
 from .orderstore import Store
 
@@ -25,13 +27,39 @@ def _sync():
     return current_app.config.get("SYNC_STATE") or {"running": False, "last": None}
 
 
+_amounts = {"running": False, "last": None}
+
+
+def _fill_amounts(path):
+    try:
+        filled, removed = inbox.fill_missing_amounts(Config.from_env(), Store(db.connect(path)), limit=500, recheck=True)
+        _amounts["last"] = (f"Found {filled} missing amount(s)" + (f" and removed {removed} reminder(s)" if removed else "")
+                            + ". Any still blank have no total BotTrack can read; click the expense to type it in.")
+    except Exception as e:
+        logger.exception("finding missing expense amounts failed")
+        _amounts["last"] = f"Couldn't finish: {e}"
+    finally:
+        _amounts["running"] = False
+
+
+@pages.post("/expenses/fill-amounts")
+def fill_amounts():
+    """Re-read every expense email that has no amount yet (the sync only tries each one once)."""
+    if not _amounts["running"]:
+        _amounts.update(running=True, last=None)
+        threading.Thread(target=_fill_amounts, args=(current_app.config["DB_PATH"],), daemon=True).start()
+    flash("Reading the expense emails that have no amount. Refresh in a minute.")
+    return _back()
+
+
 @pages.get("/expenses")
 def overview():
     c = _con()
     recurring.refresh(c)
     items, subs = ledger.rows(c), recurring.subscriptions(c)
     return render_template("expenses.html", tab="overview", o=ledger.overview(c), chart=ledger.month_chart(c),
-                           counts=ledger.counts(items), recent=[r for r in items if r["kind"] == "expense"][:8],
+                           counts=ledger.counts(items), recent=[r for r in items if r["kind"] == "expense"][:8], amounts=_amounts,
+                           missing=sum(1 for r in items if r["kind"] == "expense" and r["amount"] is None),
                            rec=recurring.totals(subs), soon=recurring.upcoming(subs)[:6], sync=_sync(),
                            month=budget.month_view(c, budget.month_of(date.today())),
                            profit=sales.month_numbers(c, budget.month_of(date.today())),
