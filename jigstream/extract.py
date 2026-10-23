@@ -136,30 +136,46 @@ def botting_signals(email):
 
 TOTAL_LINE = re.compile(r"(amount (paid|charged|due)|total( paid| charged| due| amount)?|grand total|order total|"
                         r"you paid|payment amount|charged|paid)\b", re.I)
-MONEY_VALUE = re.compile(r"(?:(?:US)?[$\u00a3\u20ac]\s?(\d[\d,]*(?:\.\d{1,2})?)|"
-                         r"\b(\d[\d,]*\.\d{2})\s?(?:USD|EUR|GBP|CAD)\b|\b(?:USD|EUR|GBP|CAD)\s?(\d[\d,]*(?:\.\d{1,2})?))")
+MONEY_VALUE = re.compile(r"(?:(?:US|CA|A)?[$\u00a3\u20ac]\s?(\d[\d,]*(?:\.\d{1,2})?)|"
+                         r"\b(\d[\d,]*(?:[.,]\d{2})?)\s?(?:USD|EUR|GBP|CAD|[$\u00a3\u20ac])(?![\w\d])|"
+                         r"\b(?:USD|EUR|GBP|CAD)\s?(\d[\d,]*(?:\.\d{1,2})?))")
+
 NOT_A_CHARGE = re.compile(r"\b(reminder|past due|overdue|unpaid|due (soon|on|date)|upcoming (payment|invoice|renewal)|"
                           r"will (renew|be charged)|payment failed|failed payment)\b", re.I)
 PAID_WORDS = re.compile(r"\b(receipt|paid|payment (received|successful|confirmed)|thank you for your (payment|purchase|order))\b", re.I)
 
 
+def _amount_of(m):
+    raw = next(g for g in m.groups() if g)
+    if re.fullmatch(r"\d{1,3}(\.\d{3})*,\d{2}|\d+,\d{2}", raw):  # 110,00 or 1.234,50 (European)
+        raw = raw.replace(".", "").replace(",", ".")
+    return float(raw.replace(",", ""))
+
+
 def find_total(text):
     """The amount paid, read straight from the email when the model didn't give one: the money on or
     just after a Total / Amount paid line (the last such line wins, as subtotals come first)."""
-    lines = [l.strip() for l in (text or "").splitlines() if l.strip()]
+    # Receipt HTML is nested tables; their empty cells leave "| |" lines that would hide the amount
+    # sitting a few rows under its label.
+    lines = [l.strip(" |") for l in (text or "").splitlines()]
+    lines = [l for l in lines if re.search(r"\w", l)]
     found = None
     for i, line in enumerate(lines):
-        if not TOTAL_LINE.search(line) or re.search(r"\bsub ?total\b", line, re.I):
+        if not TOTAL_LINE.search(line) or re.search(r"\bsub ?-?total\b", line, re.I):
             continue
-        for candidate in (line[TOTAL_LINE.search(line).start():], *lines[i + 1:i + 3]):
+        for candidate in (line[TOTAL_LINE.search(line).start():], *lines[i + 1:i + 4]):
             m = MONEY_VALUE.search(candidate)
             if m:
-                found = float(next(g for g in m.groups() if g).replace(",", ""))
+                found = _amount_of(m)
                 break
     if found is None:
-        amounts = [float(next(g for g in m.groups() if g).replace(",", "")) for m in MONEY_VALUE.finditer(text or "")]
-        if len(set(amounts)) == 1:  # one price in the whole email: that's the charge
-            found = amounts[0]
+        amounts = [_amount_of(m) for m in MONEY_VALUE.finditer(text or "")]
+        amounts = [a for a in amounts if a > 0]
+        if amounts:
+            top = max(set(amounts), key=lambda a: (amounts.count(a), a))
+            # One price in the whole email, or the price repeated (item, total, paid) that is also the largest.
+            if len(set(amounts)) == 1 or (amounts.count(top) >= 2 and top == max(amounts)):
+                found = top
     return found
 
 

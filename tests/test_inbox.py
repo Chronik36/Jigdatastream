@@ -81,3 +81,32 @@ def test_ai_skipped_filter_lists_skipped_emails_not_yet_labelled(tmp_path, monke
     html = appmod.create_app(path).test_client().get("/inbox/rows?f=AI+skipped").get_data(as_text=True)
     assert "Your Nike receipt" in html and "Newsletter" in html and "AI: not relevant" in html
     assert "Shipped" not in html and "Already fixed" not in html
+
+
+def test_find_total_reads_stripe_style_table_receipts():
+    from jigstream.extract import find_total
+    from jigstream.mail import html_to_text
+    html = ("<table><tr><td>&nbsp;</td><td><table><tr><td>Receipt from STELLA CLOUD LLC</td></tr><tr><td>$70.00</td></tr>"
+            "<tr><td>Paid September 29, 2026</td></tr></table></td></tr><tr><td><table><tr><td>EPYC Server</td><td>Qty 1</td>"
+            "<td>$70.00</td></tr><tr><td>Amount paid</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td></tr><tr><td>&nbsp;</td></tr>"
+            "<tr><td>$70.00</td></tr></table></td></tr><tr><td>Get $5 off your next order</td></tr></table>")
+    assert find_total(html_to_text(html)) == 70.0
+    assert find_total("Payment amount: 25 USD") == 25.0
+    assert find_total("Total: 110,00 €") == 110.0
+    assert find_total("Plan $70.00\nTotal $70.00\nRefer a friend for $5 off") == 70.0
+
+
+def test_fill_missing_amounts_retries_when_email_cant_be_opened(tmp_path, monkeypatch):
+    from jigstream import db
+    from jigstream.orderstore import Store
+    store = Store(db.connect(tmp_path / "t.db"))
+    store.db.execute("INSERT INTO expenses (message_id, vendor, account) VALUES ('<a@x>', 'Alpine', 'me@x')")
+    store.db.commit()
+
+    def down(*a):
+        raise OSError("offline")
+    monkeypatch.setattr(inbox, "open_email", down)
+    assert inbox.fill_missing_amounts(object(), store) == (0, 0)
+    monkeypatch.setattr(inbox, "open_email", lambda *a: Email("<a@x>", "s", "Receipt", "", "Total\n | \n | \n$30.00"))
+    assert inbox.fill_missing_amounts(object(), store) == (1, 0)
+    assert store.expenses()[0]["amount"] == 30.0
