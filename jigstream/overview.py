@@ -37,7 +37,8 @@ def summary(con, year):
 
     # A "successful" checkout only counts once no cancel email, bot cancel or refund came for it.
     real = {"emailed", "no_email"}
-    wins = [r for r in stuck.cross_reference(con) if (r.get("ts") or "")[:4] == year]
+    wins = [r for r in stuck.cross_reference(con) if (r.get("ts") or "")[:4] == year
+            and r["state"] != "not_order"]
     lost = con.execute("SELECT status, site, bot FROM checkouts WHERE status != 'success' AND substr(ts, 1, 4) = ?",
                        (year,)).fetchall()
     by = {"site": {}, "bot": {}}

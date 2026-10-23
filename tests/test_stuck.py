@@ -51,7 +51,7 @@ def test_order_number_then_site_and_profile(tmp_path):
     assert rows["b"]["state"] == "emailed" and rows["b"]["order"]["order_number"] == "T-55"
     assert rows["b"]["matched_on"] == "same site and profile"
     assert rows["c"]["state"] == "no_email"
-    assert stuck.counts(rows.values()) == {"all": 3, "emailed": 1, "cancelled": 1, "no_email": 1, "stuck": 2}
+    assert stuck.counts(rows.values()) == {"all": 3, "emailed": 1, "cancelled": 1, "no_email": 1, "not_order": 0, "stuck": 2}
 
 
 def test_two_checkouts_of_one_drop_dont_share_an_email(tmp_path):

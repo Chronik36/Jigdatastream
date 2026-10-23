@@ -266,3 +266,28 @@ def test_jigged_spellings_share_a_base_address_and_list_the_full_ones(tmp_path):
     page = create_app(str(tmp_path / "m.db")).test_client().get(
         "/drop?by=address&name=123 MAIN ST · 78701").get_data(as_text=True)
     assert "Full addresses used at 123 MAIN ST · 78701" in page and "AB 123 Main St Suite 9" in page
+
+
+def test_not_an_order_is_left_out_of_every_count_and_can_be_set_anywhere(tmp_path, monkeypatch):
+    import jigstream.app as appmod
+    from jigstream import overview, stuck
+    monkeypatch.setattr(appmod.training, "rescan", lambda *a, **k: None)
+    c, store = setup(tmp_path)
+    hook(c, "a", "Target", "Ana", "ISP A", "isp.example.net:8000", number="9001")
+    mail(store, "a1", "Target", "ordered", "2026-10-20T15:05:00+00:00", "9001")
+    hook(c, "b", "Target", "Ana", "ISP A", "isp.example.net:8000", ts="2026-10-20T15:01:00Z")
+    a, b = sorted(r["id"] for r in drop.rows(Store(c).db))
+    client = create_app(str(tmp_path / "m.db")).test_client()
+    for page in ("/drop?day=2026-10-20&site=Target", "/stuck", "/checkouts"):
+        assert 'value="not_order"' in client.get(page).get_data(as_text=True), page
+    client.post(f"/drop/{b}/verdict", data={"verdict": "not_order"})
+    rows = drop.rows(Store(c).db)
+    assert {r["id"]: r["outcome"] for r in rows}[b] == "not_order"
+    t = drop.tally(rows)
+    assert (t["tries"], t["real"], t["not_order"]) == (1, 1, 1)
+    xs = stuck.cross_reference(c)
+    assert stuck.counts(xs)["all"] == 1 and stuck.counts(xs)["not_order"] == 1
+    assert overview.summary(c, "2026")["checkouts"] == 1
+    # The order email isn't touched: the test checkout was wrong, not the email.
+    assert c.execute("SELECT shipping_status FROM tracked_orders WHERE order_number = '9001'").fetchone()[0] == "ordered"
+    assert "Not an order" in client.get("/stuck?show=not_order").get_data(as_text=True)
