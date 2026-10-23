@@ -168,10 +168,16 @@ def create_app(db_path=None):
 
     @app.get("/drop")
     def drop_page():
-        site, day, sort = request.args.get("site") or None, request.args.get("day") or None, request.args.get("sort")
+        a = request.args
+        site, day, sort = a.get("site") or None, a.get("day") or None, a.get("sort")
         sort = sort if sort in drop.SORTS else "proxy"
-        return render_template("drop.html", r=drop.report(Store(con()).db, site, sort, day), site=site, day=day,
-                               sort=sort)
+        by, name = (a.get("by"), a.get("name")) if a.get("by") in drop.GROUPS and a.get("name") else (None, None)
+        here = {"site": site, "day": day, "by": by, "name": name, "sort": sort}
+
+        def link(**change):  # this page's address with some of its choices changed (None drops one)
+            return url_for("drop_page", **{k: v for k, v in dict(here, **change).items() if v})
+        return render_template("drop.html", r=drop.report(Store(con()).db, site, sort, day, by, name), site=site,
+                               day=day, sort=sort, by=by, name=name, link=link)
 
     @app.post("/drop/<int:checkout_id>/verdict")
     def drop_verdict(checkout_id):

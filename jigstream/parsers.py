@@ -106,6 +106,27 @@ def classify(embed, bot=None):
     return "unknown"
 
 
+# A follow-up some bots (Valor) post after the checkout webhook, saying how the order turned out. Its title is about
+# the order, not the checkout: "Order Cancelled", "Order Stuck", "Order Shipped", "Order Status Update".
+UPDATE_TITLE = re.compile(r"\border\b.*\b(cancel|stuck|shipped|delivered|update|status|good)|"
+                          r"\b(cancel+ed|stuck|shipped|delivered)\b.*\border\b", re.I)
+UPDATE_CANCELLED = re.compile(r"cancel", re.I)
+
+
+def update_verdict(embed):
+    """"good" or "cancelled" when this embed is a bot's follow-up on an earlier order, else None. A checkout webhook
+    (its title says checkout, or it carries a Cancel/Decline Reason, as Hayha declines do) is never one."""
+    title = _clean(embed.get("title", "") or (embed.get("author") or {}).get("name", ""))
+    if not title or "checkout" in title.lower() or any(
+            k in ("cancel reason", "decline reason") for k in flatten_embed(embed)):
+        return None
+    if not UPDATE_TITLE.search(title):
+        return None
+    text = f"{title} {_clean(embed.get('description', ''))} {' '.join(flatten_embed(embed).values())}"
+    status = flatten_embed(embed).get("status", "") or flatten_embed(embed).get("order status", "")
+    return "cancelled" if UPDATE_CANCELLED.search(status or text) else "good"
+
+
 def _pick(fields, key):
     for a in ALIASES[key]:
         if a in fields and fields[a]:
@@ -125,6 +146,9 @@ def parse_embed(payload, embed):
     if m and not rec["price"]:
         rec["product"], rec["price"] = m.group(1), m.group(2)
     rec["ts"] = embed.get("timestamp") or payload.get("timestamp") or ""
+    rec["update"] = update_verdict(embed)
+    if rec["update"]:
+        rec["status"], rec["reason"] = "update", rec["update"]
     if rec["status"] != "success" and not rec["reason"]:
         rec["reason"] = _clean(embed.get("description", ""))[:300]
     if rec["status"] == "success":
@@ -182,9 +206,32 @@ def reclassify(con, bot="Hayha"):
     return changed
 
 
+UPDATE_SQL = """INSERT OR IGNORE INTO checkout_updates (fingerprint, bot, verdict, site, profile, order_number, email, ts, raw)
+    VALUES (:fingerprint, :bot, :update, :site, :profile, :order_number, :email, :ts, :raw)"""
+
+
+def move_updates(con):
+    """Follow-ups stored as checkouts before they were told apart move to checkout_updates. Returns how many."""
+    moved = 0
+    for row in con.execute("SELECT id, raw FROM checkouts WHERE raw LIKE '%rder%'").fetchall():
+        try:
+            raw = json.loads(row["raw"] or "{}")
+        except ValueError:
+            continue
+        if isinstance(raw, dict) and isinstance(raw.get("embed"), dict) and update_verdict(raw["embed"]):
+            con.execute(UPDATE_SQL, parse_embed({"username": raw.get("payload_username")}, raw["embed"]))
+            con.execute("DELETE FROM checkouts WHERE id = ?", (row["id"],))
+            moved += 1
+    con.commit()
+    return moved
+
+
 def ingest(con, text):
     n = 0
     for r in parse_text(text):
+        if r["update"]:  # not a checkout: how an earlier one turned out
+            n += con.execute(UPDATE_SQL, r).rowcount
+            continue
         cur = con.execute(
             """INSERT OR IGNORE INTO checkouts
             (fingerprint,bot,status,reason,site,product,size,price,profile,order_number,email,ts,raw)
