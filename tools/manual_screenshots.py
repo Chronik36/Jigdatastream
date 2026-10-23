@@ -2,6 +2,7 @@
 
     pip install playwright        # Chromium must be installed for Playwright
     python tools/manual_screenshots.py
+    python tools/manual_screenshots.py expenses expense-ledger   # only these shots
 
 Runs BotTrack against a throwaway database filled with made-up sample data (no real inboxes, cards
 or addresses), stubs out Gmail, Discord and the AI server, and saves annotated screenshots to
@@ -139,7 +140,8 @@ def seed(path):
         rows = ["Transaction Date,Description,Amount", "10/18/2026,NIKE.COM ORDER,-360.00",
                 "10/19/2026,OCULUS PROXIES,-75.00", "10/15/2026,FOOT LOCKER 0412,-149.99",
                 "10/12/2026,BEST BUY 00012345,-699.99", "10/20/2026,TARGET.COM,-219.96",
-                "10/02/2026,VULTR HOLDINGS,-24.00", "10/14/2026,HEB GROCERY,-86.41", "10/16/2026,DIGITALOCEAN,-12.00"]
+                "10/02/2026,VULTR HOLDINGS,-24.00", "10/14/2026,HEB GROCERY,-86.41", "10/16/2026,DIGITALOCEAN,-12.00",
+                "10/04/2026,WHOP*NOTIFY,-41.20"]
         bank.import_file(c, "activity.csv", "\n".join(rows).encode(), "Chase Sapphire 1234")
         bank.auto_match(c)
     logs = WORK / "logs"
@@ -318,7 +320,10 @@ def capture(app):
         for page in (desktop, phone):
             page.on("console", lambda m: print("  ", m.text) if "missing" in m.text else None)
             page.on("dialog", lambda d: d.dismiss())
+        only = set(sys.argv[1:])
         for name, path, marks, o in SHOTS:
+            if only and name not in only:
+                continue
             if o.get("needs") and not o["needs"]():
                 print("skipped", name)
                 continue
@@ -410,7 +415,10 @@ shot("orders", "/orders", [(".stats", 1), ("form[action='/sync/gmail'] button", 
 shot("inbox", "/inbox", [(".chips a", 1), (".chips input[name=q]", 2), (".mrow input", 3), (".labelbar", 4),
                          ("#reader .qlabels", 5), (".lbl-mine", 6)],
      js="document.querySelector('.mrow[data-id]').click()")
-shot("expenses", "/expenses", [(".stats", 1), ("main > p.muted", 2), ("#q", 3), ("#f", 4), ("tbody tr td:nth-child(5)", 5)])
+shot("expenses", "/expenses", [(".xtabs", 1), (".stats .card:first-child", 2), (".chart", 3), (".look", 4),
+                               ("button[onclick='openExpense()']", 5)], viewport={"width": 1360, "height": 1000})
+shot("expense-ledger", "/expenses/ledger", [(".ftabs", 1), ("#mf", 2), ("main > p.muted.m", 3), (".st-close", 4),
+                                            ("select[name=method]", 5)], viewport={"width": 1360, "height": 1420})
 shot("checkouts", "/checkouts", [("main > p", 1), ("tbody tr:nth-child(3) td:nth-child(3), tr:nth-child(3) td:nth-child(3)", 2),
                                  ("tr:nth-child(3) td:last-child", 3)])
 shot("profiles", "/profiles", [(".gside", 1), ("button[onclick='openProfile()']", 2), ("button[onclick*=exportdlg]", 3),

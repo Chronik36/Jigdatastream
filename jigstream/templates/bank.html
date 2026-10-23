@@ -15,8 +15,6 @@ dialog .dh{display:flex;align-items:center;justify-content:space-between;padding
 dialog .dh h3{margin:0;color:var(--text);text-transform:none;letter-spacing:0;font-size:17px}
 dialog .x{background:none;border:0;color:var(--muted);font-size:20px;padding:2px 8px;box-shadow:none}
 dialog .db{padding:16px 22px;max-height:60vh;overflow:auto}dialog form{display:block;margin:0}
-.opt{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
-.opt .grow{flex:1}.opt button{padding:4px 12px;font-size:12px}
 @media (max-width:900px){.cols{grid-template-columns:1fr}}
 </style>
 <div class="phead"><h2>Bank &amp; card charges</h2><a href="/expenses" class="muted">← Expenses</a></div>
@@ -84,37 +82,8 @@ instead of you downloading files. It takes about 10 minutes to set up.</p>
 </tbody></table>
 {% if rows|length >= 2000 %}<p class="muted">Showing the newest 2,000. Pick an account or a tab to narrow it down.</p>{% endif %}
 
-<dialog id="matchdlg"><div class="dh"><h3 id="mtitle">Match charge</h3><button class="x" onclick="matchdlg.close()">×</button></div>
-<div class="db"><p class="muted" id="msub"></p>
-<input id="msearch" placeholder="Search another store, order number or amount" style="width:100%;margin:0 0 12px">
-<div id="mopts"></div>
-<h3 style="margin-top:16px">Or add it as a botting expense</h3>
-<p class="muted">For a proxy, bot or server charge that never sent an email receipt.</p>
-<form method="post" id="mexp"><input type="hidden" name="action" value="expense">
-<input name="vendor" id="mvendor" placeholder="Vendor" size="22"><select name="category">{% for c in categories %}<option value="{{c}}">{{c|replace("_", " ")}}</option>{% endfor %}</select>
-<button>Add expense</button></form></div></dialog>
+{% include "_match_dialog.html" %}
 <script>
-const matchdlg = document.getElementById('matchdlg');
-let current = null, timer = null;
-function money(n) { return '$' + Number(n || 0).toFixed(2); }
-function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
-function load(q) {
-  fetch('/bank/' + current + '/candidates' + (q ? '?q=' + encodeURIComponent(q) : '')).then(r => r.json()).then(d => {
-    document.getElementById('mtitle').textContent = d.description;
-    document.getElementById('msub').textContent = d.date + ' · ' + money(d.amount) + (q ? '' : ' · orders and receipts of this amount near this date:');
-    if (!document.getElementById('mvendor').value) document.getElementById('mvendor').value = d.description;
-    document.getElementById('mopts').innerHTML = d.options.length ? d.options.map(o =>
-      `<form method="post" action="/bank/${current}/match" class="opt"><input type="hidden" name="action" value="match">
-       <input type="hidden" name="target" value="${o.kind}:${o.id}"><span class="grow"><b>${esc(o.name)}</b> <span class="muted">${esc(o.ref || '')}</span><br>
-       <span class="muted">${o.kind === 'order' ? 'Order' : 'Botting receipt'} · ${esc(o.day || '')} · ${money(o.amount)}${o.named ? ' · name matches' : ''}</span></span>
-       <button>Match</button></form>`).join('') : '<p class="muted">Nothing found. Try searching by store name or amount.</p>';
-  });
-}
-function openMatch(id) {
-  current = id; document.getElementById('msearch').value = ''; document.getElementById('mvendor').value = '';
-  document.getElementById('mexp').action = '/bank/' + id + '/match'; load(''); matchdlg.showModal();
-}
-document.getElementById('msearch').addEventListener('input', e => { clearTimeout(timer); timer = setTimeout(() => load(e.target.value.trim()), 250); });
 const q = document.getElementById('q');
 q.addEventListener('input', () => { const t = q.value.toLowerCase();
   document.querySelectorAll('tbody tr[data-f]').forEach(tr => tr.style.display = tr.textContent.toLowerCase().includes(t) ? '' : 'none'); });
