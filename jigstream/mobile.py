@@ -1,10 +1,9 @@
-"""Phone access: a phone-sized BotTrack at /m that people add to their home screen.
+"""Phone access: the BotTrack pages on a phone, in the Android app or added to the home screen.
 
-Phones reach the Mac over Tailscale (free, encrypted) or, if allowed, the same Wi-Fi. Every
-request that doesn't come from BotTrack's own window must sign in with the email and password
-set on the Setup page, and can only reach the /m pages: Setup, Logs and updates, which hold
-inbox passwords and tokens, stay on the Mac. Card numbers are never stored, so they never
-reach a phone either.
+Phones reach the Mac through its phone link (a free Cloudflare tunnel, see jigstream/tunnel.py)
+or, if allowed, the same Wi-Fi. Every request that doesn't come from BotTrack's own window must
+be from a paired phone: one that scanned the QR code on the Setup page, or signed in with the
+optional email and password. Setup, Logs, bank linking and full card numbers stay on the Mac.
 """
 import hmac
 import ipaddress
@@ -21,21 +20,20 @@ from flask import (Blueprint, abort, current_app, flash, jsonify, redirect, rend
                    session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from . import db, updater
+from . import db, tunnel, updater
 from .config import save_env
 
 logger = logging.getLogger("jigstream.mobile")
 bp = Blueprint("mobile", __name__, url_prefix="/m")
 
-TAILNET = [ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48")]
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
-FORWARDED = ("X-Forwarded-For", "Forwarded", "X-Real-IP", "Tailscale-User-Login")
-PUBLIC = {"mobile.login", "mobile.manifest", "static"}  # reachable before signing in
+FORWARDED = ("X-Forwarded-For", "Forwarded", "X-Real-IP", "Cf-Connecting-Ip")
+PUBLIC = {"mobile.login", "mobile.pair", "mobile.manifest", "static"}  # reachable before pairing
 MIN_PASSWORD = 10
 LOCK_AFTER, LOCK_WINDOW = 5, 15 * 60  # failed sign-ins per address, and for how long they count
 # Pages a phone never opens, even signed in: they hold inbox passwords, API keys, bank links and logs,
 # show full card numbers, or export cards. Everything else in BotTrack works from a phone.
-PHONE_BLOCKED = ("/setup", "/logs", "/bank/plaid", "/update/rollback", "/profiles/export")
+PHONE_BLOCKED = ("/setup", "/logs", "/bank/plaid", "/update/rollback", "/profiles/export", "/m/api/link")
 PHONE_BLOCKED_ENDPOINTS = {"cards_reveal"}
 failures = {}  # ip -> [times of recent failed sign-ins]
 
@@ -44,12 +42,13 @@ def settings():
     env = os.environ.get
     return {"on": env("PHONE_ACCESS") == "1", "email": env("PHONE_EMAIL", ""),
             "password_hash": env("PHONE_PASSWORD_HASH", ""), "allow_lan": env("PHONE_ALLOW_LAN") == "1",
-            "lockout": env("PHONE_LOCKOUT", "1") != "0"}
+            "lockout": env("PHONE_LOCKOUT", "1") != "0", "pair_key": env("PHONE_PAIR_KEY", ""),
+            "pair_topic": env("PHONE_PAIR_TOPIC", "")}
 
 
 def from_this_mac():
     """BotTrack's own window: a direct loopback request for 127.0.0.1/localhost, not something a
-    proxy on this Mac (like `tailscale serve`) passed along from another device."""
+    proxy on this Mac (like the phone link's cloudflared) passed along from another device."""
     host = request.host.rsplit(":", 1)[0] if not request.host.startswith("[") else request.host.split("]")[0] + "]"
     return (_is_loopback(request.remote_addr) and host in LOCAL_HOSTS
             and not any(h in request.headers for h in FORWARDED))
@@ -63,33 +62,57 @@ def _is_loopback(addr):
 
 
 def network_allowed(addr, allow_lan):
-    """Tailscale devices always; same-network devices only when allowed; never the open internet."""
+    """The phone link always; same-network devices only when allowed; nothing else."""
     try:
         ip = ipaddress.ip_address(addr)
     except ValueError:
         return False
-    if ip.is_loopback or any(ip in net for net in TAILNET):
-        return True  # loopback here means a proxy on this Mac, which already sits on the tailnet
+    if ip.is_loopback:
+        return True  # the phone link (cloudflared on this Mac) passing a phone's request along
     return allow_lan and ip.is_private and not ip.is_link_local
 
 
+def via_link():
+    return _is_loopback(request.remote_addr) and not from_this_mac()
+
+
+def client_ip():
+    """The phone's own address. Everything through the phone link arrives from 127.0.0.1, so
+    lockouts go by the address Cloudflare saw instead."""
+    if via_link() and request.headers.get("Cf-Connecting-Ip"):
+        return request.headers["Cf-Connecting-Ip"]
+    return request.remote_addr
+
+
 def _locked(ip):
-    if not settings()["lockout"]:
-        return False  # switched off on Setup, for testing
+    if not settings()["lockout"] and not via_link():
+        return False  # switched off on Setup for testing on Wi-Fi; never for the internet-facing link
     now = time.time()
     failures[ip] = [t for t in failures.get(ip, []) if now - t < LOCK_WINDOW]
     return len(failures[ip]) >= LOCK_AFTER
 
 
-def _session_version(password_hash):
-    # Changing the password changes this, which signs every phone out.
-    return hmac.new(current_app.secret_key.encode(), password_hash.encode(), "sha256").hexdigest()[:16]
+def _session_version(s):
+    # Changing the password, or Forget all phones (a new pairing key), changes this and signs every phone out.
+    return hmac.new(current_app.secret_key.encode(), f"{s['password_hash']}|{s['pair_key']}".encode(),
+                    "sha256").hexdigest()[:16]
 
 
 def signed_in():
     s = settings()
-    return bool(s["password_hash"]) and session.get("phone") == s["email"] \
-        and session.get("phone_v") == _session_version(s["password_hash"])
+    return bool(s["password_hash"] or s["pair_key"]) and bool(session.get("phone")) \
+        and session.get("phone_v") == _session_version(s)
+
+
+def _sign_in(s, who):
+    session.clear()
+    session.permanent = True
+    session.update(phone=who, phone_v=_session_version(s))
+
+
+def new_pairing():
+    """A fresh QR code: a new key that pairs phones, and a new private topic for the link address."""
+    return {"PHONE_PAIR_KEY": secrets.token_urlsafe(24), "PHONE_PAIR_TOPIC": "bottrack-" + secrets.token_hex(16)}
 
 
 def csrf_token():
@@ -111,6 +134,8 @@ def init_app(app):
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                       PERMANENT_SESSION_LIFETIME=timedelta(days=30))
     app.jinja_env.globals["csrf_token"] = csrf_token
+    if os.environ.get("PHONE_ACCESS") == "1" and not os.environ.get("PHONE_PAIR_KEY"):
+        save_env(new_pairing())  # phone access turned on before pairing by QR code existed
     app.register_blueprint(bp)
     try:
         watch_changes(db.connect(app.config.get("DB_PATH")))
@@ -121,6 +146,7 @@ def init_app(app):
     def phone_flags():
         up, app_version = updater.state, android_app_version()
         return {"on_phone": not from_this_mac(), "update": up, "app_version": app_version,
+                "phone_password": bool(os.environ.get("PHONE_PASSWORD_HASH")),
                 "apk_update": bool(app_version and up.get("apk_url") and up.get("apk_version", 0) > app_version)}
 
     @app.before_request
@@ -177,37 +203,51 @@ def android_app_version():
 
 # ---- desktop Setup: turn phone access on and see how to reach it ---------------------------------
 
-def addresses(port):
-    """Where a phone can open BotTrack: this Mac's Tailscale address, and its Wi-Fi address."""
-    tailscale, lan = [], []
+def wifi_addresses(port):
+    """Where a phone on the same Wi-Fi can open BotTrack, when that's allowed."""
+    found = []
     try:
         out = subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=5).stdout
     except (OSError, subprocess.TimeoutExpired):
         out = ""
     for ip in re.findall(r"inet (\d+\.\d+\.\d+\.\d+)", out):
         addr = ipaddress.ip_address(ip)
-        if any(addr in net for net in TAILNET):
-            tailscale.append(ip)
-        elif addr.is_private and not addr.is_loopback and not addr.is_link_local:
-            lan.append(ip)
-    if not lan:
+        if addr.is_private and not addr.is_loopback and not addr.is_link_local:
+            found.append(ip)
+    if not found:
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.connect(("10.255.255.255", 1))  # no packet is sent; this just picks the outgoing address
-                lan.append(s.getsockname()[0])
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.connect(("10.255.255.255", 1))  # no packet is sent; this just picks the outgoing address
+                found.append(sock.getsockname()[0])
         except OSError:
             pass
-    url = "http://{}:%s/m/" % port
-    return [url.format(ip) for ip in tailscale], [url.format(ip) for ip in lan if ip != "127.0.0.1"]
+    return ["http://%s:%s/" % (ip, port) for ip in found if ip != "127.0.0.1"]
+
+
+def link_info():
+    """The phone link's state, and what the QR code on Setup holds: the link plus the pairing key and
+    the private topic the Android app checks when the link changes."""
+    s, t = settings(), tunnel.state
+    pair = f"{t['url']}/m/pair?k={s['pair_key']}&t={s['pair_topic']}" if s["on"] and t["url"] and s["pair_key"] else ""
+    return {"status": t["status"] if s["on"] else "off", "url": t["url"], "error": t["error"], "pair_url": pair}
 
 
 def setup_context():
     s = settings()
     port = current_app.config.get("PORT") or os.environ.get("PORT", 8765)
-    tailscale, lan = addresses(port) if s["on"] else ([], [])
     bound = current_app.config.get("BIND_HOST", "127.0.0.1")
-    return {"phone": s, "phone_tailscale": tailscale, "phone_lan": lan,
-            "phone_needs_restart": s["on"] != (bound != "127.0.0.1")}
+    return {"phone": s, "phone_link": link_info(), "phone_lan": wifi_addresses(port) if s["on"] and s["allow_lan"] else [],
+            "phone_needs_restart": (s["on"] and s["allow_lan"]) != (bound != "127.0.0.1")}
+
+
+def _link_on(on):
+    """Start or stop the phone link right away (only in the Mac app, which sets PHONE_LINK)."""
+    if not current_app.config.get("PHONE_LINK"):
+        return
+    if on:
+        tunnel.ensure(current_app.config.get("PORT") or 8765)
+    else:
+        tunnel.stop()
 
 
 def _local_form_only():
@@ -228,25 +268,48 @@ def save_setup():
                "PHONE_LOCKOUT": "0" if request.form.get("no_lockout") else "1"}
     failures.clear()  # saving Setup also lifts any current lockout
     if on:
-        if "@" not in email:
-            flash("Enter the email you'll sign in with on your phone.")
+        # The email and password are optional: scanning the QR code is how phones normally pair.
+        if (password or email) and "@" not in email:
+            flash("Enter the email you'll sign in with, or leave both blank and pair by QR code.")
             return redirect(url_for("setup") + "#phone")
         if password and len(password) < MIN_PASSWORD:
             flash(f"Use a password of at least {MIN_PASSWORD} characters.")
             return redirect(url_for("setup") + "#phone")
-        if not password and not s["password_hash"]:
-            flash("Choose a password for signing in on your phone.")
-            return redirect(url_for("setup") + "#phone")
         updates["PHONE_EMAIL"] = email
+        if not email:
+            updates["PHONE_PASSWORD_HASH"] = ""
         if not os.environ.get("PHONE_SECRET_KEY"):
             updates["PHONE_SECRET_KEY"] = current_app.secret_key
+        if not s["pair_key"] or not s["pair_topic"]:
+            updates.update(new_pairing())
         if password:
             updates["PHONE_PASSWORD_HASH"] = generate_password_hash(password)
     updates["PHONE_ACCESS"] = "1" if on else "0"
     save_env(updates)
+    _link_on(on)
     logger.info("phone access %s (wifi %s)", "on" if on else "off", updates["PHONE_ALLOW_LAN"])
     flash("Phone access saved." + (" Signed out every phone, since the password changed." if password and s["password_hash"] else ""))
     return redirect(url_for("setup") + "#phone")
+
+
+@bp.post("/setup/forget")
+def forget_phones():
+    """A new QR code: every paired phone is signed out and has to scan again."""
+    _local_form_only()
+    save_env(new_pairing())
+    if tunnel.state["url"]:
+        tunnel.announce(tunnel.state["url"])  # to the new topic
+    logger.info("forgot all phones")
+    flash("Every phone is signed out. Scan the new QR code to pair a phone again.")
+    return redirect(url_for("setup") + "#phone")
+
+
+@bp.get("/api/link")
+def link_status():
+    """Setup polls this until the phone link is up, then shows its QR code."""
+    if not from_this_mac():
+        abort(404)
+    return jsonify(link_info()), 200, {"Cache-Control": "no-store"}
 
 
 @bp.post("/setup/restart")
@@ -267,7 +330,7 @@ def login():
     s = settings()
     if request.method == "GET":
         return redirect("/") if signed_in() or from_this_mac() else render_template("mobile/login.html")
-    ip = request.remote_addr
+    ip = client_ip()
     if _locked(ip):
         logger.warning("sign-in locked for %s", ip)
         flash("Too many tries. Wait 15 minutes and try again.")
@@ -281,10 +344,28 @@ def login():
         flash("That email and password don't match what's set in BotTrack on your Mac.")
         return render_template("mobile/login.html", email=email), 401
     failures.pop(ip, None)
-    session.clear()
-    session.permanent = True
-    session.update(phone=s["email"], phone_v=_session_version(s["password_hash"]))
+    _sign_in(s, s["email"])
     logger.info("phone signed in from %s", ip)
+    return redirect("/")
+
+
+@bp.get("/pair")
+def pair():
+    """Opened by scanning the QR code on the Mac's Setup page: pairs this phone with no typing."""
+    s, ip = settings(), client_ip()
+    if _locked(ip):
+        logger.warning("pairing locked for %s", ip)
+        flash("Too many tries. Wait 15 minutes and try again.")
+        return render_template("mobile/login.html"), 429
+    key = request.args.get("k", "")
+    if not (s["pair_key"] and hmac.compare_digest(key, s["pair_key"])):
+        failures.setdefault(ip, []).append(time.time())
+        logger.warning("old or wrong pairing code from %s", ip)
+        flash("That QR code is out of date. Scan the one on your Mac's Setup page, Phone access.")
+        return render_template("mobile/login.html"), 401
+    if not signed_in():
+        _sign_in(s, "paired")
+        logger.info("phone paired from %s", ip)
     return redirect("/")
 
 
@@ -297,7 +378,10 @@ def logout():
 @bp.get("/manifest.webmanifest")
 def manifest():
     icon = url_for("static", filename="icon.png")
-    return jsonify(name="BotTrack", short_name="BotTrack", start_url="/", scope="/",
+    # On an iPhone the home screen app keeps its own cookies, so it opens through the pairing link.
+    s = settings()
+    start = f"/m/pair?k={s['pair_key']}" if signed_in() and s["pair_key"] else "/"
+    return jsonify(name="BotTrack", short_name="BotTrack", start_url=start, scope="/",
                    display="standalone", background_color="#132048", theme_color="#0b1436",
                    icons=[{"src": icon, "sizes": "1024x1024", "type": "image/png", "purpose": "any"}]), \
         200, {"Content-Type": "application/manifest+json"}

@@ -12,7 +12,7 @@
 <p>Version {{app_version}}{% if apk_update %}. <b>Version {{update.apk_version}} is ready.</b>{% else %}, up to date.{% endif %}</p>
 {% if apk_update %}<p><a class="btn" href="{{update.apk_url}}">Download the new app</a></p>
 <p class="muted">Open the download and tap Install. It replaces this app and keeps you signed in.</p>{% endif %}
-<p><a href="bottrack://setup">Change Mac address</a></p></div>{% endif %}
+<p><a href="bottrack://setup">Scan a new QR code</a></p></div>{% endif %}
 <div class="panel"><h3 style="margin-top:0">This phone</h3>
 <p class="muted">Setup, Logs, bank linking and full card numbers only open on your Mac. Everything else works here, and changes show up on every device within a few seconds.</p>
 <form method="post" action="{{url_for('mobile.logout')}}" class="ghost"><button>Sign out of this phone</button></form></div>

@@ -1,22 +1,55 @@
 <h3 id="phone">Phone access</h3>
-<p>See and edit your orders, expenses and profiles from your iPhone or Android phone. Your phone talks straight to this Mac,
-so nothing goes through anyone's server, and it only works while BotTrack is open here.</p>
-<ol class="muted">
-<li>Install the free <a href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a> app on this Mac and on your phone, and sign in to both with the same account. It connects them privately and works away from home.</li>
-<li>Turn phone access on below, choose the email and password you'll sign in with, then restart BotTrack. macOS may ask whether BotTrack can accept incoming connections: choose Allow.</li>
-<li>On your phone, open the address shown below in Safari or Chrome, sign in, and use Add to Home Screen.</li></ol>
+<p>Use BotTrack on your iPhone or Android phone, at home or away. Turn it on, then scan the QR code with your phone.
+It only works while BotTrack is open on this Mac.</p>
+{% if phone.on %}<div class="panel" id="phonelink" style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start">
+<div id="phoneqr" style="background:#fff;padding:12px;border-radius:12px;line-height:0;{{'' if phone_link.pair_url else 'display:none'}}" data-pair="{{phone_link.pair_url}}"></div>
+<div style="flex:1;min-width:240px">
+<p id="phonewait" class="muted" style="{{'display:none' if phone_link.pair_url}}">{% if phone_link.status == "error" %}<span class="bad">Couldn't open the phone link: {{phone_link.error}}</span> BotTrack keeps trying.{% else %}Starting the phone link… The first time takes a minute while BotTrack downloads it.{% endif %}</p>
+<ol style="margin:0 0 10px;padding-left:20px">
+<li><b>Android:</b> open the BotTrack app and tap <b>Scan QR code</b>. {% if update.apk_url %}<a href="{{update.apk_url}}">Get the app</a>.{% endif %}</li>
+<li><b>iPhone:</b> point the Camera at the code and open the link, then tap Share, <b>Add to Home Screen</b>.</li></ol>
+<p class="muted" style="margin:0">Link: <span id="phoneurl" style="user-select:all;font-family:ui-monospace,Menlo,monospace">{{phone_link.url}}</span></p>
+<p class="muted" style="margin:8px 0 0">The link changes when BotTrack is closed and opened again. The Android app finds the new one by itself;
+on an iPhone, scan the code again. Phones stay paired for 30 days.</p>
+<form method="post" action="{{url_for('mobile.forget_phones')}}" class="ghost" style="margin-top:12px" onsubmit="return confirm('Sign out every phone? Each one will need to scan the new code.')">
+<input type="hidden" name="csrf" value="{{csrf_token()}}"><button class="ghost">Forget all phones</button></form>
+</div></div>
+{% endif %}
 <form method="post" action="{{url_for('mobile.save_setup')}}" style="display:block" class="panel">
 <input type="hidden" name="csrf" value="{{csrf_token()}}">
-<label><input type="checkbox" name="on" {{"checked" if phone.on}}> Let my phones connect</label><br>
-<input type="email" name="email" value="{{phone.email}}" placeholder="Email to sign in with" size="30" autocomplete="off">
+<label><input type="checkbox" name="on" {{"checked" if phone.on}}> Let my phones connect</label>
+<details style="margin:10px 0"{% if phone.email or phone.allow_lan or not phone.lockout %} open{% endif %}><summary class="muted">More options</summary>
+<p class="muted" style="margin:8px 0 4px">Optional email and password, for signing in on a phone without scanning:</p>
+<input type="email" name="email" value="{{phone.email}}" placeholder="Email (optional)" size="30" autocomplete="off">
 <input type="password" name="password" placeholder="{{'New password (leave blank to keep)' if phone.password_hash else 'Password, 10+ characters'}}" size="30" autocomplete="new-password"><br>
-<label><input type="checkbox" name="allow_lan" {{"checked" if phone.allow_lan}}> Also allow phones on the same Wi-Fi without Tailscale <span class="muted">(less private: traffic on your Wi-Fi isn't encrypted)</span></label><br>
-<label><input type="checkbox" name="no_lockout" {{"checked" if not phone.lockout}}> Don't lock phones out after wrong passwords <span class="muted">(for testing; normally 5 wrong tries wait 15 minutes)</span></label><br>
+<label><input type="checkbox" name="allow_lan" {{"checked" if phone.allow_lan}}> Also allow phones on the same Wi-Fi to connect directly <span class="muted">(needs a restart; Wi-Fi traffic isn't encrypted)</span></label><br>
+<label><input type="checkbox" name="no_lockout" {{"checked" if not phone.lockout}}> Don't lock phones on the same Wi-Fi out after wrong tries <span class="muted">(for testing; the phone link always waits 15 minutes after 5 wrong tries)</span></label>
+</details>
 <button>Save</button></form>
 {% if phone_needs_restart %}<form method="post" action="{{url_for('mobile.restart')}}" class="banner" style="display:flex"><input type="hidden" name="csrf" value="{{csrf_token()}}">
-<span>Restart BotTrack to turn phone access {{"on" if phone.on else "off"}}.</span><span style="flex:1"></span><button>Restart now</button></form>
-{% elif phone.on %}<div class="panel"><b>Open this on your phone:</b>
-{% for u in phone_tailscale %}<div style="font:600 17px ui-monospace,Menlo,monospace;margin:8px 0;user-select:all">{{u}}</div>{% else %}
-<p class="bad">Tailscale isn't connected on this Mac yet. Open Tailscale and sign in, then reload this page.</p>{% endfor %}
-{% if phone.allow_lan %}{% for u in phone_lan %}<div class="muted" style="font-family:ui-monospace,Menlo,monospace">On the same Wi-Fi: <span style="user-select:all">{{u}}</span></div>{% endfor %}{% endif %}
-<p class="muted" style="margin:10px 0 0">Signed-in phones stay signed in for 30 days. Changing the password signs every phone out. Setup, Logs and updates can only be opened on this Mac.</p></div>{% endif %}
+<span>Restart BotTrack to {{"allow" if phone.on and phone.allow_lan else "stop"}} Wi-Fi connections.</span><span style="flex:1"></span><button>Restart now</button></form>{% endif %}
+{% if phone.on %}<p class="muted small">How it works: your phone reaches this Mac through a free Cloudflare tunnel, with no account or app on either side.
+Only a phone that scanned this code (or knows the optional password) gets in, and Setup, Logs, bank linking and full card numbers never open on a phone.
+So the Android app can follow the link when it changes, BotTrack posts the current link to ntfy.sh under a private random name only your phones know.</p>
+{% if phone_lan %}<p class="muted">On the same Wi-Fi: {% for u in phone_lan %}<span style="user-select:all;font-family:ui-monospace,Menlo,monospace">{{u}}</span> {% endfor %}</p>{% endif %}
+<script src="{{url_for('static', filename='qrcode.js')}}"></script>
+<script>
+(function () {
+  var box = document.getElementById('phoneqr');
+  function draw(url) {
+    if (!url || box.dataset.drawn === url) return;
+    var qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+    box.innerHTML = qr.createSvgTag({cellSize: 5, margin: 0, scalable: false});
+    box.dataset.drawn = url; box.style.display = '';
+    document.getElementById('phonewait').style.display = 'none';
+  }
+  draw(box.dataset.pair);
+  // Wait for the link to come up (or change), then show its code.
+  setInterval(function () {
+    fetch('{{url_for("mobile.link_status")}}').then(function (r) { return r.json(); }).then(function (l) {
+      document.getElementById('phoneurl').textContent = l.url;
+      if (l.pair_url) draw(l.pair_url);
+    }).catch(function () {});
+  }, 3000);
+})();
+</script>{% endif %}

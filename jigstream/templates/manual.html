@@ -560,31 +560,31 @@ each one agreed with you and how many seconds each email took. You need at least
   "Make default: use that model from now on."]) }}
 <div class="warn">Models you haven't downloaded are fetched first (4B about 2.5 GB, 8B about 5 GB, 14B about 9 GB). Ones you don't keep are removed the next time BotTrack opens.</div>
 
-{% if "mobile.orders" in pages %}<h4 id="setup-phone">Phone access</h4>
+{% if "mobile.login" in pages %}<h4 id="setup-phone">Phone access</h4>
 <p>Lets your iPhone or Android phone see and edit orders, expenses and profiles. See <a href="#phone">Using BotTrack on your phone</a>.</p>
-{{ fig("setup-phone", "Setup → Phone access.", [
-  "Let my phones connect: turn phone access on or off.",
-  "The email and password your phone signs in with (10 or more characters).",
-  "Also allow phones on the same Wi-Fi without Tailscale. Less private, because Wi-Fi traffic isn't encrypted."]) }}{% endif %}
+{{ fig("setup-phone", "Setup → Phone access, with the QR code your phone scans.") }}
+<p>Tick <b>Let my phones connect</b> and press Save; the QR code appears a few seconds later. <b>Forget all phones</b> signs every phone out
+and makes a new code. Under <b>More options</b> you can add an email and password (10 or more characters) for signing in without scanning,
+and let phones on the same Wi-Fi connect directly.</p>{% endif %}
 </section>
 
 {% if "mobile.login" in pages %}<section id="phone" data-title="Using BotTrack on your phone">
 <h2>Using BotTrack on your phone <span class="tag">iPhone &amp; Android</span></h2>
-<p>Your phone talks straight to BotTrack on your Mac, so nothing goes through anyone's server and it's free. It only works while BotTrack
-is open on the Mac.</p>
+<p>Your phone reaches BotTrack on your Mac from anywhere, at home or on mobile data, with nothing to install on the Mac and no account. It's free,
+and it only works while BotTrack is open on the Mac.</p>
 <ol class="steps">
-<li>Install the free <b>Tailscale</b> app on your Mac and your phone, and sign in to both with the same account. It connects them privately, even away from home.</li>
-<li>On the Mac, open <a href="#setup-phone">Setup → Phone access</a>, tick <b>Let my phones connect</b>, choose an email and password, press <span class="ui">Save</span>, then <span class="ui">Restart now</span>. If macOS asks whether BotTrack can accept incoming connections, choose <b>Allow</b>.</li>
-<li>Setup now shows an address. Open it on your phone in Safari (iPhone) or Chrome (Android) and sign in.</li>
-<li>Add it to your home screen. iPhone: tap <b>Share</b> → <b>Add to Home Screen</b>. Android: tap <b>⋮</b> → <b>Add to Home screen</b>, or install the BotTrack Android app and type the address in.</li>
+<li>On the Mac, open <a href="#setup-phone">Setup → Phone access</a>, tick <b>Let my phones connect</b> and press <span class="ui">Save</span>. A QR code appears after a few seconds (the first time takes about a minute).</li>
+<li><b>Android:</b> install the BotTrack app (the download is on the same Setup section), open it and tap <span class="ui">Scan QR code</span>. That's it.</li>
+<li><b>iPhone:</b> point the Camera at the QR code and tap the link. BotTrack opens in Safari already signed in. Tap <b>Share</b> → <b>Add to Home Screen</b>.</li>
 </ol>
-{{ fig("phone-login", "Signing in on the phone.", phone=True) }}
+<p>The link changes each time BotTrack is closed and opened again on the Mac (not when it updates). The Android app finds the new link by itself. On an iPhone, scan the code again.</p>
+{{ fig("phone-login", "Connecting a phone.", phone=True) }}
 <p>Once you're signed in, the phone has the whole app: Dashboard, Orders, Inbox, Expenses, Stock, Training, Products and the rest. The bar at the bottom jumps to the main pages, and <b>More</b> opens the full menu. Long lists show 40 rows at a time, with <b>Show more</b> below, and searching looks through all of them. Anything changed on the Mac or another phone shows up within a few seconds.</p>
 {{ fig("phone-orders", "Orders on the phone.", phone=True) }}
 {{ fig("phone-expenses", "Expenses on the phone.", phone=True) }}
 {{ fig("phone-profiles", "Profiles on the phone.", phone=True) }}
 <p><b>Updates from the phone:</b> when a new version is out, the phone shows <span class="ui">Update now</span>. It updates BotTrack on the Mac, which updates the phone too. More → <b>App &amp; updates</b> also checks for updates and, in the Android app, offers a newer app when there is one.</p>
-<div class="warn">Phones stay signed in for 30 days. Changing the password signs every phone out. Setup, Logs, bank linking, profile exports and full card numbers only open on the Mac, since that's where your passwords and bank access live.</div>
+<div class="warn">Phones stay signed in for 30 days. <b>Forget all phones</b> (or changing the password) signs every phone out. Only a phone that scanned your QR code gets in, so don't share a picture of it. Setup, Logs, bank linking, profile exports and full card numbers only open on the Mac, since that's where your passwords and bank access live.</div>
 </section>{% endif %}
 
 <section id="training" data-title="Training">
@@ -668,7 +668,7 @@ if it shows an error, download the logs and send them over.</p>
 Card numbers are encrypted with a key kept in your Keychain.</p>
 <h4>Does any of this cost money?</h4>
 <p>No. The AI runs on your Mac, Gmail is read with a free app password, tracking links go to the carriers' free pages, and Discord,
-Tailscale and the carrier keys are free.</p>
+the phone link and the carrier keys are free.</p>
 </section>
 </div>
 </div>
