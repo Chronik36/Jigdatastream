@@ -14,6 +14,9 @@ from .training import few_shot
 logger = logging.getLogger("jigstream.sync")
 
 
+RECHECK_DAYS = 60
+
+
 def search_days(config, state):
     """How far back to search one inbox: None means the whole mailbox."""
     if config.full_history:
@@ -22,8 +25,10 @@ def search_days(config, state):
         return config.days_back
     if state and state.get("last_synced_at"):
         last = datetime.fromisoformat(state["last_synced_at"])
-        # Gmail's newer_than works in whole days; overlap by two so nothing slips through.
-        return max(1, (datetime.now(timezone.utc) - last).days + 2)
+        # Gmail's newer_than works in whole days; overlap by two so nothing slips through. Every sync also
+        # looks back RECHECK_DAYS (60), so mail that was missed or labelled late still gets read and a late
+        # cancel (Pokemon Center can cancel a month on) finds its order. Mail already read is skipped cheaply.
+        return max(RECHECK_DAYS, (datetime.now(timezone.utc) - last).days + 2)
     return config.first_sync_days
 
 

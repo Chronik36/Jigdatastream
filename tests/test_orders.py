@@ -248,7 +248,7 @@ class InboxTests(unittest.TestCase):
 
         self.calls.clear()
         self.sync.run_sync(config, store, llm=self.llm, log=lambda *a, **k: None)
-        self.assertEqual(dict(self.calls)["a@gmail.com"], 2)  # later syncs: only recent mail
+        self.assertEqual(dict(self.calls)["a@gmail.com"], 60)  # later syncs: the last two months, seen mail skipped
         self.assertEqual(dict(self.calls)["bad@gmail.com"], 365)  # never synced, still a full year
 
         self.calls.clear()
