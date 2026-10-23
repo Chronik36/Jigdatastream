@@ -7,7 +7,8 @@ the address it is given from its log. Every phone request still has to pair or s
 (jigstream/mobile.py).
 
 The address changes whenever cloudflared starts again, so cloudflared keeps running when BotTrack
-restarts for an update and only stops when BotTrack is closed. Each new address is also posted
+restarts or is closed, so paired phones reconnect by themselves; it stops when phone access is
+turned off. Restarting the Mac gives it a new address. Each new address is also posted
 to a private, randomly named ntfy.sh topic that only paired phones know, so the Android app can
 find the Mac again by itself.
 """
