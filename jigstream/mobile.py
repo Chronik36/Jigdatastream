@@ -46,7 +46,8 @@ failures = {}  # ip -> [times of recent failed sign-ins]
 def settings():
     env = os.environ.get
     return {"on": env("PHONE_ACCESS") == "1", "email": env("PHONE_EMAIL", ""),
-            "password_hash": env("PHONE_PASSWORD_HASH", ""), "allow_lan": env("PHONE_ALLOW_LAN") == "1"}
+            "password_hash": env("PHONE_PASSWORD_HASH", ""), "allow_lan": env("PHONE_ALLOW_LAN") == "1",
+            "lockout": env("PHONE_LOCKOUT", "1") != "0"}
 
 
 def from_this_mac():
@@ -76,6 +77,8 @@ def network_allowed(addr, allow_lan):
 
 
 def _locked(ip):
+    if not settings()["lockout"]:
+        return False  # switched off on Setup, for testing
     now = time.time()
     failures[ip] = [t for t in failures.get(ip, []) if now - t < LOCK_WINDOW]
     return len(failures[ip]) >= LOCK_AFTER
@@ -221,7 +224,9 @@ def save_setup():
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "")
     on = bool(request.form.get("on"))
-    updates = {"PHONE_ALLOW_LAN": "1" if request.form.get("allow_lan") else "0"}
+    updates = {"PHONE_ALLOW_LAN": "1" if request.form.get("allow_lan") else "0",
+               "PHONE_LOCKOUT": "0" if request.form.get("no_lockout") else "1"}
+    failures.clear()  # saving Setup also lifts any current lockout
     if on:
         if "@" not in email:
             flash("Enter the email you'll sign in with on your phone.")
