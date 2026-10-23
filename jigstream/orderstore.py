@@ -4,7 +4,7 @@ are merged into a single order row."""
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .extract import PROGRESS, STATUSES, status_advances
 
@@ -202,17 +202,42 @@ class Store:
             ).fetchone()
             if row:
                 return row
-            # Same order number from a differently-named sender (e.g. "Nike" vs "Nike.com").
+            # Same order number from a differently-named sender ("Nike" vs "Nike.com"), or written
+            # differently ("#112-334" vs "112334").
+            want = _key(result["order_number"])
+            for row in self.db.execute("SELECT * FROM tracked_orders WHERE order_number IS NOT NULL"):
+                if _key(row["order_number"]) == want:
+                    return row
+        if result["tracking_number"]:
             row = self.db.execute(
-                "SELECT * FROM tracked_orders WHERE order_number = ?", (result["order_number"],)
+                "SELECT * FROM tracked_orders WHERE tracking_number = ?", (result["tracking_number"],)
             ).fetchone()
             if row:
                 return row
-        if result["tracking_number"]:
-            return self.db.execute(
-                "SELECT * FROM tracked_orders WHERE tracking_number = ?", (result["tracking_number"],)
-            ).fetchone()
+        if result["shipping_status"] in ("cancelled", "refunded"):
+            return self._order_for_cancel(result, email)
         return None
+
+    def _order_for_cancel(self, result, email):
+        """A cancel email with no order number we already know: the one open order from the same store
+        sent to the same address (the To address) in the two weeks before it. None when that isn't clear."""
+        from .stuck import same_site, when
+        to = result.get("recipient_email")
+        sent = when(email.date)
+        if not to or not sent:
+            return None
+        picks = []
+        for row in self.db.execute("SELECT * FROM tracked_orders WHERE lower(recipient_email) = ?"
+                                   " AND COALESCE(shipping_status, '') NOT IN ('cancelled', 'refunded', 'returned',"
+                                   " 'delivered')", (to.lower(),)):
+            placed = when(row["last_email_date"]) or when(row["order_date"])
+            if same_site(row["retailer"], result["retailer"]) and placed and \
+                    timedelta(0) <= sent - placed <= timedelta(days=14):
+                if result["order_number"] and row["order_number"] and \
+                        _key(row["order_number"]) != _key(result["order_number"]):
+                    continue  # a different order from the same store
+                picks.append(row)
+        return picks[0] if len(picks) == 1 else None
 
     def _save_order(self, email, result):
         row = self._find_order(result, email)
@@ -256,7 +281,10 @@ class Store:
             status = None  # a status you set by hand only changes when you change it
         # Newer emails can cancel or advance an order; an older email arriving late can only
         # move it forward (e.g. a missed "shipped" email after "ordered").
-        if status_advances(old, status) and (newer or status in PROGRESS or old in (None, "unknown")):
+        # A cancel, return or refund is final: an older email read later (the order confirmation after
+        # the cancel) never undoes it.
+        final = old in ("cancelled", "returned", "refunded") and not newer
+        if status_advances(old, status) and not final and (newer or status in PROGRESS or old in (None, "unknown")):
             updates["shipping_status"] = status
         if newer:
             updates["last_email_date"] = email.date
@@ -267,6 +295,54 @@ class Store:
             cols = ", ".join(f"{k} = ?" for k in updates)
             self.db.execute(f"UPDATE tracked_orders SET {cols} WHERE id = ?", (*updates.values(), row["id"]))
             self.db.commit()
+
+    def repair_cancels(self):
+        """Fix orders read before cancel emails were checked by rule: an order whose latest email is a
+        cancel is marked cancelled, and a cancel email saved as its own order is folded into the order it
+        cancels. Statuses you set by hand are left alone. Returns (marked, merged)."""
+        from types import SimpleNamespace
+        from .extract import cancel_signal
+        subjects = {r["message_id"]: (r["subject"] or "", r["date"] or "") for r in
+                    self.db.execute("SELECT message_id, subject, date FROM emails WHERE kind = 'order'")}
+        marked = merged = 0
+        for row in self.db.execute("SELECT * FROM tracked_orders WHERE COALESCE(status_manual, 0) = 0").fetchall():
+            ids = [i for i in json.loads(row["message_ids"] or "[]") if i in subjects]
+            if not ids:
+                continue
+            latest = max(ids, key=lambda i: subjects[i][1])
+            signal = cancel_signal(SimpleNamespace(subject=subjects[latest][0], body=""))
+            status = row["shipping_status"]
+            if signal == "cancelled" and status != "cancelled":
+                self.db.execute("UPDATE tracked_orders SET shipping_status = 'cancelled' WHERE id = ?", (row["id"],))
+                marked += 1
+                status = "cancelled"
+            if status != "cancelled" or len(ids) != 1:
+                continue
+            # A lone cancel email: does it belong to an order we already have?
+            result = {"order_number": row["order_number"], "retailer": row["retailer"],
+                      "recipient_email": row["recipient_email"]}
+            email = SimpleNamespace(date=subjects[latest][1])
+            target = None
+            if row["order_number"]:
+                for other in self.db.execute("SELECT * FROM tracked_orders WHERE id != ? AND order_number IS NOT NULL",
+                                             (row["id"],)):
+                    if _key(other["order_number"]) == _key(row["order_number"]):
+                        target = other
+                        break
+            if target is None:
+                target = self._order_for_cancel(result, email)
+                target = target if target is not None and target["id"] != row["id"] else None
+            if target is None:
+                continue
+            ids = json.loads(target["message_ids"] or "[]") + [i for i in json.loads(row["message_ids"] or "[]")]
+            self.db.execute("DELETE FROM tracked_orders WHERE id = ?", (row["id"],))
+            self.db.execute("UPDATE tracked_orders SET message_ids = ?, shipping_status = CASE WHEN"
+                            " COALESCE(status_manual, 0) = 1 THEN shipping_status ELSE 'cancelled' END,"
+                            " last_email_date = MAX(COALESCE(last_email_date, ''), ?) WHERE id = ?",
+                            (json.dumps(list(dict.fromkeys(ids))), subjects[latest][1], target["id"]))
+            merged += 1
+        self.db.commit()
+        return marked, merged
 
     def set_status_manually(self, order_id, status):
         """Record a correction from the Orders page. Returns the label id."""
