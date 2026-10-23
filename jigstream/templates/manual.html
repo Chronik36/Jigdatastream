@@ -138,7 +138,7 @@ found by matching your checkouts against cancellation emails.</p>
 same order are merged into one row, and the newest email decides the status.</p>
 {{ fig("orders", "The Orders page.", [
   "Totals: number of orders, total spend, orders on the way, and orders delivered.",
-  "Sync now: read new mail from every inbox (and Discord). BotTrack also syncs by itself every 4 hours while it's open.",
+  "Sync now: read new mail from every inbox (and Discord). BotTrack also syncs by itself every 4 hours while it's open. While it runs, Stop sync ends it after the email it's reading; the next Sync now carries on from there.",
   "Backfill whole inboxes: search each entire mailbox instead of just the last year. It can take hours; you can stop and run it again without repeating work.",
   "Search: type a retailer, item, tracking number or address to narrow the list as you type.",
   "Status filter: show only one status, for example just Out for delivery.",
@@ -563,7 +563,7 @@ store-availability check. Quantities from Target are an estimate and can be off 
 <h4 id="setup-updates">Updates</h4>
 <p>BotTrack checks for a new version by itself every few hours. When one is ready, an orange dot appears on <b>Setup</b> in the sidebar,
 and an <b>Update ready</b> chip and a green bar appear at the top of every page.</p>
-{{ fig("update-banner", "When an update is ready.", ["Update ready: click to open Setup → Updates.", "Update now: installs the new version and restarts BotTrack."]) }}
+{{ fig("update-banner", "When an update is ready.", ["Update ready: click to open Setup → Updates.", "Update now: installs the new version and restarts BotTrack. A sync that's running pauses and carries on by itself after the restart."]) }}
 {{ fig("setup-updates", "Setup → Updates.", [
   "Check for update: look right now instead of waiting.",
   "Update now: install the new version.",
