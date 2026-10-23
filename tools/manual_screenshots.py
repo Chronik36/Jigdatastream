@@ -147,6 +147,9 @@ def seed(path):
     if has_module("recurring"):
         from jigstream import recurring
         recurring.track(c, "Vultr", "monthly", category="server")
+    if has_module("budget"):
+        from jigstream import budget
+        budget.set_budgets(c, {"proxy": 150, "bot": 100, "cook_group": 50, "server": 40, "captcha": 25})
     logs = WORK / "logs"
     logs.mkdir(exist_ok=True)
     (logs / "app.log").write_text(
@@ -374,6 +377,9 @@ shot("expense-ledger", "/expenses/ledger", [(".ftabs", 1), ("#mf", 2), ("main > 
                                             ("select[name=method]", 5)], viewport={"width": 1360, "height": 1420})
 shot("expense-recurring", "/expenses/recurring", [(".stats", 1), (".idea", 2), ("table", 3), (".cal", 4)],
      viewport={"width": 1360, "height": 1300})
+shot("expense-budget", "/expenses/budget", [(".mnav b", 1), (".stats", 2), (".brow", 3), (".chart", 4),
+                                            ("button[onclick='budgetdlg.showModal()']", 5)],
+     viewport={"width": 1360, "height": 1000})
 shot("checkouts", "/checkouts", [("main > p", 1), ("tbody tr:nth-child(3) td:nth-child(3), tr:nth-child(3) td:nth-child(3)", 2),
                                  ("tr:nth-child(3) td:last-child", 3)])
 shot("profiles", "/profiles", [(".gside", 1), ("button[onclick='openProfile()']", 2), ("button[onclick*=exportdlg]", 3),

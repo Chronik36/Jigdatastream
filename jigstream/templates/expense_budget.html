@@ -1,0 +1,69 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.xgrid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:1100px){.xgrid{grid-template-columns:minmax(0,1fr)}}
+.panel h4{margin:0 0 12px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}.panel h4 .sp{flex:1}
+.mnav{display:flex;align-items:center;gap:10px;margin-bottom:16px}.mnav b{font-size:16px;min-width:150px;text-align:center}
+.mnav a{padding:5px 11px;border:1px solid var(--line-2);border-radius:9px;color:var(--muted)}.mnav a:hover{color:var(--accent);border-color:var(--accent)}
+.mnav .sp{flex:1}
+.brow{display:grid;grid-template-columns:140px minmax(0,1fr) 190px;gap:14px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.brow:last-child{border:0}
+.bar2{position:relative;height:10px;border-radius:999px;background:var(--line);overflow:hidden}
+.bar2 span{position:absolute;top:0;bottom:0;left:0;border-radius:inherit}.bar2 .rn{opacity:.35}
+.brow .v{text-align:right;font-variant-numeric:tabular-nums;font-size:13px}.brow .v small{display:block;color:var(--muted);font-size:12px}
+.over{color:var(--red)}.near{color:var(--orange)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px}
+@media (max-width:640px){.brow{grid-template-columns:1fr}.brow .v{text-align:left}}
+.chart text{fill:var(--muted);font:11px Inter,sans-serif}
+.mini td{padding:9px 12px}td.num{white-space:nowrap}
+.bgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px}.bgrid label{font-size:13px}
+.bgrid input{width:100%}
+</style>
+{% include "_expense_tabs.html" %}
+<div class="mnav"><a href="?month={{prev}}" aria-label="Previous month">←</a><b>{{m.name}}</b>{% if next %}<a href="?month={{next}}" aria-label="Next month">→</a>{% endif %}
+<span class="sp"></span><a href="/expenses/export.csv?month={{m.month}}">Export {{m.name}} (CSV)</a><a href="/expenses/export.csv">Export all</a>
+<button type="button" onclick="budgetdlg.showModal()">Edit budgets</button></div>
+
+<div class="stats">
+<div class="card">Budget for {{m.name.split()[0]}} <b>{{m.budget|money if m.budget else "Not set"}}</b></div>
+<div class="card{{' bad' if m.state == 'over'}}">Spent {{"so far" if m.current else ""}} <b>{{m.spent|money}}</b></div>
+{% if m.current %}<div class="card">Still to renew this month <b>{{m.to_renew|money}}</b></div>
+<div class="card{{' bad' if m.state == 'over'}}">Projected month end <b>{{m.projected|money}}</b></div>
+{% elif m.budget %}<div class="card{{' bad' if m.spent > m.budget}}">{{"Over budget" if m.spent > m.budget else "Under budget"}} <b>{{(m.spent - m.budget)|abs|money}}</b></div>{% endif %}
+</div>
+{% if m.current %}<p class="muted">Day {{m.day}} of {{m.days}} ({{"%.0f"|format(m.day / m.days * 100)}}% of the month).{% if m.budget %} {% if m.left >= 0 %}{{m.left|money}} left after the renewals still due{% else %}{{(-m.left)|money}} over once the renewals still due are paid{% endif %}.{% endif %}</p>{% endif %}
+
+<div class="xgrid">
+<div class="panel"><h4>By category<span class="sp"></span><span class="muted" style="font-weight:400">{% if m.current %}lighter bar = renewals still due{% endif %}</span></h4>
+{% for r in m.rows %}<div class="brow"><span><span class="dot" style="background:{{r.color}}"></span>{{r.category|replace("_", " ")|capitalize}}</span>
+{% set cap = [r.budget, r.projected]|max %}<div class="bar2" title="{{r.spent|money}} spent{% if r.to_renew %}, {{r.to_renew|money}} to renew{% endif %}{% if r.budget %} of {{r.budget|money}}{% endif %}">
+{% if cap %}<span class="rn" style="width:{{(r.projected / cap * 100)|round(1)}}%;background:{{r.color}}"></span><span style="width:{{(r.spent / cap * 100)|round(1)}}%;background:{{'var(--red)' if r.state == 'over' else r.color}}"></span>{% endif %}
+{% if r.budget and r.projected > r.budget %}<i style="position:absolute;top:-2px;bottom:-2px;left:{{(r.budget / cap * 100)|round(1)}}%;width:2px;background:var(--text)"></i>{% endif %}</div>
+<span class="v">{{r.spent|money}}{% if r.budget %} of {{r.budget|money}}{% endif %}
+<small class="{{r.state}}">{% if r.budget %}{{"%.0f"|format(r.pct)}}%{% if r.state == "over" %} · over{% elif r.state == "near" %} · close{% endif %}{% else %}no budget{% endif %}{% if r.to_renew %} · +{{r.to_renew|money}} due{% endif %}</small></span></div>
+{% else %}<p class="muted">Nothing spent this month and no budgets yet. Press Edit budgets to set one per category.</p>{% endfor %}
+</div>
+
+<div class="panel"><h4>Last 12 months<span class="sp"></span><span class="muted" style="font-weight:400">bars: spent · line: budget</span></h4>
+<div style="overflow-x:auto"><svg class="chart" viewBox="0 0 {{hist.width}} {{hist.height}}" width="100%" style="min-width:360px" role="img" aria-label="Monthly botting spend against budget">
+{% for g in hist.grid %}<line x1="{{hist.left}}" x2="{{hist.width - hist.right}}" y1="{{g.y}}" y2="{{g.y}}" stroke="{{'#2c3d7c' if loop.first else '#1f2d63'}}"/>
+<text x="{{hist.left - 8}}" y="{{g.y + 4}}" text-anchor="end">${{"{:,.0f}".format(g.v)}}</text>{% endfor %}
+{% for r in hist.rows %}<a href="?month={{r.month}}"><g><title>{{r.name}}: {{r.spent|money}} spent{% if r.budget %} of {{r.budget|money}}{% endif %}</title>
+<rect x="{{r.x}}" y="{{r.y}}" width="{{r.w}}" height="{{r.h}}" rx="2" fill="{{r.color}}" opacity="{{1 if r.month == m.month else 0.7}}"/>
+{% if r.by is not none %}<line x1="{{r.bx1}}" x2="{{r.bx2}}" y1="{{r.by}}" y2="{{r.by}}" stroke="#e8eeff" stroke-width="1.5" stroke-dasharray="4 3"/>{% endif %}
+<text x="{{r.x + r.w / 2}}" y="{{hist.height - 8}}" text-anchor="middle"{% if r.month == m.month %} style="fill:var(--text)"{% endif %}>{{r.label}}</text></g></a>{% endfor %}
+</svg></div>
+<table class="mini"><thead><tr><th>Month</th><th class="num">Spent</th><th class="num">Budget</th><th class="num">Difference</th></tr></thead><tbody>
+{% for r in hist.rows|reverse %}{% if r.spent or r.budget %}<tr><td><a href="?month={{r.month}}">{{r.name}}</a></td><td class="num">{{r.spent|money}}</td><td class="num">{{r.budget|money if r.budget else "-"}}</td>
+<td class="num {{'over' if r.diff and r.diff > 0 else 'ok'}}">{% if r.diff is not none %}{{"+" if r.diff > 0 else "−"}}{{r.diff|abs|money}}{% else %}-{% endif %}</td></tr>{% endif %}{% endfor %}
+</tbody></table></div>
+</div>
+
+<dialog id="budgetdlg"><div class="dh"><h3>Monthly budgets</h3><button class="x" type="button" onclick="budgetdlg.close()">×</button></div>
+<form method="post" action="/expenses/budget" class="db" style="display:block;margin:0">
+<p class="muted" style="font-size:13px">How much you want to spend each month, per category. Leave one empty for no budget. Changes apply from this month on; earlier months keep the budgets they had.</p>
+<div class="bgrid">{% for c in categories %}<label>{{c|replace("_", " ")|capitalize}}<br><input name="b_{{c}}" inputmode="decimal" placeholder="No budget" value="{{'%.2f'|format(plan[c]) if plan.get(c) else ''}}"></label>{% endfor %}</div>
+<button>Save budgets</button></form></dialog>
+<script>const budgetdlg = document.getElementById('budgetdlg');</script>
+{% include "_expense_dialog.html" %}
+{% endblock %}
