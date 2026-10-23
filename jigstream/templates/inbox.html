@@ -6,7 +6,7 @@
 .chip.on,.chip:hover{color:var(--accent);border-color:rgba(61,216,239,.5);background:var(--accent-soft)}
 .mlist{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
 .mrow{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer}
-.mrow:last-child{border-bottom:0}.mrow:hover{background:rgba(61,216,239,.04)}.mrow.sel{background:var(--accent-soft)}
+.mrow:last-child{border-bottom:0}.mrow[data-id]{content-visibility:auto;contain-intrinsic-size:auto 64px}.mrow:hover{background:rgba(61,216,239,.04)}.mrow.sel{background:var(--accent-soft)}
 .mrow .from{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mrow .subj{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mrow .meta{text-align:right;font-size:12px;color:var(--muted);white-space:nowrap}
@@ -68,12 +68,36 @@ function wire(row) { row.addEventListener('click', () => {
       reader.append(h, meta, q, body);
     }).catch(() => reader.innerHTML = '<p class="bad">Couldn\'t open that email.</p>');
 }); }
-// The list loads after the page shows, since searching every inbox can take a while.
+// The list loads after the page shows, since searching every inbox can take a while. More emails load
+// as you scroll to the bottom: each page asks only for the emails after the last one shown.
+const list = document.querySelector('.mlist');
+function rowsUrl(after) {
+  const p = new URLSearchParams(location.search);
+  if (after) p.set('after', after);
+  return '/inbox/rows?' + p.toString();
+}
+function append(html, replacing) {
+  const t = document.createElement('template'); t.innerHTML = html;
+  t.content.querySelectorAll('.mrow[data-id]').forEach(wire);
+  const more = t.content.querySelector('.mrow.more');
+  replacing.replaceWith(t.content);
+  if (more) watcher.observe(more);
+}
+const watcher = new IntersectionObserver(entries => entries.forEach(e => {
+  if (!e.isIntersecting || e.target.dataset.busy) return;
+  const el = e.target; el.dataset.busy = 1; watcher.unobserve(el);
+  fetch(rowsUrl(el.dataset.next)).then(r => { if (!r.ok) throw r; return r.text(); }).then(html => append(html, el))
+    .catch(() => {
+      delete el.dataset.busy; el.style.cursor = 'pointer';
+      el.children[1].textContent = 'Couldn\'t load more. Click to try again.';
+      el.onclick = () => { el.onclick = null; el.children[1].textContent = 'Loading more…'; watcher.observe(el); };
+    });
+}), {rootMargin: '800px'});
 (function load() {
-  const list = document.querySelector('.mlist'), started = Date.now();
+  const started = Date.now();
   const tick = setInterval(() => { const el = document.getElementById('secs'); if (el) el.textContent = Math.round((Date.now() - started) / 1000) + 's'; }, 1000);
-  fetch('/inbox/rows' + location.search).then(r => r.text()).then(html => {
-    clearInterval(tick); list.innerHTML = html; list.querySelectorAll('.mrow[data-id]').forEach(wire);
+  fetch(rowsUrl()).then(r => r.text()).then(html => {
+    clearInterval(tick); append(html, document.getElementById('loading'));
   }).catch(() => { clearInterval(tick); list.innerHTML = '<div class="mrow"><span></span><span class="bad">Couldn\'t load your inboxes. Reload to try again.</span><span></span></div>'; });
 })();
 </script>
