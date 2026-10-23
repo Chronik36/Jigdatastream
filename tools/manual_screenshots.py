@@ -135,6 +135,16 @@ def seed(path):
     emailbook.add(c, "Gmail dots", [f"alex.rivera+{n}@example.com" for n in range(1, 7)])
     emailbook.add(c, "Catchall", [f"drop{n}@demo-catchall.com" for n in range(1, 5)])
     c.commit()
+    if has_module("keywordrules"):  # corrections made on the Keywords page
+        from jigstream import keywordrules
+        keywordrules.ensure(c)
+        keywordrules.save_rule(c, "demo-sneakers.example", "jordan", "-", "shoes", "remove",
+                               "https://demo-sneakers.example/air-jordan-1-chicago", "Air Jordan 1 Retro High OG 'Chicago'")
+        keywordrules.save_rule(c, "demo-sneakers.example", "jordan", "+", "og", "add",
+                               "https://demo-sneakers.example/air-jordan-1-chicago", "Air Jordan 1 Retro High OG 'Chicago'")
+        from jigstream import keywords
+        keywordrules.save_example(c, keywords.AI_SYSTEM, {"name": "Air Jordan 1 Low 'Bred'", "host": "demo-sneakers.example"},
+                                  ["air", "jordan", "1", "low", "bred"], ["mid", "high", "gs", "ps", "td"])
     if has_module("bank"):  # the Bank page, once it's in the app
         from jigstream import bank
         rows = ["Transaction Date,Description,Amount", "10/18/2026,NIKE.COM ORDER,-360.00",
@@ -494,11 +504,16 @@ shot("bank", "/bank", [(".stats", 1), ("form[action='/bank/import']", 2), ("a[hr
                        (".tabs", 4), ("tbody tr td:nth-child(5)", 5), ("tbody tr .acts", 6)],
      viewport={"width": 1360, "height": 1200}, needs=has_bank)
 shot("bank-plaid", "/bank/plaid", [(".panel:has(select[name=env])", 1), ("select[name=env]", 2)], needs=has_bank)
-shot("keywords", "/keywords", [("input[name=url]", 1), ("label:has(> input[name=ai])", 2), ("#kwline", 3),
-                               ("table.kw-table", 4), (".kw-grid .panel", 5), (".kw-grid .panel + .panel", 6),
-                               (".kw-grid .panel + .panel + .panel", 7)],
+KEYWORD_MARKS = ([("input[name=url]", 1), ("label:has(> input[name=ai])", 2), ("#kwline", 3), (".kw-add", 4),
+                  ("table:has(#kwpos)", 5), ("#kwneg .kw-x", 6), ("#kwremoved", 7)] if has_module("keywordrules") else
+                 [("input[name=url]", 1), ("label:has(> input[name=ai])", 2), ("#kwline", 3), ("table.kw-table", 4),
+                  (".kw-grid .panel", 5), (".kw-grid .panel + .panel", 6), (".kw-grid .panel + .panel + .panel", 7)])
+shot("keywords", "/keywords", KEYWORD_MARKS,
      js="document.querySelector('input[name=url]').value = 'https://demo-sneakers.example/air-jordan-1-chicago';"
-        "document.querySelector('form.kw-form').submit()", viewport={"width": 1360, "height": 1250}, needs=lambda: has_module("keywords"))
+        "document.querySelector('form.kw-form').submit()",
+     viewport={"width": 1360, "height": 1950 if has_module("keywordrules") else 1250}, needs=lambda: has_module("keywords"))
+shot("keyword-rules", "/keywords", [("#rules table", 1), ("#rules .kw-x", 2)], clip_to="#rules",
+     needs=lambda: has_module("keywordrules"))
 shot("stock", "/stock?run=1&retailer=target&product=https%3A%2F%2Fwww.target.com%2Fp%2F-%2FA-89238122&zip=78701&radius=25",
      [("input[name=product]", 1), ("select[name=retailer]", 2), ("input[name=zip]", 3), ("select[name=radius]", 4),
       ("table.st-table", 5), ("#recheck", 6), ("form[action='/stock/bestbuy-key']", 7)],
