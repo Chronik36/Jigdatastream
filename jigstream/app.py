@@ -9,9 +9,9 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import (analysis, bankpages, browsertrack, carriers, db, discord, emailbook, engines, expensepages, export, inbox,
-               keywords, logs, manual, mobile, parsers, products, profilebook, profilematch, profiles, recurring, stock,
-               stuck, tasks, training, updater, wallet)
+from . import (analysis, bankpages, browsertrack, carriers, db, discord, drop, emailbook, engines, expensepages, export,
+               inbox, keywords, logs, manual, mobile, parsers, products, profilebook, profilematch, profiles, recurring,
+               stock, stuck, tasks, training, updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
@@ -165,6 +165,12 @@ def create_app(db_path=None):
                 "cancelled": ("cancelled",)}.get(show)
         return render_template("stuck.html", rows=[r for r in rows if keep is None or r["state"] in keep],
                                counts=stuck.counts(rows), show=show)
+
+    @app.get("/drop")
+    def drop_page():
+        site, sort = request.args.get("site") or None, request.args.get("sort", "proxy")
+        sort = sort if sort in drop.SORTS else "proxy"
+        return render_template("drop.html", r=drop.report(Store(con()).db, site, sort), site=site, sort=sort)
 
     @app.get("/orders")
     def orders():
