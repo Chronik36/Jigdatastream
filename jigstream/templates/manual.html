@@ -134,7 +134,7 @@ of the page. On a narrow window the sidebar hides behind the <b>☰</b> menu but
 <div class="where">Sidebar → Tracking → <b>Imports</b></div>
 <p>Files from your bots. Email, Discord and linked banks come in by themselves, or right away with <span class="ui">Sync everything</span> at the top of every page.</p>
 {{ fig("imports", "The Imports page.", [
-  "Import profiles: type the bot's name, pick its profile export (.json or .csv), press Import profiles.",
+  "Import profiles: pick the retail site they're for (or Other... to type one), give them a group name, type the bot's name, pick its profile export (.json or .csv), press Import profiles. On Profiles they're listed under that site, then group.",
   "Import webhooks: pick the webhook files your bots exported (Valor, Stellar, Hayha, Polar). Not needed if Discord is connected.",
   "Failing profiles: each profile's success rate, the problems found in its address, and a cleaned-up address to try instead."]) }}
 <div class="tip">Under <i>Issues</i>, look for things like a ZIP code that's too short or billing and shipping that don't match. Those are the usual reasons a card is declined.</div>
@@ -397,6 +397,7 @@ one turns it <b>Cancelled</b>. Each drop date on By date also shows what the car
 <h2>Profiles</h2>
 <div class="where">Sidebar → Bot tools → <b>Profiles</b></div>
 <p>Your bot profiles as cards you can sort into groups, edit, copy, fill in bulk, and export back into any bot's file layout.</p>
+<p>Profiles imported for a retail site are listed under <b>Retail sites</b> in the left column: click a site to see its profiles, or open it to pick one of its groups. <span class="ui">Clear all profiles</span> at the top deletes every profile after asking if you're sure (your cards and orders are kept), so you can import them again by site.</p>
 {{ fig("profiles", "The Profiles page.", [
   "Groups: click a group to see only its profiles. Type a name and press Add to make a new one. With a group open you can rename or delete it (its profiles are kept).",
   "+ Create profile: opens the profile window.",
