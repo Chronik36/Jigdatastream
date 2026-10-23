@@ -288,5 +288,14 @@ class InboxTests(unittest.TestCase):
         self.assertEqual((len(store.orders()), len(store.expenses())), (1, 1))  # nothing read twice
 
 
+
+def test_spend_counts_only_orders_that_stuck():
+    store = Store(db.connect(":memory:"))
+    orders = [{"total": 100, "shipping_status": "delivered"}, {"total": 250, "shipping_status": "cancelled"},
+              {"total": 40, "shipping_status": "refunded"}, {"total": 60, "shipping_status": None},
+              {"total": 999, "shipping_status": "not_an_order"}]
+    st = store.stats(orders=orders, expenses=[])
+    assert st["order_total"] == 160 and st["not_spent"] == 3 and st["order_count"] == 5
+
 if __name__ == "__main__":
     unittest.main()

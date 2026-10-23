@@ -435,8 +435,10 @@ shot("nav", "/orders", [(".side a.it[href='/']", 1), (".side a[href='/orders']",
      tight=True, clip={"x": 0, "y": 0, "width": 560, "height": 860})
 shot("ai-banner", "/orders", [("#aibar", 1)], server=ai_loading, reset=lambda app: app.config.pop("AI_STATE", None), clip=TOP)
 shot("update-banner", "/orders", [(".top .chip.upd", 1), (".banner button", 2)], server=update_ready, reset=update_reset, clip=TOP)
-shot("dashboard", "/", [(".stats", 1), ("form[action='/upload/webhooks']", 2), ("form[action='/upload/profiles']", 3),
-                        ("main > table", 4)], full=True)
+shot("dashboard", "/", [(".stats", 1), (".dgrid .panel:nth-child(1)", 2), (".dgrid .panel:nth-child(2)", 3),
+                        (".dgrid .panel:nth-child(3)", 4)], full=True)
+shot("imports", "/imports", [("form[action='/upload/profiles']", 1), ("form[action='/upload/webhooks']", 2),
+                             ("main > table", 3)], full=True)
 shot("orders", "/orders", [(".stats", 1), ("form[action='/sync/gmail'] button", 2),
                            ("form.ghost[action='/sync/gmail'] button", 3), ("#q", 4), ("#f", 5),
                            ("tbody tr:nth-child(2) td:nth-child(5)", 6), ("tbody tr:nth-child(2) a.track", 7)])

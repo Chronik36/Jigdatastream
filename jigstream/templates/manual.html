@@ -88,7 +88,7 @@ You can look around and set things up while it downloads; syncing starts by itse
 <ol class="steps">
 <li>Go to <a href="#setup-inboxes">Setup → Gmail inboxes</a> and add each Gmail inbox you use for orders.</li>
 <li>If your bots post checkouts in Discord, connect them on <a href="#setup-discord">Setup → Discord</a>.</li>
-<li>Import your bots' profile exports on the <a href="#dashboard">Dashboard</a>, or create profiles on the <a href="#profiles">Profiles</a> page.</li>
+<li>Import your bots' profile exports on <a href="#imports">Imports</a>, or create profiles on the <a href="#profiles">Profiles</a> page.</li>
 <li>Open <a href="#orders">Orders</a> and press <span class="ui">Sync now</span>. The first sync reads the last year of mail and can take a while.</li>
 <li>When something looks wrong, fix it. Correcting a status on Orders or labelling an email on <a href="#inbox">Inbox</a> teaches the AI.</li>
 </ol>
@@ -99,7 +99,7 @@ You can look around and set things up while it downloads; syncing starts by itse
 <p>Every page is one click away in the sidebar on the left. The page you're on is highlighted, and its name is shown at the top
 of the page. On a narrow window the sidebar hides behind the <b>☰</b> menu button at the top left.</p>
 {{ fig("nav", "The sidebar.", [
-  "Dashboard: checkout totals, imports, and profiles that keep failing.",
+  "Dashboard: the year's spend, orders and checkouts at a glance.",
   "Orders: every order found in your email, with tracking and status.",
   "Inbox: read your Gmail inside BotTrack and teach the AI.",
   "Expenses: what you spend on botting (proxies, bots, groups, servers).",
@@ -120,14 +120,23 @@ of the page. On a narrow window the sidebar hides behind the <b>☰</b> menu but
 <section id="dashboard" data-title="Dashboard">
 <h2>Dashboard</h2>
 <div class="where">Sidebar → Overview → <b>Dashboard</b></div>
-<p>The Dashboard is about your bots' checkouts: how many worked, which sites and bots do best, and which profiles keep failing and why.</p>
+<p>The Dashboard is your year at a glance: what you really spent, the orders that stuck, and how your bots' checkouts went. Pick another year at the top right.</p>
 {{ fig("dashboard", "The Dashboard.", [
-  "Totals: all checkouts, successful ones, and ones that weren't (declined or failed).",
-  "Import webhook JSON: pick the webhook files your bots exported (Valor, Stellar, Hayha, Polar). Not needed if Discord is connected.",
-  "Import profiles: type the bot's name, pick its profile export (.json or .csv), press Import.",
+  "Totals for the year: money spent (orders that stuck plus botting expenses; cancelled, refunded and returned orders aren't counted), orders, successful checkouts, and failures (declined, failed, or cancelled later).",
+  "Checkouts by site: green is good, orange was cancelled later, red declined or failed. Click a site to open its drops.",
+  "Checkouts by bot, the same way.",
+  "Botting expenses for the year by category."]) }}
+<div class="tip">Profile imports, webhook files and the failing-profiles report are on <a href="#imports">Imports</a>.</div>
+</section>
+
+<section id="imports" data-title="Imports">
+<h2>Imports</h2>
+<div class="where">Sidebar → Tracking → <b>Imports</b></div>
+<p>Files from your bots. Email, Discord and linked banks come in by themselves, or right away with <span class="ui">Sync everything</span> at the top of every page.</p>
+{{ fig("imports", "The Imports page.", [
+  "Import profiles: type the bot's name, pick its profile export (.json or .csv), press Import profiles.",
+  "Import webhooks: pick the webhook files your bots exported (Valor, Stellar, Hayha, Polar). Not needed if Discord is connected.",
   "Failing profiles: each profile's success rate, the problems found in its address, and a cleaned-up address to try instead."]) }}
-<p>Below that are the same totals <b>by site</b> and <b>by bot</b>, and a list of orders a retailer <b>cancelled after the bot said "success"</b>,
-found by matching your checkouts against cancellation emails.</p>
 <div class="tip">Under <i>Issues</i>, look for things like a ZIP code that's too short or billing and shipping that don't match. Those are the usual reasons a card is declined.</div>
 </section>
 
@@ -301,7 +310,7 @@ Your Plaid keys and bank link are stored encrypted on this Mac.</p>
 <h2>Checkouts</h2>
 <div class="where">Sidebar → Bot tools → Drops → <b>Every webhook</b></div>
 <p>Every checkout your bots reported, newest first, from Discord (see <a href="#setup-discord">Setup → Discord</a>) or from webhook JSON
-imported on the Dashboard.</p>
+imported on <a href="#imports">Imports</a>.</p>
 {{ fig("checkouts", "The Checkouts page.", [
   "Show only successes, declines, failures, or all.",
   "Status: green for success, red for anything else.",
