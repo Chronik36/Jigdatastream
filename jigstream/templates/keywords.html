@@ -3,8 +3,8 @@
 .kw-form{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 18px}
 .kw-form input[name=url]{flex:1;min-width:260px;margin:0}
 .kw-form label{color:var(--muted);display:flex;align-items:center;gap:6px}
-.kw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
-.kw-grid .panel{margin:0}
+.kw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:16px}
+.kw-grid .panel{margin:0;min-width:0}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:999px;padding:3px 10px;font-size:13px}
 .chip.key{border-color:rgba(61,216,239,.4);color:var(--accent-2)}
@@ -17,7 +17,8 @@
 .kw-table td,.kw-table th{padding:7px 12px}
 .kw-table{margin:0}
 .kw-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;word-break:break-all}
-dl.kw-meta{display:grid;grid-template-columns:120px 1fr;gap:6px 12px;margin:0}dl.kw-meta dt{color:var(--muted)}dl.kw-meta dd{margin:0}
+dl.kw-meta{display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 12px;margin:0}dl.kw-meta dt{color:var(--muted)}dl.kw-meta dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.kw-table td{overflow-wrap:anywhere}
 .star{color:var(--orange)}
 </style>
 <h2>Keyword finder</h2>
