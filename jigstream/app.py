@@ -81,6 +81,12 @@ def create_app(db_path=None):
                 try:
                     counts = run_sync(config, Store(con()), log=lambda *a, **k: None, progress=progress)
                     parts.append(f"Gmail{' (whole mailbox)' if full else ''}: {summary(counts)}")
+                    try:
+                        marked, merged = Store(con()).repair_cancels()
+                        if marked or merged:
+                            logger.info("cancel emails: %d order(s) marked cancelled, %d merged", marked, merged)
+                    except Exception:
+                        logger.exception("checking cancel emails failed")
                     profilematch.match_orders(con())
                     progress("Finding missing expense amounts...")
                     try:

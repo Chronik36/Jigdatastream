@@ -47,6 +47,8 @@ Decide "kind":
 - "sale": you SOLD something on a resale marketplace or selling app ({", ".join(SELL_PLATFORMS)}, or any other) and are being paid: "you sold", "you made the sale", "your item sold", "payout sent", "you've been paid", "cash out". Buying on eBay or similar is an "order", not a sale.
 - "other": anything else: marketing, newsletters, account notices, receipts unrelated to retail or botting. Payment reminders, unpaid or upcoming invoices and "your plan will renew" notices are "other": only money actually charged counts.
 
+For orders, a cancellation email ("your order was cancelled", "we couldn't process your order") is kind "order" with shipping_status "cancelled", and its order_number is the order it cancels. Copy the order number exactly as written.
+
 For botting expenses, "vendor" is the business that sold the product, not the payment processor. If the receipt comes from Stripe, PayPal, Paddle, Sellix, Shopify, Whop, Gumroad or similar, use the product's or community's own name shown in the receipt (for whop.com, the community or product name). Only use the processor's name if no other seller is named.
 
 JSON keys (use null when unknown, never invent values):
@@ -208,6 +210,44 @@ def _str(value):
     return None if s.lower() in ("", "null", "none", "n/a", "unknown") else s
 
 
+# Cancel and refund emails, read from the email itself so the model's guess can't miss them. A store's
+# "cancel anytime" or "how to cancel" footer, or one item of several cancelled, isn't a cancelled order.
+CANCEL_SUBJECT = re.compile(r"\bcancel+(ed|ation)\b|\bcancel+ing your order\b|\bwe('ve| have) cancel+ed\b|"
+                            r"\b(order|purchase) (could ?n.t|could not|was unable to|can.t|cannot) be (processed|fulfilled|completed)\b",
+                            re.I)
+CANCEL_BODY = re.compile(r"\b(your |this )?(order|purchase)( #?\s?[\w-]+)? (has been|was|is|got|have been) cancel+ed\b|"
+                         r"\bwe('ve| have) cancel+ed your (order|purchase)\b|\border cancel+ation\b|"
+                         r"\bcancel+ation (confirmation|notice)\b|\byour order is cancel+ed\b", re.I)
+PARTIAL_CANCEL = re.compile(r"\b(some|one|an?) (of (your|the) )?items?\b[^.\n]{0,40}\bcancel|\bpartial(ly)? cancel|"
+                            r"\bitems? (were|was|have been|has been) cancel+ed\b", re.I)
+NOT_CANCEL = re.compile(r"\bcancel+(ed)? (any ?time|at any time)\b|\b(how|want|wish|like|need) to cancel\b|"
+                        r"\bcancel your (subscription|membership)\b|\brequest(ed)? (a |to )?cancel", re.I)
+REFUND_SUBJECT = re.compile(r"\brefund(ed| issued| processed| confirmation| complete| on the way)?\b", re.I)
+ORDER_NUMBER = re.compile(r"\border\s*(?:number|no\.?|num|id)?\s*[:#]?\s*#?\s*([A-Z0-9][A-Z0-9-]{4,})\b", re.I)
+
+
+def cancel_signal(email):
+    """'cancelled', 'refunded' or None, from what the email itself says (subject first, then its opening)."""
+    subject, opening = email.subject or "", (email.body or "")[:1500]
+    if PARTIAL_CANCEL.search(subject) or (not CANCEL_SUBJECT.search(subject) and PARTIAL_CANCEL.search(opening)):
+        return None
+    if CANCEL_SUBJECT.search(subject) and not NOT_CANCEL.search(subject):
+        return "cancelled"
+    if CANCEL_BODY.search(opening) and not NOT_CANCEL.search(CANCEL_BODY.search(opening).group(0)):
+        return "cancelled"
+    if REFUND_SUBJECT.search(subject) and not re.search(r"\brefund (policy|request)\b", subject, re.I):
+        return "refunded"
+    return None
+
+
+def find_order_number(email):
+    for text in (email.subject or "", (email.body or "")[:3000]):
+        m = ORDER_NUMBER.search(text)
+        if m and re.search(r"\d", m.group(1)):
+            return m.group(1)
+    return None
+
+
 def normalize(data, email):
     """Clean the model's output and fill gaps from the email itself."""
     kind = data.get("kind")
@@ -260,6 +300,11 @@ def normalize(data, email):
             "order_number": _str(data.get("order_number")),
         }
 
+    signal = cancel_signal(email) if kind in ("order", "other") else None
+    if kind == "other" and signal == "cancelled" and (data.get("order_number") or find_order_number(email)) \
+            and re.search(r"\b(order|purchase)\b", f"{email.subject}\n{(email.body or '')[:1500]}", re.I) \
+            and not re.search(r"\b(subscription|membership|plan|trial)\b", email.subject or "", re.I):
+        kind = "order"  # an order cancellation the model filed as a plain notice
     if kind == "other":
         return {"kind": "other"}
 
@@ -283,11 +328,13 @@ def normalize(data, email):
     status = data.get("shipping_status")
     if status not in STATUSES:
         status = "shipped" if tracking else "unknown"
+    if signal == "cancelled" or (signal == "refunded" and status not in ("returned", "refunded")):
+        status = signal  # the email says so outright; the model often calls a cancel email "ordered"
 
     return {
         "kind": "order",
         "retailer": _str(data.get("retailer")) or _sender_name(email.sender),
-        "order_number": _str(data.get("order_number")),
+        "order_number": _str(data.get("order_number")) or find_order_number(email),
         "order_date": _date(data.get("order_date")) or email_day,
         "items": items,
         "total": total,
