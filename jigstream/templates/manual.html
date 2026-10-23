@@ -459,8 +459,13 @@ low-top version of the same shoe. It reads only the product itself, not the menu
 <h4 id="keyword-corrections">BotTrack remembers your changes</h4>
 <p>Every keyword you remove or add is remembered for that <b>store</b> and for that <b>brand</b>. Next time you check a page from the same
 store, or the same brand on another store, your removed words stay out and your added ones go in, marked "you added this for…". The page
-you corrected is also shown to the local AI as an example, so its own suggestions get better too.</p>
-<p>You can see and undo all of it on <a href="#keyword-training">Training → Keyword finder corrections</a>.</p>
+you corrected is also saved as an example of the <b>Keyword finder</b> task on the <a href="#keyword-training">Training</a> page,
+so the local AI's own suggestions get better too.</p>
+<p>All your rules are listed under <b>Your keyword rules</b> on the Keywords page. Press <b>×</b> on one to delete it; pages from that
+store or brand go back to the normal suggestions.</p>
+{{ fig("keyword-rules", "Your keyword rules, at the top of the Keywords page before you check a page.", [
+  "Each rule: the keyword, whether you removed or added it, and the store and brand it applies to.",
+  "× deletes the rule."]) }}
 <div class="tip">BotTrack never suggests a negative for a spaced spelling of the product's own name (a site that writes "Nee Doh" as well as
 "NeeDoh"), or for the store's own name.</div>
 <p>Some stores block automated visits. When that happens BotTrack says so and doesn't try to get around it; try a different page from
@@ -665,13 +670,11 @@ downloads the model (2 to 5 GB).</div>
   "Model said: what the AI answered. Green means it was already right, red means it got it wrong.",
   "Delete an example that's wrong, so the AI doesn't learn from it.",
   "Train an email reader on these examples. Once trained, Use this switches email syncing to it (BotTrack restarts its AI). Go back to the 14B model any time."]) }}
-{% if "keywords.keywords_page" in pages %}<h4 id="keyword-training">Keyword finder corrections</h4>
-<p>At the bottom of the Email reader page is everything you changed on the <a href="#keywords">Keywords</a> page.</p>
-{{ fig("training-keywords", "Training → Email reader → Keyword finder corrections.", [
-  "Your rules: each keyword you added or removed, and the store and brand it applies to.",
-  "Delete a rule you no longer want. Pages from that store or brand go back to the normal suggestions.",
-  "Export the pages you corrected as a .jsonl file, in the same format as the email examples, for training a model later."]) }}
-<p>Under the export button is the list of pages you corrected, which the local AI sees as examples. Delete one if it was a bad example.</p>{% endif %}
+{% if "keywords.keywords_page" in pages %}<h4 id="keyword-training">The Keyword finder task</h4>
+<p>The <a href="#keywords">Keywords</a> page has its own task here, called <b>Keyword finder</b>. It appears the first time you use the local
+AI or correct a page there. Each page you corrected is one of its examples, with the keywords you settled on, and a newer correction
+of the same page replaces the older one. Open the task to read or delete examples, edit its instructions, or train it like any other
+task.</p>{% endif %}
 </section>
 
 <section id="logs" data-title="Logs">
