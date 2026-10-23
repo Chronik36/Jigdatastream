@@ -1,10 +1,11 @@
 """The Expenses area: Overview and Ledger tabs, plus adding and editing botting expenses on the desktop."""
 import logging
 import re
+from datetime import date
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 
-from . import db, ledger
+from . import db, ledger, recurring
 from .extract import BILLING_PERIODS, EXPENSE_CATEGORIES
 from .orderstore import Store
 
@@ -13,7 +14,7 @@ pages = Blueprint("expenses", __name__)
 
 
 def _con():
-    return ledger.ensure(db.connect(current_app.config["DB_PATH"]))
+    return recurring.ensure(db.connect(current_app.config["DB_PATH"]))
 
 
 def _back():
@@ -27,10 +28,12 @@ def _sync():
 @pages.get("/expenses")
 def overview():
     c = _con()
-    items = ledger.rows(c)
+    recurring.refresh(c)
+    items, subs = ledger.rows(c), recurring.subscriptions(c)
     return render_template("expenses.html", tab="overview", o=ledger.overview(c), chart=ledger.month_chart(c),
                            counts=ledger.counts(items), recent=[r for r in items if r["kind"] == "expense"][:8],
-                           sync=_sync(), categories=EXPENSE_CATEGORIES, periods=BILLING_PERIODS)
+                           rec=recurring.totals(subs), soon=recurring.upcoming(subs)[:6], sync=_sync(),
+                           **_dialogs())
 
 
 @pages.get("/expenses/ledger")
@@ -44,8 +47,73 @@ def ledger_page():
     return render_template("expense_ledger.html", tab="ledger", rows=[r for r in items if show == "all"
                                                                       or r["state"] == show],
                            counts=ledger.counts(items), show=show, filters=ledger.FILTERS, states=ledger.STATES,
-                           months=months, first=first, last=last, categories=EXPENSE_CATEGORIES,
-                           periods=BILLING_PERIODS, methods=ledger.PAY_METHODS, colors=ledger.CATEGORY_COLORS)
+                           months=months, first=first, last=last, methods=ledger.PAY_METHODS,
+                           colors=ledger.CATEGORY_COLORS, subs={s["id"]: s for s in recurring.subscriptions(c)},
+                           **_dialogs())
+
+
+def _dialogs():
+    """What the Add expense and Repeats dialogs need."""
+    return {"categories": EXPENSE_CATEGORIES, "periods": BILLING_PERIODS, "rec_periods": recurring.PERIODS}
+
+
+@pages.get("/expenses/recurring")
+def recurring_page():
+    c = _con()
+    recurring.refresh(c)
+    items, subs = ledger.rows(c), recurring.subscriptions(c)
+    return render_template("expense_recurring.html", tab="recurring", counts=ledger.counts(items), subs=subs,
+                           totals=recurring.totals(subs), weeks=recurring.calendar_weeks(subs),
+                           ideas=recurring.suggestions(c), today=date.today(), **_dialogs())
+
+
+def _rec_form():
+    period = request.form.get("period", "monthly")
+    category = request.form.get("category", "")
+    days = request.form.get("every_days", type=int)
+    return {"vendor": _text("vendor"), "period": period if period in recurring.PERIODS else "monthly",
+            "every_days": days if days and days > 0 else None, "amount": _amount("amount"),
+            "category": category if category in EXPENSE_CATEGORIES else None, "next_due": _text("next_due")}
+
+
+@pages.post("/expenses/recurring/track")
+def recurring_track():
+    f = _rec_form()
+    sid = recurring.track(_con(), f["vendor"], f["period"], f["every_days"], f["category"], f["amount"],
+                          expense_id=request.form.get("expense_id", type=int),
+                          tx_id=request.form.get("tx_id", type=int), next_due=f["next_due"])
+    if sid:
+        logger.info("tracking subscription %s (%s)", sid, f["period"])
+        flash(f"Tracking {f['vendor'] or 'it'} as {recurring.label(dict(f, every_days=f['every_days'] or 30)).lower()}.")
+    else:
+        flash("Enter who you pay and how often.")
+    return _back()
+
+
+@pages.post("/expenses/recurring/<int:sub_id>/<action>")
+def recurring_action(sub_id, action):
+    c = _con()
+    if action == "edit":
+        f = {k: v for k, v in _rec_form().items() if v is not None}
+        if f.get("period") != "custom":
+            f["every_days"] = None
+        recurring.update(c, sub_id, f)
+        flash("Saved.")
+    elif action == "cancel":
+        recurring.cancel(c, sub_id)
+        flash("Marked as cancelled. You'll see a warning if it charges you again.")
+    elif action == "reactivate":
+        recurring.reactivate(c, sub_id)
+    elif action == "delete":
+        recurring.delete(c, sub_id)
+        flash("No longer tracked. Its receipts stay in your expenses.")
+    return _back()
+
+
+@pages.post("/expenses/recurring/dismiss")
+def recurring_dismiss():
+    recurring.dismiss(_con(), request.form.get("key", ""))
+    return _back()
 
 
 @pages.post("/expenses/ledger/<int:tx_id>/close")

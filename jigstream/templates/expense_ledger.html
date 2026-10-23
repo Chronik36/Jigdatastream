@@ -13,6 +13,7 @@ td{vertical-align:middle}.m{font-size:12.5px}.sub{display:block;font-size:12.5px
 .st-receipt_only{color:var(--red);background:rgba(255,107,122,.1)}
 .st-close{color:var(--accent);background:var(--accent-soft)}
 .st-no_statement{color:var(--muted);background:rgba(255,255,255,.04)}
+.rtag{color:var(--accent);font-weight:500}
 .cdot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px}
 </style>
 {% include "_expense_tabs.html" %}
@@ -27,7 +28,7 @@ td{vertical-align:middle}.m{font-size:12.5px}.sub{display:block;font-size:12.5px
 {% for r in rows %}{% set e = r.expense %}{% set t = r.charge %}
 <tr data-f="{{r.category or ('__order' if r.kind == 'order' else '__none')}}" data-m="{{(r.date or '')[:7]}}" data-a="{{r.amount or 0}}">
 <td>{{r.date or "-"}}</td>
-<td><b>{{r.name or "-"}}</b><span class="sub">{% if r.category %}<span class="cdot" style="background:{{colors.get(r.category, '#8592bd')}}"></span>{{r.category|replace("_", " ")|capitalize}}{% if r.detail %} · {% endif %}{% endif %}{{r.detail or ""}}</span></td>
+<td><b>{{r.name or "-"}}</b><span class="sub">{% if r.category %}<span class="cdot" style="background:{{colors.get(r.category, '#8592bd')}}"></span>{{r.category|replace("_", " ")|capitalize}}{% if r.detail %} · {% endif %}{% endif %}{{r.detail or ""}}{% if e and subs.get(e.subscription_id) %} · <a href="/expenses/recurring" class="rtag">↻ {{subs[e.subscription_id].label}}</a>{% endif %}</span></td>
 <td class="m">{% if r.kind == "expense" %}<b>Receipt</b>{% if e.billing_period %} · {{e.billing_period|replace("_", " ")}}{% endif %}<span class="sub">{{r.inbox or ""}}</span>
 {% elif r.kind == "order" %}<a href="/orders#order-{{(r.order or {}).id or (r.suggestion or {}).id}}"><b>Order</b></a>{% if r.order and r.order.shipping_status %} <span class="pill s-{{r.order.shipping_status}}">{{r.order.shipping_status|status_label}}</span>{% endif %}
 {% else %}<span class="muted">No email found</span>{% endif %}</td>
@@ -50,12 +51,15 @@ td{vertical-align:middle}.m{font-size:12.5px}.sub{display:block;font-size:12.5px
 {% elif r.state == "matched" %}
 <form method="post" action="/bank/{{t.id}}/match"><input type="hidden" name="action" value="unmatch"><button class="ghost">Unmatch</button></form>
 {% endif %}
+{% if e and not e.subscription_id %}<button type="button" class="ghost" title="Track as a subscription" onclick='openRepeat({{ {"vendor": e.vendor, "amount": e.amount, "category": e.category, "expense_id": e.id, "period": e.billing_period if e.billing_period in rec_periods else "monthly"}|tojson }})'>Repeats</button>
+{% elif r.state == "charge_only" %}<button type="button" class="ghost" title="Track as a subscription" onclick='openRepeat({{ {"vendor": t.description, "amount": t.amount, "tx_id": t.id}|tojson }})'>Repeats</button>{% endif %}
 {% if e %}<button type="button" class="ghost" onclick='openExpense({{e|tojson}})'>Edit</button>{% endif %}
 </div></td></tr>
 {% else %}<tr><td colspan="7" class="muted">{{"Nothing here." if counts.all else "No botting receipts or card charges yet. Sync your inboxes, or import a card statement on the Bank page."}}</td></tr>{% endfor %}
 </tbody></table>
 {% include "_match_dialog.html" %}
 {% include "_expense_dialog.html" %}
+{% include "_recurring_dialog.html" %}
 <script>
 const q = document.getElementById('q'), f = document.getElementById('f'), mf = document.getElementById('mf'), sum = document.getElementById('sum');
 function apply() {
