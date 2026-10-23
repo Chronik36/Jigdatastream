@@ -159,7 +159,8 @@ def cross_reference(con):
 
 def _match_bot_updates(con, checkouts):
     """Give each checkout the bot's latest follow-up on it (Valor posts whether the order stuck or got cancelled):
-    by order number, else the same bot, site and profile (or account email) after the checkout, nearest checkout first."""
+    by order number, else the same bot, site (Valor's follow-ups name none) and profile or account email after the
+    checkout, nearest checkout first."""
     for c in checkouts:
         c["bot_update"] = None
     updates = [dict(u) for u in con.execute("SELECT * FROM checkout_updates ORDER BY ts")]
@@ -172,7 +173,7 @@ def _match_bot_updates(con, checkouts):
         if i is None and not _number(u["order_number"]):
             t = when(u["ts"])
             near = [(when(c["ts"]), j) for j, c in enumerate(checkouts)
-                    if c["bot"] == u["bot"] and same_site(c["site"], u["site"])
+                    if c["bot"] == u["bot"] and (not u["site"] or same_site(c["site"], u["site"]))
                     and ((u["profile"] and c["profile"] == u["profile"])
                          or (u["email"] and profilematch.norm_email(c["email"]) == profilematch.norm_email(u["email"])))]
             near = [(ct, j) for ct, j in near if not (t and ct) or ct - BEFORE <= t <= ct + LATE_CANCEL]
