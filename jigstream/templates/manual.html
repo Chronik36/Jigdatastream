@@ -407,19 +407,21 @@ the same site. If very little text comes back, the page builds itself with JavaS
 {% if "products.products_page" in pages %}<section id="products" data-title="Products">
 <h2>Products</h2>
 <div class="where">Sidebar → Bot tools → <b>Products</b></div>
-<p>Helps you decide what to buy. Describe the kind of product you're after and the local AI suggests matching products with their type,
-SKU, MSRP and where they're sold. For each product you track, BotTrack looks up what it resells for on your selling sites and works out
+<p>Helps you decide what to buy. Describe the kind of product you're after and BotTrack searches what Target and a list of Shopify
+stores (Kith, Undefeated, Bodega, Concepts and more) sell right now, showing each product's real SKU, price and stock at every store
+that lists it. The local AI only turns your description into search words and drops results that don't fit; it never supplies a price
+or SKU, and anything a store doesn't list shows as not listed. For each product you track, BotTrack looks up what it resells for on your selling sites and works out
 the profit: the market price minus what the product costs at each store (its MSRP, or what you actually pay there). When stores charge
 different prices, all of them are listed and the cheapest one is recommended.</p>
 <ol class="steps">
-<li>Type what you're looking for in <span class="ui">Research</span> and press it. A 14B model can take a minute or two.</li>
+<li>Type what you're looking for in <span class="ui">Research</span> and press it. Searching the stores takes up to a minute.</li>
 <li>Tick the products you want and press <span class="ui">Track selected</span>.</li>
 <li>Press <span class="ui">Update</span> on a product (or <span class="ui">Update all prices</span>) to look up resale prices.</li>
 <li>Open <span class="ui">Details</span> to add store prices from a product link, type in prices for sites that can't be read, or find similar products.</li>
 </ol>
 {{ fig("products", "The Products page with sample products.", [
-  "Describe the kind of product you want. The AI's MSRPs and SKUs come from its training, so check them with a store link.",
-  "Pick which suggestions to track. Products already tracked can't be picked again.",
+  "Describe the kind of product you want, e.g. Pokémon elite trainer boxes. Add more Shopify stores under Stores searched.",
+  "Pick which results to track. Each shows its SKU, the lowest price, and every store listing it (sold out ones are dimmed).",
   "Focus on these: the tracked products with the most profit per item that are still being made, with where to buy and where to sell.",
   "Buy at: the cheapest store, with the other stores' prices under it.",
   "Update all prices: looks up every tracked product on every selling site that's on. With Local AI reads pages ticked, the AI reads pages that have no price data BotTrack understands.",
