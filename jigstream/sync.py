@@ -62,11 +62,13 @@ def process(email, store, llm, config, counts, log, examples=(), platforms=()):
         log(f"  {result['kind']:<16} {label or '?'}: {email.subject[:60]}")
 
 
-def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
+def run_sync(config, store, emails=None, llm=None, log=print, progress=None, stop=None):
     """Sync every configured inbox one after another. `emails` replaces Gmail in tests.
-    progress(text) is called as work advances, for the dashboard."""
+    progress(text) is called as work advances, for the dashboard. stop() returning True ends the sync
+    after the email being read; every email read so far is kept, so the next sync carries on from there."""
     llm = llm or llm_for(config)
     progress = progress or (lambda text: None)
+    stop = stop or (lambda: False)
     cli_log = log
 
     def log(message, file=None):
@@ -95,6 +97,8 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
         raise RuntimeError("No inboxes configured. Set GMAIL_ACCOUNTS or GMAIL_ADDRESS in .env (see README).")
 
     for n, (address, password) in enumerate(config.accounts, 1):
+        if stop():
+            break
         started = datetime.now(timezone.utc).isoformat()
         days = search_days(config, store.account_state(address))
         span = "whole mailbox" if days is None else f"last {days} days"
@@ -107,6 +111,8 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
 
         try:
             for i, email in enumerate(fetch_emails(config, address, password, days, seen, on_total), 1):
+                if stop():
+                    break
                 progress(f"Inbox {n} of {len(config.accounts)} ({address}): email {i} of {total['n']}")
                 if email.message_id in seen:
                     continue
@@ -118,11 +124,14 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None):
             counts["failed_inboxes"].append(address)
             log(f"  ! {address}: {e}", file=sys.stderr)
             continue
+        if stop():  # stopped part way, so this inbox's range isn't done
+            counts["stopped"] = True
+            break
         # A capped run (MAX_EMAILS) hasn't finished the range, so don't record it as synced.
         if not (config.max_emails and total["n"] >= config.max_emails):
             store.mark_synced(address, started, full=days is None)
     counts.pop("streak", None)
-    logger.info("sync finished: %s", summary(counts))
+    logger.info("sync %s: %s", "stopped" if counts.get("stopped") else "finished", summary(counts))
     return counts
 
 
