@@ -13,7 +13,7 @@ import re
 from collections import Counter
 from datetime import datetime, timezone
 
-from . import parsers, stuck
+from . import cardcheck, parsers, stuck
 
 GROUP_FIELDS = ["proxy group", "proxy list", "proxylist", "proxy profile", "proxy set"]
 PROXY_FIELDS = ["proxy", "proxies", "proxy used", "ip"]
@@ -76,21 +76,26 @@ def day_of(ts):
 
 
 def outcome(c):
-    """'confirmed' (Good: an order email and no cancel, or marked good by hand), 'no_email' (Unsure: bot success,
-    nothing either way yet), 'cancelled' (a cancel email or bank refund after the success, or marked cancelled),
-    'decline' or 'failure'."""
+    """'confirmed' (Good: an order email and no cancel, a card charge tied to it that wasn't refunded, or marked good
+    by hand), 'no_email' (Unsure: bot success, nothing either way yet), 'cancelled' (a cancel email or bank refund
+    after the success, or marked cancelled), 'decline' or 'failure'."""
     if c["status"] == "success":
+        card = c.get("card")
+        if card and c["state"] == "no_email" and not c.get("verdict"):
+            return "cancelled" if card["refunded"] else "confirmed"
         return {"emailed": "confirmed"}.get(c["state"], c["state"])
     return "decline" if c["status"] == "decline" else "failure"
 
 
-def rows(con):
-    """Every checkout webhook with its proxy group, proxy, profile, drop day and outcome."""
-    matched = {c["id"]: c for c in stuck.cross_reference(con)}
+def rows(con, matched=None, links=None):
+    """Every checkout webhook with its proxy group, proxy, profile, drop day, the card charge tied to it (Card check)
+    and outcome."""
+    matched = {c["id"]: c for c in (matched if matched is not None else stuck.cross_reference(con))}
+    links = links if links is not None else cardcheck.report(con, list(matched.values()))["links"]
     out = []
     for r in con.execute("SELECT * FROM checkouts ORDER BY ts"):
         c = matched.get(r["id"]) or dict(r, order=None, refund=None, state=None)
-        c = dict(c)
+        c = dict(c, card=links.get(r["id"]))
         c["proxy_group"], c["proxy"] = proxy_of(r["raw"])
         c.pop("raw", None)
         c["day"], c["outcome"] = day_of(c["ts"]), outcome(c)
@@ -121,7 +126,7 @@ def leaderboard(items, key):
     return sorted(board, key=lambda t: (-t["real"], -t["rate"], t["tries"]))
 
 
-def drops(items, sort="proxy"):
+def drops(items, sort="proxy", cards=None):
     """Site -> day -> checkouts, newest day first; each drop's checkouts sorted by proxy or by profile, with
     real checkouts first inside each proxy/profile."""
     sites = {}
@@ -139,7 +144,8 @@ def drops(items, sort="proxy"):
             cs.sort(key=lambda c: (SORTS[sort](c), RANK[c["outcome"]], c["ts"] or ""))
             products = [p for p, _ in Counter(c["product"] for c in cs if c["product"]).most_common(3)]
             day_list.append({"day": day, "checkouts": cs, "products": products, "tally": tally(cs),
-                             "proxies": leaderboard(cs, lambda c: c["proxy_group"] or c["proxy"] or "No proxy")})
+                             "proxies": leaderboard(cs, lambda c: c["proxy_group"] or c["proxy"] or "No proxy"),
+                             "card": cardcheck.for_drop(cards, name, day) if cards else None})
         out.append({"site": name, "days": day_list, "tally": tally(group), "latest": day_list[0]["day"]})
     return sorted(out, key=lambda s: s["latest"], reverse=True)
 
@@ -152,7 +158,9 @@ GROUPS = {"group": lambda c: c["proxy_group"] or "No group", "proxy": lambda c: 
 def report(con, site=None, sort="proxy", day=None, by=None, name=None):
     """Totals, leaderboards and drops for every checkout, or one site's, one drop day's, and/or one proxy group's,
     proxy's or profile's (by + name)."""
-    items = rows(con)
+    matched = stuck.cross_reference(con)
+    cards = cardcheck.report(con, matched)
+    items = rows(con, matched, cards["links"])
     sites = sorted({c["site"] for c in items if c["site"]}, key=str.lower)
     if site:
         items = [c for c in items if stuck.same_site(c["site"], site)]
@@ -171,5 +179,5 @@ def report(con, site=None, sort="proxy", day=None, by=None, name=None):
         "profiles": leaderboard(items, GROUPS["profile"]),
         "combos": [t for t in leaderboard(items, lambda c: f"{c['proxy_group'] or c['proxy'] or 'No proxy'} + "
                                                          f"{c['profile'] or 'No profile'}") if t["real"]][:10],
-        "drops": drops(items, sort),
+        "drops": drops(items, sort, cards),
     }
