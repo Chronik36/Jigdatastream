@@ -10,7 +10,7 @@ from flask import Flask, Response, flash, jsonify, redirect, render_template, re
 
 from . import address as A
 from . import (analysis, bankpages, carriers, db, discord, emailbook, engines, expensepages, export, inbox, keywords,
-               logs, manual, mobile, parsers, products, profilebook, profilematch, profiles, recurring, stock, tasks,
+               logs, manual, mobile, parsers, products, profilebook, profilematch, profiles, recurring, stock, stuck, tasks,
                training, updater, wallet)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
@@ -138,14 +138,25 @@ def create_app(db_path=None):
         report, unmatched = analysis.failure_report(c)
         return render_template("dashboard.html", tot=tot, sites=analysis.by_dimension(c, "site"),
                                bots=analysis.by_dimension(c, "bot"), report=report, unmatched=unmatched,
-                               cancelled=analysis.cancelled_after_success(c))
+                               cancelled=[r for r in stuck.cross_reference(Store(c).db) if r["state"] == "cancelled"])
 
     @app.get("/checkouts")
     def checkouts():
         status = request.args.get("status")
         q = "SELECT * FROM checkouts" + (" WHERE status=?" if status else "") + " ORDER BY ts DESC LIMIT 500"
-        rows = con().execute(q, (status,) if status else ()).fetchall()
-        return render_template("checkouts.html", rows=rows)
+        c = con()
+        rows = c.execute(q, (status,) if status else ()).fetchall()
+        emails = {r["id"]: r for r in stuck.cross_reference(Store(c).db)}
+        return render_template("checkouts.html", rows=rows, emails=emails)
+
+    @app.get("/stuck")
+    def stuck_page():
+        rows = stuck.cross_reference(Store(con()).db)
+        show = request.args.get("show", "stuck")
+        keep = {"stuck": ("emailed", "no_email"), "emailed": ("emailed",), "no_email": ("no_email",),
+                "cancelled": ("cancelled",)}.get(show)
+        return render_template("stuck.html", rows=[r for r in rows if keep is None or r["state"] in keep],
+                               counts=stuck.counts(rows), show=show)
 
     @app.get("/orders")
     def orders():
