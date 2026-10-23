@@ -75,3 +75,42 @@ def test_expense_total_read_from_email_when_model_misses_it():
     assert normalize({"kind": "botting_expense", "vendor": "Alpine Proxies"}, mail)["amount"] == 43.2
     reminder = Email("<r@x>", "Stella <s@x.com>", "Invoice Payment Reminder", "2026-09-26", "Total $70.00", "me@gmail.com")
     assert normalize({"kind": "botting_expense", "vendor": "Stella"}, reminder) == {"kind": "other"}
+
+
+def test_pages_and_writes_work_while_another_thread_is_writing(tmp_path):
+    """Build 59 logs: Setup crashed with "database is locked" while carrier tracking held a write open."""
+    import sqlite3
+    from jigstream.app import create_app
+    path = str(tmp_path / "busy.db")
+    client = create_app(path).test_client()
+    client.get("/orders")
+    writer = sqlite3.connect(path)
+    writer.execute("BEGIN IMMEDIATE")  # another thread mid-write, not committed
+    writer.execute("UPDATE tracked_orders SET carrier_status = 'x'")
+    try:
+        assert client.get("/setup").status_code == 200  # reading never waits on a write (WAL)
+        assert client.get("/orders").status_code == 200
+    finally:
+        writer.rollback()
+    con = db.connect(path)
+    assert con.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    assert con.isolation_level is None  # each write saved at once; no lock held across slow work
+
+
+def test_model_http_500_is_a_failed_email_not_an_engine_that_is_off(monkeypatch):
+    import io
+    import urllib.error
+    from jigstream import llm
+    calls = []
+
+    def fail(req, timeout=None):
+        calls.append(1)
+        raise urllib.error.HTTPError(req.full_url, 500, "Internal Server Error", {},
+                                     io.BytesIO(b'{"error": "model runner has unexpectedly stopped"}'))
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fail)
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
+    try:
+        llm.LLMClient("http://127.0.0.1:1/v1", "m").chat_json("s", "u")
+    except llm.LLMError as e:
+        assert "runner has unexpectedly stopped" in str(e) and "Could not reach" not in str(e)
+    assert len(calls) == 2  # one retry

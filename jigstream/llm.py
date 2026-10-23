@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import time
 import urllib.error
 import urllib.request
 
@@ -46,6 +47,18 @@ class LLMClient:
             logger.warning("model %s returned unusable output: %s", self.model, content[:2000])
             raise LLMError(f"Model did not return JSON: {content[:300]}") from e
 
+    def _send(self, req):
+        """POST once; a 500 (the engine's runner restarting) gets one more try after a pause."""
+        for attempt in (1, 2):
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    return json.load(resp)
+            except urllib.error.HTTPError as e:
+                if e.code < 500 or attempt == 2:
+                    raise
+                logger.warning("model %s: HTTP %s (%s); trying once more", self.model, e.code, _error_text(e))
+                time.sleep(5)
+
     def chat_text(self, system, user, examples=()):
         """A plain-text reply, with any <think> block removed."""
         return re.sub(r"<think>.*?</think>", "", self._chat(system, user, examples), flags=re.S).strip()
@@ -76,8 +89,13 @@ class LLMClient:
             },
         )
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                body = json.load(resp)
+            body = self._send(req)
+        except urllib.error.HTTPError as e:
+            # The engine answered but failed on this request (Ollama gives 500 when its runner crashes or
+            # runs out of memory). Say what it said; this is not the engine being off.
+            detail = _error_text(e)
+            logger.error("model %s failed: HTTP %s %s", self.model, e.code, detail)
+            raise LLMError(f"The local model failed on this request (HTTP {e.code}: {detail[:200]}).") from e
         except TimeoutError as e:
             logger.error("model %s took over %ss to answer", self.model, self.timeout)
             raise LLMError(f"The local model took longer than {self.timeout} seconds to answer.") from e
@@ -87,10 +105,22 @@ class LLMClient:
                 f"Could not reach the local model at {self.base_url} ({e}). Is Ollama running?"
             ) from e
         try:
-            return body["choices"][0]["message"]["content"] or ""
+            content = body["choices"][0]["message"]["content"] or ""
+            if not content.strip():
+                logger.warning("model %s gave an empty reply (finish_reason %s)", self.model,
+                               body["choices"][0].get("finish_reason"))
+            return content
         except (KeyError, IndexError, TypeError) as e:
             logger.warning("model %s returned unusable output: %s", self.model, str(body)[:2000])
             raise LLMError(f"Model did not return JSON: {str(body)[:300]}") from e
+
+
+def _error_text(e):
+    try:
+        text = e.read().decode("utf-8", "replace")
+        return str(json.loads(text).get("error", text))
+    except Exception:
+        return str(e.reason)
 
 
 def from_config(config):
