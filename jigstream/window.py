@@ -2,6 +2,8 @@
 import base64
 import logging
 import os
+import plistlib
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -31,6 +33,52 @@ def splash(title, msg):
     body = page.render(logo=image("logo.png"), lines=image("lines.png"), title=title, msg=msg, shown=True)
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><style>html,body{margin:0;background:#0a1230}</style>'
             f"</head><body>{body}</body></html>")
+
+
+def safari_agent():
+    """The user agent Safari on this Mac sends, so carrier pages see the browser they expect."""
+    try:
+        with open("/Applications/Safari.app/Contents/Info.plist", "rb") as f:
+            version = plistlib.load(f)["CFBundleShortVersionString"]
+    except (OSError, KeyError, plistlib.InvalidFileException):
+        return None
+    return ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) "
+            f"Version/{version} Safari/605.1.15")
+
+
+def page_reader(webview):
+    """read(url, done, timeout) for browsertrack: loads a page in one hidden window, kept for the next
+    page, and returns its text once done(text) says the page has what's needed (or time runs out)."""
+    lock = threading.Lock()
+    hidden = {}
+
+    def text_of(window):
+        try:
+            return window.evaluate_js("document.body ? document.body.innerText : ''") or ""
+        except Exception:  # the page is still between documents
+            return ""
+
+    def read(page, done, timeout=45):
+        with lock:
+            window = hidden.get("window")
+            if window is None:
+                window = hidden["window"] = webview.create_window("BotTrack tracking", page, hidden=True,
+                                                                  width=1280, height=900)
+            else:
+                try:
+                    window.evaluate_js("document.body && (document.body.innerText = '')")  # no stale text
+                except Exception:
+                    pass
+                window.load_url(page)
+            end, text = time.time() + timeout, ""
+            time.sleep(2)
+            while time.time() < end:
+                text = text_of(window)
+                if text and done(text):
+                    break
+                time.sleep(1.5)
+            return text
+    return read
 
 
 def open_window(url, icon=None, restarted=False):
@@ -69,4 +117,6 @@ def open_window(url, icon=None, restarted=False):
             window.load_url(url + start)
         logger.info("window opened on %s", url)
 
-    webview.start(show_dashboard)
+    from . import browsertrack
+    browsertrack.register(page_reader(webview))  # key-free package tracking
+    webview.start(show_dashboard, user_agent=safari_agent())
