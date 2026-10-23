@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block body %}
+{% set tabs = [("stuck", "Stuck", counts.stuck), ("emailed", "Order email, no cancel", counts.emailed), ("no_email", "No email found", counts.no_email), ("cancelled", "Cancelled", counts.cancelled), ("all", "All successful", counts.all)] %}
+<h2>Stuck</h2>
+<p class="muted">Every successful checkout from your bot webhooks, checked against your order emails. A checkout stuck when no cancel or refund email came after it. It's matched to an email by order number, or by the same site and profile within a few days when the webhook has no order number.</p>
+<div class="stats"><div class="card">Successful checkouts <b>{{counts.all}}</b></div><div class="card ok">Stuck <b>{{counts.stuck}}</b></div>
+<div class="card bad">Cancelled <b>{{counts.cancelled}}</b></div><div class="card">No email found <b>{{counts.no_email}}</b></div></div>
+<div class="toolbar">{% for key, label, n in tabs %}<a class="pill{{' s-shipped' if show == key}}" href="/stuck?show={{key}}">{{label}} <b>{{n}}</b></a>{% endfor %}</div>
+{% if show in ("stuck", "no_email") and counts.no_email %}<p class="muted">"No email found" means no order email matched yet. Sync your inboxes on <a href="/orders">Orders</a> first; a checkout whose emails went to an inbox you haven't added will show here too.</p>{% endif %}
+<table><thead><tr><th>Checked out</th><th>Bot</th><th>Site / order #</th><th>Product</th><th>Profile</th><th>Email status</th><th>Matched on</th></tr></thead><tbody>
+{% for r in rows %}{% set o = r.order %}<tr>
+<td style="white-space:nowrap">{{(r.ts or "-")[:16]|replace("T", " ")}}</td><td>{{r.bot or "-"}}</td>
+<td><b>{{r.site or "-"}}</b><div class="muted">{{r.order_number or (o.order_number if o else "") or ""}}</div></td>
+<td>{{r.product or "-"}}{% if r.size %} <span class="muted">· {{r.size}}</span>{% endif %}{% if r.price %}<div class="muted">{{r.price}}</div>{% endif %}</td>
+<td>{{r.profile or "-"}}</td>
+<td>{% if o %}<a href="/orders#order-{{o.id}}"><span class="pill s-{{o.shipping_status or 'unknown'}}">{{o.shipping_status|status_label}}</span></a>
+{% if r.state == "cancelled" %}<div class="muted" style="font-size:12px;margin-top:4px">{{(o.last_email_date or "")[:10]}}</div>{% endif %}
+{% else %}<span class="pill s-unknown">No email found</span>{% endif %}</td>
+<td class="muted">{{r.matched_on or ""}}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">{% if not counts.all %}No successful checkouts yet. Import your bot webhooks on the <a href="/">Dashboard</a> or connect Discord on Setup.{% else %}Nothing here.{% endif %}</td></tr>{% endfor %}</tbody></table>
+{% endblock %}
