@@ -170,7 +170,7 @@ def test_click_into_a_group(tmp_path):
     assert {t["name"] for t in r["chips"]["group"]} == {"ISP A", "Resi B"}  # the others stay clickable
     client = create_app(str(tmp_path / "m.db")).test_client()
     page = client.get(f"/drop?day={day}&by=profile&name=Ana").get_data(as_text=True)
-    assert "Profile: Ana" in page and "gw.resi.io" not in page.split("Click a group")[1].split("<h3>Best")[0]
+    assert "Profile: Ana" in page and "gw.resi.io" not in page.split("Pick one to see")[1].split("<h3>Best")[0]
     assert "by=group" in client.get("/drop").get_data(as_text=True)
 
 
@@ -248,3 +248,21 @@ def test_group_checkouts_by_address(tmp_path):
     assert sorted(x["profile"] for s in only["drops"] for d in s["days"] for x in d["checkouts"]) == ["Jacob 1", "Jacob 2"]
     page = create_app(str(tmp_path / "m.db")).test_client().get("/drop").get_data(as_text=True)
     assert "by=address" in page and "Addresses" in page
+
+
+def test_jigged_spellings_share_a_base_address_and_list_the_full_ones(tmp_path):
+    c, store = setup(tmp_path)  # Jacob 1 ships to 123 Main Street, 78701
+    profile(c, "Jacob 2", "Jacob", "Smith", "j2@gmail.com", "123 Mainn St", a2="Apt 4")
+    profile(c, "Jacob 3", "Jacob", "Smith", "j3@gmail.com", "AB 123 Main St Suite 9")
+    for fp, who in (("a", "Jacob 1"), ("b", "Jacob 2"), ("c", "Jacob 3"), ("d", "Jacob 1")):
+        hook(c, fp, "Target", who, "ISP A", "isp.example.net:8000", number=fp)
+    addr = {x["profile"]: x["address"] for x in drop.rows(Store(c).db)}
+    assert addr["Jacob 1"] == addr["Jacob 2"] == addr["Jacob 3"] == "123 MAIN ST · 78701"
+    assert {t["name"] for t in drop.report(Store(c).db)["addresses"]} == {"123 MAIN ST · 78701"}
+    only = drop.report(Store(c).db, by="address", name="123 MAIN ST · 78701")
+    used = {u["full"]: u for u in only["full_addresses"]}
+    assert used["123 Main Street, Austin, TX 78701"]["tries"] == 2
+    assert used["123 Mainn St Apt 4, Austin, TX 78701"]["profiles"] == ["Jacob 2"]
+    page = create_app(str(tmp_path / "m.db")).test_client().get(
+        "/drop?by=address&name=123 MAIN ST · 78701").get_data(as_text=True)
+    assert "Full addresses used at 123 MAIN ST · 78701" in page and "AB 123 Main St Suite 9" in page

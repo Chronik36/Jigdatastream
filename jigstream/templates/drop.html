@@ -8,7 +8,8 @@
 <td>{{t.rate}}%</td><td class="{{'bad' if t.cancelled}}">{{t.cancelled}}</td><td class="{{'bad' if t.declines}}">{{t.declines}}</td><td class="muted">{{t.tries}}</td></tr>
 {% else %}<tr><td colspan="7" class="muted">Nothing yet.</td></tr>{% endfor %}</tbody></table></div>{% endmacro %}
 {% macro counts(t) %}<span class="ok" title="Good">{{t.confirmed}} good</span> · <span style="color:var(--orange)">{{t.no_email}} unsure</span>{% if t.cancelled %} · <span class="bad">{{t.cancelled}} cancelled</span>{% endif %}{% if t.declines %} · <span class="bad">{{t.declines}} declined</span>{% endif %}{% endmacro %}
-<style>.droprow{cursor:pointer}.droprow:hover td{background:rgba(61,216,239,.06)}</style>
+<style>.pick-row{display:flex;flex-wrap:wrap;gap:10px 16px}.pick-row label{display:flex;flex-direction:column;gap:4px;flex:1 1 180px;min-width:0;font-size:12px}.pick-row select{width:100%}
+.droprow{cursor:pointer}.droprow:hover td{background:rgba(61,216,239,.06)}</style>
 {% set tab = "drops" %}{% include "_drop_tabs.html" %}
 <p class="muted">Every checkout webhook by retail site and drop date. Click a drop to open every checkout in it with the proxy and profile each ran on, then click a proxy group, proxy, profile or address to see just those (addresses are grouped by street, with jigged units and prefixes removed):
 <span class="ok">Good</span> (an order email or the bot's follow-up confirmed it), <span style="color:var(--orange)">Unsure</span> (checked out and nothing cancelled it, but no order email matched yet), <span class="bad">Cancelled</span> (a cancel email, bank refund or the bot's follow-up said so) or Declined.
@@ -19,10 +20,14 @@ If one is wrong, pick Good or Cancelled next to it: it sticks, and when the chec
 <div class="toolbar"><a class="pill" href="{{ link(day=None, by=None, name=None) }}">← All dates</a><b style="margin:0 8px">{{day or "Every date"}}</b>
 {% if by %}<a class="pill s-shipped" href="{{ link(by=None, name=None) }}" title="Show every checkout{{' on ' ~ day if day}}">{{kinds[by]}}: {{name}} ✕</a>{% endif %}
 <span class="muted">Sort by</span><a class="pill{{' s-shipped' if sort == 'proxy'}}" href="{{ link(sort='proxy') }}">Proxy</a><a class="pill{{' s-shipped' if sort == 'profile'}}" href="{{ link(sort='profile') }}">Profile</a><a class="pill{{' s-shipped' if sort == 'address'}}" href="{{ link(sort='address') }}">Address</a></div>
-<div class="panel" style="margin:14px 0">{% for kind, label in [("group", "Proxy groups"), ("proxy", "Proxies"), ("profile", "Profiles"), ("address", "Addresses")] %}
-<div style="margin:4px 0"><span class="muted" style="display:inline-block;min-width:110px">{{label}}</span>{% for t in r.chips[kind] %}
-<a class="pill{{' s-shipped' if by == kind and name == t.name}}" href="{{ link(by=kind, name=t.name) }}" title="{{t.confirmed}} good, {{t.no_email}} unsure, {{t.cancelled}} cancelled, {{t.declines}} declined">{{t.name}} <b class="{{'ok' if t.real}}">{{t.real}}/{{t.tries}}</b></a>{% endfor %}</div>{% endfor %}
-<div class="muted" style="font-size:12px;margin-top:6px">Click a group to see only its checkouts. The numbers are real checkouts out of tries.</div></div>
+<div class="panel pickers" style="margin:14px 0"><div class="pick-row">{% for kind, label in [("group", "Proxy group"), ("proxy", "Proxy"), ("profile", "Profile"), ("address", "Address")] %}
+<label><span class="muted">{{label}}</span><select onchange="if (this.value) location.href = this.value" aria-label="{{label}}">
+<option value="{{ link(by=None, name=None) if by == kind else '' }}">{{"All" if by == kind else "Pick one..."}} ({{r.chips[kind]|length}})</option>
+{% for t in r.chips[kind] %}<option value="{{ link(by=kind, name=t.name) }}" {{"selected" if by == kind and name == t.name}}>{{t.name}} · {{t.real}}/{{t.tries}} real</option>{% endfor %}</select></label>{% endfor %}</div>
+<div class="muted" style="font-size:12px;margin-top:8px">Pick one to see only its checkouts. The numbers are real checkouts out of tries. Addresses are grouped by house number and street, with jigged units and prefixes removed.</div></div>
+{% if by == "address" and r.full_addresses %}<div class="panel" style="margin:14px 0"><h3 style="margin-top:0">Full addresses used at {{name}}</h3>
+<table class="nocard"><thead><tr><th>Address as used</th><th>Real / tries</th><th>Profiles</th></tr></thead><tbody>
+{% for u in r.full_addresses %}<tr><td>{{u.full}}</td><td><b class="{{'ok' if u.real}}">{{u.real}}</b>/{{u.tries}}</td><td>{% for p in u.profiles %}<a href="{{ link(by='profile', name=p) }}">{{p}}</a>{{", " if not loop.last}}{% endfor %}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
 {% for s in r.drops %}{% for d in s.days %}<section class="panel" style="margin:14px 0;overflow-x:auto">
 <h3 style="margin-top:0">{{s.site}} · {{d.day or "No date"}}{% if d.products %} <span class="muted" style="font-weight:400;font-size:14px">· {{d.products|join(", ")|truncate(160)}}</span>{% endif %}</h3>
 <p style="margin:6px 0">{{ counts(d.tally) }}</p>
