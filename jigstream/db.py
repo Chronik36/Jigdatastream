@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS saved_addresses (
 # Columns added after the first release; created on older databases at startup.
 MIGRATIONS = [("profiles", "card_brand", "TEXT"), ("profiles", "card_exp", "TEXT"), ("profiles", "fmt", "TEXT"),
               ("profiles", "group_name", "TEXT"), ("profiles", "card_holder", "TEXT"),
-              ("profiles", "card_id", "INTEGER")]
+              ("profiles", "card_id", "INTEGER"), ("profiles", "site", "TEXT")]
 
 
 _ready = set()  # (database file, part) pairs already set up by this process

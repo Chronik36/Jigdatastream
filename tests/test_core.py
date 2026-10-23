@@ -114,3 +114,30 @@ def test_model_http_500_is_a_failed_email_not_an_engine_that_is_off(monkeypatch)
     except llm.LLMError as e:
         assert "runner has unexpectedly stopped" in str(e) and "Could not reach" not in str(e)
     assert len(calls) == 2  # one retry
+
+
+def test_profiles_import_under_a_retail_site_and_group_and_clear(tmp_path):
+    import io
+    path = str(tmp_path / "t.db")
+    c = db.connect(path)
+    c.execute("INSERT INTO cards (id, last4) VALUES (7, '4242')") if c.execute(
+        "SELECT name FROM sqlite_master WHERE name='cards'").fetchone() else None
+    profiles.ingest(c, json.dumps(PROFILES), "Valor", "Target", "Target Main")
+    c.execute("UPDATE profiles SET card_id = 7 WHERE name = 'prof1'")
+    profiles.ingest(c, json.dumps(PROFILES[:1]), "Valor")  # importing again keeps the site, group and card
+    p = dict(c.execute("SELECT site, group_name, card_id FROM profiles WHERE name = 'prof1'").fetchone())
+    assert p == {"site": "Target", "group_name": "Target Main", "card_id": 7}
+
+    client = create_app(path).test_client()
+    data = {"site": "other", "site_other": "Riot Store", "group": "Riot 1", "bot": "Valor",
+            "files": (io.BytesIO(json.dumps([{"name": "prof3", "shipping": {"address1": "5 Elm St", "zip": "78701"}}]).encode()), "p.json")}
+    client.post("/upload/profiles", data=data, content_type="multipart/form-data")
+    assert tuple(c.execute("SELECT site, group_name FROM profiles WHERE name = 'prof3'").fetchone()) == ("Riot Store", "Riot 1")
+    page = client.get("/profiles?site=Target").get_data(as_text=True)
+    assert "RETAIL SITES" in page and "Target Main" in page and "prof1" in page and "prof3" not in page.split('class="pgrid"')[1]
+    assert "Are you sure you want to clear all profiles?" in page
+    client.post("/profiles/clear", data={"confirm": "2"})  # the count on the page was out of date
+    assert c.execute("SELECT COUNT(*) FROM profiles").fetchone()[0] == 3
+    client.post("/profiles/clear", data={"confirm": "3"})
+    assert c.execute("SELECT COUNT(*) FROM profiles").fetchone()[0] == 0
+    assert 'name="site"' in client.get("/imports").get_data(as_text=True)
