@@ -29,6 +29,48 @@ def lane_of(order):
     return LANE_OF.get(order["shipping_status"] or "unknown")
 
 
+SHOWN_EVENTS = 6  # the rest open with "+ N more"
+
+
+def arrival(order, today=None):
+    """(headline, long day) for a card: "Arrives tomorrow", "Sun, Oct 25"."""
+    today = today or date.today()
+    status = order["shipping_status"] or "unknown"
+    try:
+        due = date.fromisoformat((order["estimated_delivery"] or "")[:10])
+    except ValueError:
+        due = None
+    day = f"{due:%a}, {due:%b} {due.day}" if due else ""
+    if status == "delivered":
+        return "Delivered", day
+    if status == "out_for_delivery":
+        return "Out for delivery today", day
+    if status == "exception":
+        return "The carrier reported a problem", day
+    if not due:
+        return ("Waiting for the store to ship" if lane_of(order) == "ordered" else "On the way"), ""
+    days = (due - today).days
+    if days < 0:
+        return f"Running late, was due {due:%b} {due.day}", day
+    if days == 0:
+        return "Arrives today", day
+    if days == 1:
+        return "Arrives tomorrow", day
+    return (f"Arrives {due:%A}" if days < 7 else f"Arrives {due:%b} {due.day}"), day
+
+
+def card(con, order, products, today=None):
+    """What a Shipping card shows beyond the order itself: title, picture, arrival and the latest events."""
+    from .ordersheet import picture, timeline
+    first = (order["items"] or [{}])[0] if order["items"] else {}
+    first = first if isinstance(first, dict) else {}
+    headline, day = arrival(order, today)
+    events = [e for e in timeline(con, order) if e["source"] != "order"]
+    return {"title": first.get("name") or order["retailer"] or "Order",
+            "image": first.get("image") or picture(first.get("name"), products),
+            "arrives": headline, "day": day, "events": events}
+
+
 def lanes(orders, today=None):
     """Live orders by lane, newest first; recent deliveries only. Returns {lane: [orders]}."""
     today = today or date.today()
@@ -60,7 +102,13 @@ def page():
     late = [o for o in by_lane["moving"] + by_lane["ordered"]
             if o["estimated_delivery"] and o["estimated_delivery"] < date.today().isoformat()]
     config = Config.from_env()
-    return render_template("tracking.html", lanes=LANES, by_lane=by_lane, shops=shops, shop=shop, late={o["id"] for o in late},
+    from . import products as prod
+    try:
+        products = prod.load().get("products", [])
+    except Exception:
+        products = []
+    cards = {o["id"]: card(store.db, o, products) for lane in by_lane.values() for o in lane}
+    return render_template("tracking.html", cards=cards, shown_events=SHOWN_EVENTS, lanes=LANES, by_lane=by_lane, shops=shops, shop=shop, late={o["id"] for o in late},
                            can_check=bool(carriers.available(os.environ)), checking=carriers.state,
                            training=config.training_mode, labels=store.labels(),
                            label_choices=["ordered", "in_transit", "out_for_delivery", "delivered", "cancelled", "returned",

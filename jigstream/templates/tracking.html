@@ -6,41 +6,86 @@
 {% if checking.last %}<p class="muted" style="margin-top:-6px">{{checking.last}}</p>{% endif %}
 <div class="stats">{% for key, title, hint in lanes %}<a class="card lanecard l-{{key}}" href="#lane-{{key}}">{{title}} <b>{{by_lane[key]|length}}</b></a>{% endfor %}
 {% if late %}<div class="card" style="--c:var(--orange)" title="The store's delivery estimate has passed and the package isn't marked delivered">Running late <b style="color:var(--orange)">{{late|length}}</b></div>{% endif %}</div>
-<div class="board">{% for key, title, hint in lanes %}<section class="lane" id="lane-{{key}}"><h3><span class="dotl l-{{key}}"></span>{{title}} <span class="muted">{{by_lane[key]|length}}</span></h3><p class="muted hint">{{hint}}</p>
-{% for o in by_lane[key] %}{% set status = o.shipping_status or "unknown" %}<article class="tcard{{' late' if o.id in late}}" id="order-{{o.id}}" data-sheet="{{o.id}}">
-<div class="trow"><b>{{o.retailer or "Unknown store"}}</b><span class="num" data-edit-price="{{o.id}}" data-value="{{o.total if o.total is not none else ''}}">{{o.total|money(o.currency)}}</span></div>
-<div class="muted small">{% if o.order_number %}<span data-copy>{{o.order_number}}</span>{% else %}No order #{% endif %} · {{o.order_date or "no date"}}</div>
-<div class="titems" title="{% for i in o['items'] %}{{i.name}}{% if not loop.last %}; {% endif %}{% endfor %}">{% for i in o["items"] %}{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}{% if not loop.last %}; {% endif %}{% else %}<span class="muted">No items listed</span>{% endfor %}</div>
-{% include "_stagebar.html" %}
-<div class="steps"><span class="{{'on' if key in ('ordered','moving','out','delivered')}}">Ordered</span><span class="{{'on' if key in ('moving','out','delivered')}}">Shipped</span><span class="{{'on' if key in ('out','delivered')}}">Out</span><span class="{{'on' if key == 'delivered'}}">Delivered</span></div>
-<div class="tmeta">{% if o.tracking_number %}{% set url = o|track_url %}<a class="track" href="{{url}}" target="_blank" rel="noopener" title="Open the carrier's tracking page"><span class="muted">{{o.carrier or "Track"}}</span> {{o.tracking_number}} ↗</a>{% else %}<span class="muted small">No tracking number yet</span>{% endif %}
-{% if o.carrier_status %}<div class="small" title="From the carrier, checked {{o.carrier_checked_at}}">{{o.carrier_status}}</div>{% endif %}
-{% if o.estimated_delivery %}<div class="small {{'warnt' if o.id in late else 'muted'}}">{{"Was due" if o.id in late else "Due"}} {{o.estimated_delivery}}</div>{% endif %}
-{% if o.profile_name %}<div class="small">Profile <a href="/profile-orders?profile={{o.profile_name|urlencode}}">{{o.profile_name}}</a></div>{% endif %}
-{% set al = o|address_label %}{% if al %}<div class="small"><a href="/address?name={{al|urlencode}}" data-private title="Everything at this address">{{o.shipping_address}}</a></div>{% endif %}</div>
-<div class="tfoot"><span class="pill s-{{status}}" data-edit-status="{{o.id}}" data-status="{{status}}">{{status|status_label}}</span>{% if o.status_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}
-{% if training %}<form method="post" action="/orders/{{o.id}}/label"><input type="hidden" name="back" value="1"><select name="status" class="relabel" title="Wrong stage? Pick the right one; the AI learns from this order's emails"><option value="">Fix status…</option>{% for c in label_choices %}{% if c == "not_an_order" %}<option disabled>──────────</option>{% endif %}<option value="{{c}}" {{"disabled" if c == status}}>{{c|status_label}}</option>{% endfor %}</select></form>{% endif %}
-<a class="small" href="/review?src=order&name={{o.id}}" title="Its checkouts, card charges, emails and profile">Linked ›</a></div>
+<div class="board">{% for key, title, hint in lanes %}{% if by_lane[key] or key != "out" %}<section class="lane" id="lane-{{key}}"><h3><span class="dotl l-{{key}}"></span>{{title}} <span class="muted">{{by_lane[key]|length}}</span></h3><p class="muted hint">{{hint}}</p>
+<div class="sgrid">{% for o in by_lane[key] %}{% set status = o.shipping_status or "unknown" %}{% set c = cards[o.id] %}{% set late_o = o.id in late %}
+{% set stage = {"ordered": 1, "processing": 1, "unknown": 1, "shipped": 2, "in_transit": 3, "exception": 3, "out_for_delivery": 3, "delivered": 4}.get(status, 1) %}
+<article class="scard{{' late' if late_o}}{{' done' if stage == 4}}" id="order-{{o.id}}" data-sheet="{{o.id}}">
+<div class="shead">{% if c.image %}<img class="sthumb" src="{{c.image}}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<div class="sthumb blank"><svg viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8"/></svg></div>{% endif %}
+<div class="sinfo"><div class="strow"><div class="stitle" title="{% for i in o['items'] %}{{i.name}}{% if not loop.last %}; {% endif %}{% endfor %}">{{c.title}}{% if o["items"]|length > 1 %} <span class="muted">+{{o["items"]|length - 1}}</span>{% endif %}</div><span class="pill s-{{status}}" data-edit-status="{{o.id}}" data-status="{{status}}">{{status|status_label}}</span></div>
+<div class="muted ssub">{{o.retailer or "Unknown store"}}{% if o.carrier %} · {{o.carrier}}{% endif %}</div>
+{% if o.tracking_number %}<button type="button" class="tnum" data-copy="{{o.tracking_number}}" title="Copy the tracking number"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>{{o.tracking_number}}</button>{% else %}<span class="muted small">No tracking number yet</span>{% endif %}</div></div>
+<div class="sprog"><div class="sbar"><i style="width:{{[6, 37, 69, 100][stage - 1]}}%"></i></div>
+<div class="ssteps">{% for name in ["Ordered", "Shipped", "In transit", "Delivered"] %}<span class="{{'on' if loop.index <= stage}}">{{name}}</span>{% endfor %}</div></div>
+<div class="sarrive{{' warn' if late_o or status == 'exception'}}"><svg viewBox="0 0 24 24"><path d="M5 17h14M6 17V9l2-4h8l2 4v8M6 9h12"/><circle cx="8" cy="17" r="1.6"/><circle cx="16" cy="17" r="1.6"/></svg>{{c.arrives}}</div>
+{% if c.day %}<div class="srow"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span class="slabel">{{"Delivered" if stage == 4 else "Expected delivery"}}</span><b>{{c.day}}</b></div>{% endif %}
+{% if c.events %}<details class="sev"><summary><svg viewBox="0 0 24 24"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>Latest events <span class="cnt">{{c.events|length}}</span><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+<ol class="tl">{% for e in c.events %}<li class="{{'first' if loop.first}}"{% if loop.index > shown_events %} hidden{% endif %}><b>{{e.text}}</b><span class="muted">{{e.when}}{% if e.where %} · {{e.where}}{% endif %}</span></li>{% endfor %}</ol>
+{% if c.events|length > shown_events %}<button type="button" class="smore">+ {{c.events|length - shown_events}} more</button>{% endif %}</details>{% endif %}
+<div class="sfoot"><span class="num" data-edit-price="{{o.id}}" data-value="{{o.total if o.total is not none else ''}}">{{o.total|money(o.currency)}}</span>
+{% if o.order_number %}<span class="muted">#<span data-copy>{{o.order_number}}</span></span>{% endif %}
+{% if o.profile_name %}<a href="/profile-orders?profile={{o.profile_name|urlencode}}">{{o.profile_name}}</a>{% endif %}
+{% set al = o|address_label %}{% if al %}<a href="/address?name={{al|urlencode}}" data-private title="Everything at this address: {{o.shipping_address}}">{{al}}</a>{% endif %}
+{% if o.tracking_number %}<a href="{{o|track_url}}" target="_blank" rel="noopener" title="Open the carrier's tracking page">Carrier ↗</a>{% endif %}
+<a href="/review?src=order&name={{o.id}}" title="Its checkouts, card charges, emails and profile">Linked ›</a>{% if o.status_manual %}<span class="muted" title="Status set by hand">✎</span>{% endif %}</div>
+{% if o.carrier_status %}<div class="muted small" title="From the carrier, checked {{o.carrier_checked_at}}">Carrier: {{o.carrier_status}}</div>{% endif %}
+{% if training %}<form method="post" action="/orders/{{o.id}}/label" class="sfix"><input type="hidden" name="back" value="1"><select name="status" class="relabel" title="Wrong stage? Pick the right one; the AI learns from this order's emails"><option value="">Fix status…</option>{% for c2 in label_choices %}{% if c2 == "not_an_order" %}<option disabled>──────────</option>{% endif %}<option value="{{c2}}" {{"disabled" if c2 == status}}>{{c2|status_label}}</option>{% endfor %}</select></form>{% endif %}
 {% set lb = labels.get(o.id) %}{% if lb %}<div class="muted small">{{"Searching..." if lb.rescan == "pending" else lb.rescan}}</div>{% endif %}
-</article>{% else %}<p class="muted small empty">Nothing here.</p>{% endfor %}</section>{% endfor %}</div>
+</article>{% else %}<p class="muted small empty">Nothing here.</p>{% endfor %}</div></section>{% endif %}{% endfor %}</div>
 <style>
 .thead{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}.thead h2{margin:0}
 .tact{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.tact form{margin:0}.tact select{margin:0}
 .lanecard{text-decoration:none;color:inherit}.l-ordered,.stats .card.l-ordered{--c:#ffb27a}.l-moving,.stats .card.l-moving{--c:#7cc8ff}.l-out,.stats .card.l-out{--c:#5aaefc}.l-delivered,.stats .card.l-delivered{--c:#3ddc84}
-.board{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;align-items:start;margin-top:14px}
-.lane{background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:12px;min-width:0}
-.lane h3{margin:0;font-size:14px;display:flex;align-items:center;gap:8px}.lane .hint{margin:2px 0 10px;font-size:12px}
+.board{display:flex;flex-direction:column;gap:22px;margin-top:14px}
+.lane h3{margin:0;display:flex;align-items:center;gap:8px}.lane .hint{margin:2px 0 10px;font-size:12px}
 .dotl{width:10px;height:10px;border-radius:50%;background:var(--c)}
-.tcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px;min-width:0}
-.tcard.late{border-color:color-mix(in srgb,var(--orange) 60%,var(--line))}
-.trow{display:flex;justify-content:space-between;gap:8px}.small{font-size:12px}.warnt{color:var(--orange);font-size:12px}
-.titems{font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.steps{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-top:-2px}.steps .on{color:var(--text)}
-.tmeta{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:anywhere}.tmeta a.track{word-break:normal;overflow-wrap:anywhere;align-self:flex-start}
-.tfoot{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}.tfoot form{margin:0;flex:1;min-width:120px}.tfoot select{margin:0;padding:4px 8px;font-size:12px;width:100%}
-.empty{margin:4px 2px}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr));gap:14px;align-items:start}
+.scard{--c:var(--accent);background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.scard.done{--c:var(--green)}.scard.late{--c:var(--orange);border-color:color-mix(in srgb,var(--orange) 50%,var(--line))}
+.shead{display:flex;gap:12px;align-items:flex-start;min-width:0}
+.sthumb{width:58px;height:58px;border-radius:14px;object-fit:cover;flex:none;background:#fff}
+.sthumb.blank{display:grid;place-items:center;background:var(--surface-2);border:1px solid var(--line)}
+.scard svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.sthumb.blank svg{width:26px;height:26px;color:var(--muted)}
+.sinfo{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.strow{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;min-width:0}.strow .pill{flex:none}
+.stitle{flex:1;min-width:0;font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ssub{font-size:13px}
+.tnum{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;margin-top:3px;padding:4px 10px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line-2);color:var(--text);font:600 12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;cursor:copy;max-width:100%;min-width:0;text-align:left;white-space:normal;word-break:break-all}
+.tnum svg{width:14px;height:14px;color:var(--muted)}.tnum:hover{border-color:var(--accent);color:var(--accent)}
+.sprog{display:flex;flex-direction:column;gap:7px}
+.sbar{height:5px;border-radius:99px;background:var(--line)}.sbar i{display:block;height:100%;border-radius:inherit;background:var(--c);box-shadow:0 0 10px color-mix(in srgb,var(--c) 60%,transparent)}
+.ssteps{display:flex;justify-content:space-between;font-size:12px;font-weight:500;color:var(--muted)}.ssteps .on{color:var(--c)}
+.sarrive{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:13px;background:color-mix(in srgb,var(--c) 12%,transparent);color:var(--c);font-weight:600}
+.sarrive.warn{--c:var(--orange)}
+.srow{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:13px;background:var(--surface-2)}
+.srow svg{color:var(--muted)}.slabel{flex:1;text-transform:uppercase;letter-spacing:.06em;font-size:12px;font-weight:600;color:var(--muted)}
+.sev{border:1px solid var(--line-2);border-radius:13px}
+.sev summary{list-style:none;display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;font-weight:600}
+.sev summary::-webkit-details-marker{display:none}
+.sev .cnt{font-size:11.5px;padding:1px 8px;border-radius:99px;background:var(--surface-2);color:var(--muted)}
+.sev .chev{margin-left:auto;color:var(--muted);transition:transform .2s}.sev[open] .chev{transform:rotate(180deg)}
+.tl{list-style:none;margin:0;padding:4px 14px 6px 14px;border-top:1px solid var(--line)}
+.tl li{position:relative;padding:8px 0 8px 22px;display:flex;flex-direction:column;gap:1px;min-width:0;overflow-wrap:anywhere}
+.tl li:before{content:"";position:absolute;left:3px;top:14px;width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.tl li:after{content:"";position:absolute;left:7px;top:26px;bottom:-12px;width:1px;background:var(--line-2)}
+.tl li:last-of-type:after,.tl li:has(+ li[hidden]):after{display:none}
+.tl li[hidden]{display:none}
+.tl li.first:before{background:var(--c);box-shadow:0 0 8px var(--c)}
+.tl li b{font-weight:500}.tl li.first b{font-weight:600}.tl li span{font-size:12px}
+.smore{display:block;width:100%;background:none;border:0;border-top:1px solid var(--line);padding:9px;color:var(--muted);font-weight:600;cursor:pointer}
+.smore:hover{color:var(--accent)}
+.sfoot{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:13px}
+.sfoot .num{font-weight:600}
+.sfix{margin:0}.sfix select{margin:0;padding:4px 8px;font-size:12px;width:100%}
+.small{font-size:12px}.empty{margin:4px 2px}
 </style>
 <script>
+document.addEventListener('click', e => {
+  const more = e.target.closest('.smore');
+  if (!more) return;
+  more.previousElementSibling.querySelectorAll('li[hidden]').forEach(li => li.hidden = false);
+  more.remove();
+});
 document.addEventListener('change', e => {
   const sel = e.target;
   if (!sel.classList.contains('relabel') || !sel.value) return;
