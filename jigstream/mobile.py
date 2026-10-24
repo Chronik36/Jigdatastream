@@ -15,7 +15,7 @@ import socket
 import subprocess
 import time
 from datetime import timedelta
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from flask import (Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request,
                    session, url_for)
@@ -140,6 +140,7 @@ def init_app(app):
     if os.environ.get("PHONE_ACCESS") == "1" and not os.environ.get("PHONE_PAIR_KEY"):
         save_env(new_pairing())  # phone access turned on before pairing by QR code existed
     app.register_blueprint(bp)
+    app.after_request(secure_headers)
     try:
         watch_changes(db.connect(app.config.get("DB_PATH")))
     except Exception:
@@ -158,6 +159,10 @@ def init_app(app):
     @app.before_request
     def guard():
         if from_this_mac():
+            if request.method not in ("GET", "HEAD", "OPTIONS") and not same_site_post():
+                logger.warning("blocked a %s to %s sent by another website (%s)", request.method, request.path,
+                               request.headers.get("Origin") or request.headers.get("Sec-Fetch-Site"))
+                abort(403)
             return None
         s = settings()
         if not s["on"] or not network_allowed(request.remote_addr, s["allow_lan"]):
@@ -177,6 +182,24 @@ def init_app(app):
         if request.method == "POST" and not token_ok():
             abort(400)
         return None
+
+
+def same_site_post():
+    """A web page you visit in your browser can't make BotTrack act for it: the browser can reach 127.0.0.1 too,
+    so a change from the Mac only counts when it came from BotTrack's own pages (or a local program, which sends
+    neither header)."""
+    origin = request.headers.get("Origin")
+    if origin is None:
+        return request.headers.get("Sec-Fetch-Site") != "cross-site"
+    return (urlparse(origin).hostname or "") in LOCAL_HOSTS
+
+
+def secure_headers(resp):
+    """No other site may show BotTrack inside a frame, guess file types, or see BotTrack's links in referrers."""
+    resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "same-origin")
+    return resp
 
 
 # ---- live updates: every open page, on the Mac or a phone, reloads when the data changes ---------
