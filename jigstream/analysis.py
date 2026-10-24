@@ -15,8 +15,10 @@ def profile_issues(p):
 
 def profile_stats(con):
     stats = defaultdict(lambda: {"success": 0, "decline": 0, "failure": 0, "unknown": 0})
-    for r in con.execute("SELECT profile,status FROM checkouts"):
-        stats[r["profile"]][r["status"]] += 1
+    from .profiles import resolver
+    resolve = resolver(con)
+    for r in con.execute("SELECT profile, site, status FROM checkouts"):
+        stats[resolve(r["profile"], r["site"])][r["status"]] += 1
     return stats
 
 

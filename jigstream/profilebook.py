@@ -116,6 +116,8 @@ def duplicate(con, name, count):
         values = dict(row)
         values["name"] = new
         values["card_id"] = None
+        if "bot_name" in values:
+            values["bot_name"] = None  # a copy is its own profile in the bot too
         con.execute(f"INSERT INTO profiles ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
                     [values[c] for c in cols])
         taken.add(new)

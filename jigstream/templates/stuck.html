@@ -11,7 +11,7 @@
 <td style="white-space:nowrap">{{(r.ts or "-")[:16]|replace("T", " ")}}</td><td>{{r.bot or "-"}}</td>
 <td><b>{{r.site or "-"}}</b><div class="muted">{{r.order_number or (o.order_number if o else "") or ""}}</div></td>
 <td>{{r.product|tidy or "-"}}{% if r.size %} <span class="muted">· {{r.size}}</span>{% endif %}{% if r.price %}<div class="muted">{{r.price}}</div>{% endif %}</td>
-<td>{% if r.profile %}<a href="/profile-orders?profile={{r.profile|urlencode}}">{{r.profile}}</a>{% else %}-{% endif %}</td>
+<td>{% if r.profile %}<a href="/profile-orders?profile={{(r.profile_key or r.profile)|urlencode}}">{{r.profile}}</a>{% else %}-{% endif %}</td>
 <td>{% if o %}<a href="/orders#order-{{o.id}}"><span class="pill s-{{o.shipping_status or 'unknown'}}">{{o.shipping_status|status_label}}</span></a>
 {% if r.state == "cancelled" %}<div class="muted" style="font-size:12px;margin-top:4px">{{(o.last_email_date or "")[:10]}}</div>{% endif %}
 {% else %}<span class="pill s-unknown">No email found</span>{% endif %}</td>

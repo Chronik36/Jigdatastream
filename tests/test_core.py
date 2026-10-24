@@ -141,3 +141,30 @@ def test_profiles_import_under_a_retail_site_and_group_and_clear(tmp_path):
     client.post("/profiles/clear", data={"confirm": "3"})
     assert c.execute("SELECT COUNT(*) FROM profiles").fetchone()[0] == 0
     assert 'name="site"' in client.get("/imports").get_data(as_text=True)
+
+
+def test_the_same_profile_name_is_saved_once_per_retail_site(tmp_path):
+    from jigstream import drop
+    from jigstream.orderstore import Store
+    c = Store(db.connect(str(tmp_path / "t.db"))).db
+    tgt = [{"name": "Profile 1", "shipping": {"address1": "1 Main Street", "city": "Austin", "state": "TX", "zip": "78701"}}]
+    wmt = [{"name": "Profile 1", "shipping": {"address1": "9 Elm Street", "city": "Reno", "state": "NV", "zip": "89501"}}]
+    profiles.ingest(c, json.dumps(tgt), "Valor", "Target", "T1")
+    assert [r[0] for r in c.execute("SELECT name FROM profiles")] == ["Profile 1"]  # alone, it keeps its own name
+    profiles.ingest(c, json.dumps(wmt), "Valor", "Walmart", "W1")
+    rows = {r["name"]: (r["site"], r["ship_zip"]) for r in c.execute("SELECT * FROM profiles")}
+    assert rows == {"Profile 1 (Target)": ("Target", "78701"), "Profile 1 (Walmart)": ("Walmart", "89501")}
+    profiles.ingest(c, json.dumps(wmt), "Valor", "Walmart")  # importing Walmart's again updates Walmart's
+    assert c.execute("SELECT COUNT(*) FROM profiles").fetchone()[0] == 2
+    resolve = profiles.resolver(c)
+    assert resolve("Profile 1", "walmart.com") == "Profile 1 (Walmart)" and resolve("Profile 1", "Target") == "Profile 1 (Target)"
+    for site, fp in (("target.com", "a"), ("Walmart", "b")):
+        hook = {"username": "Valor", "embeds": [{"title": "Successful Checkout", "timestamp": "2026-10-01T00:00:00Z",
+                "footer": {"text": fp}, "fields": [{"name": "Site", "value": site}, {"name": "Profile", "value": "Profile 1"},
+                                                   {"name": "Product", "value": "ETB " + fp}]}]}
+        parsers.ingest(c, json.dumps([hook]))
+    got = {r["site"]: (r["profile"], r["address"]) for r in drop.rows(c)}
+    assert got["target.com"][0] == "Profile 1 (Target)" and got["target.com"][1].startswith("1 MAIN")
+    assert got["Walmart"][0] == "Profile 1 (Walmart)" and got["Walmart"][1].startswith("9 ELM")
+    page = create_app(str(tmp_path / "t.db")).test_client().get("/profiles").get_data(as_text=True)
+    assert page.count(">Profile 1 <span class=\"tag site\">") == 2  # shown by the bot's name, under each site
