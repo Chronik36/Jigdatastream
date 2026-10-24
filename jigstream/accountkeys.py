@@ -332,6 +332,23 @@ def keys_test_lock():
     return redirect(url_for("accountkeys.keys_page"))
 
 
+@bp.post("/activate/developer")
+def activate_developer():
+    """The way back in for jacob from the key screen: his signing key opens his copy (and ends testing)."""
+    from .config import save_env
+    given = request.form.get("private", "").strip() or signing_key()
+    try:
+        ok = bool(given) and public_of(given) == public_key()
+    except Exception:
+        ok = False
+    if not ok:
+        flash("That isn't the signing key keys are checked with.")
+        return redirect(url_for("accountkeys.activate"))
+    save_env({"BOTTRACK_SIGNING_KEY": given, "BOTTRACK_TEST_LOCK": ""})
+    logger.info("developer copy opened with the signing key")
+    return redirect(url_for("accountkeys.keys_page"))
+
+
 @bp.post("/keys/<kid>/revoke")
 def keys_revoke(kid):
     from .mobile import from_this_mac
