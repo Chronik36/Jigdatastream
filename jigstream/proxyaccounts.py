@@ -12,7 +12,7 @@ typed from the provider's API docs.
 import json
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 
@@ -33,6 +33,16 @@ AUTHS = {"url": "In the address as {key}", "bearer": "Authorization: Bearer key"
          "token": "Authorization: Token key"}
 UNITS = {"gb": 1, "mb": 1 / 1024, "bytes": 1 / 1024 ** 3}
 LOW_GB = 1.0  # warn when a plan has less than this left
+# Filled in from each provider's public API docs; picked in the Connect a provider window. Add more as they're checked.
+PRESETS = {
+    "Webshare": {"auth": "token", "unit": "bytes", "used_path": "bandwidth_total", "left_path": "", "total_path": "",
+                 "usage_url": "https://proxy.webshare.io/api/v2/stats/aggregate/?timestamp__gte={month_start}&timestamp__lte={now}",
+                 "list_url": "https://proxy.webshare.io/api/v2/proxy/list/?mode=direct&page_size=100",
+                 "help": "API key from Webshare's dashboard (API → Keys). Data used counts this month; Refresh pool loads up to 100 proxies."},
+    "IPRoyal Residential": {"auth": "bearer", "unit": "gb", "used_path": "", "left_path": "available_traffic", "total_path": "",
+                            "usage_url": "https://resi-api.iproyal.com/v1/me", "list_url": "",
+                            "help": "API token from IPRoyal's dashboard (Residential → API). Residential uses one gateway, so there's no list to refresh."},
+}
 
 
 def ensure(con):
@@ -48,7 +58,15 @@ def now():
     return datetime.now().isoformat(timespec="seconds")
 
 
+def fill_dates(url, today=None):
+    """{month_start} and {now} in an address become ISO times (for APIs that count usage over a period)."""
+    now = today or datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
+    start = now.replace(day=1, hour=0, minute=0, second=0)
+    return url.replace("{month_start}", start.isoformat() + "Z").replace("{now}", now.isoformat() + "Z")
+
+
 def _request(url, key, auth):
+    url = fill_dates(url)
     headers = {"User-Agent": "BotTrack", "Accept": "application/json, text/plain, */*"}
     if auth == "bearer":
         headers["Authorization"] = f"Bearer {key}"
@@ -130,9 +148,11 @@ def pool_lines(text):
             for x in data:
                 if isinstance(x, str):
                     out.append(x)
-                elif isinstance(x, dict) and (x.get("host") or x.get("ip")) and x.get("port"):
+                elif isinstance(x, dict) and (x.get("host") or x.get("ip") or x.get("proxy_address")) and x.get("port"):
+                    if x.get("valid") is False:
+                        continue
                     login = f":{x.get('username') or x.get('user')}:{x.get('password') or x.get('pass')}" if (x.get("username") or x.get("user")) else ""
-                    out.append(f"{x.get('host') or x.get('ip')}:{x['port']}{login}")
+                    out.append(f"{x.get('host') or x.get('ip') or x.get('proxy_address')}:{x['port']}{login}")
             return out
     return [line for line in s.splitlines() if line.strip()]
 
