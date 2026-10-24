@@ -5,9 +5,21 @@
 training. Each computer keeps its own full copy and works on its own; changes go across within a minute whenever both are open.
 Gmail passwords, settings and Undo stay on each computer.</p>
 
+<section class="panel" style="margin:14px 0;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center">
+<div style="flex:1;min-width:240px">
+<h3 style="margin-top:0">Link through Gmail</h3>
+{% if gmail %}<p class="muted" style="margin:0">Turn this on here and on your other computer. Every computer with <b>{{gmail|join(", ")}}</b> connected finds the others by itself and links within a few minutes, with no code to type.
+{% if gmail_on %}<span class="ok">On.</span>{% endif %}</p>
+<p class="muted small" style="margin:6px 0 0">BotTrack keeps one small note per computer in a Gmail label called BotTrack-Link (never in your inbox). Anyone who can open that Gmail could link a computer, the same as anything else in it.</p>
+{% else %}<p class="muted" style="margin:0">Connect a Gmail inbox on <a href="/setup">Setup</a> first. Computers with the same Gmail then find each other.</p>{% endif %}
+</div>
+{% if gmail %}<form method="post" action="{{url_for('peersync.gmail_page')}}"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+<input type="hidden" name="on" value="{{'0' if gmail_on else '1'}}"><button class="{{'ghost' if gmail_on}}">{{"Turn off" if gmail_on else "Turn on"}}</button></form>{% endif %}
+</section>
+
 {% if invite %}<section class="panel" style="margin:14px 0">
 <h3 style="margin-top:0">Type this on the other computer</h3>
-<p>On the other computer open Setup, <b>Your other computers</b>, paste this code under <b>Link with a code</b> and press Link.
+<p>On the other computer open Setup, <b>Your other computers</b>, paste this code under <b>Type a code</b> and press Link.
 It works for an hour, once.</p>
 <p style="font-family:ui-monospace,Menlo,monospace;word-break:break-all;user-select:all;background:var(--panel2,rgba(127,127,127,.12));padding:10px;border-radius:8px" data-copy="{{invite}}">{{invite}}</p>
 <p class="muted small">Tap the code to copy it. Send it to yourself any way you like: it only links the two computers while it's fresh,
@@ -33,12 +45,12 @@ and everything they swap is sealed with a key only they know.</p>
 
 <section class="panel" style="margin:14px 0;display:flex;flex-wrap:wrap;gap:24px">
 <div style="flex:1;min-width:240px">
-<h3 style="margin-top:0">Link a new computer</h3>
+<h3 style="margin-top:0">Or link with a code</h3>
 <p class="muted">Install BotTrack on the other computer first (Mac or Windows). Then make a code here and type it there.</p>
 <form method="post" action="{{url_for('peersync.make_invite')}}"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Make a code</button></form>
 </div>
 <div style="flex:1;min-width:240px">
-<h3 style="margin-top:0">Link with a code</h3>
+<h3 style="margin-top:0">Type a code</h3>
 <p class="muted">Made on the other computer.</p>
 <form method="post" action="{{url_for('peersync.join_page')}}" style="display:flex;gap:8px;flex-wrap:wrap"><input type="hidden" name="csrf" value="{{csrf_token()}}">
 <input name="code" placeholder="BT1-…" style="flex:1;min-width:180px" autocomplete="off" required><button>Link</button></form>

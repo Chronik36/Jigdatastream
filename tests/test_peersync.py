@@ -257,3 +257,58 @@ def test_undo_still_works_and_goes_across(tmp_path, monkeypatch):
     swap(a, b, post, current)
     with b as con:
         assert con.execute("SELECT total FROM tracked_orders WHERE order_number='7007'").fetchone()[0] == 45
+
+
+class FakeBox:
+    """A BotTrack-Link label both computers can read, like one Gmail."""
+
+    def __init__(self, label, address="me@gmail.com"):
+        self.label, self.address = label, address
+
+    def notes(self):
+        return [json.loads(json.dumps(n)) for n in self.label.values()]
+
+    def post(self, site, note):
+        self.label.pop(site, None)
+        if note is not None:
+            self.label[site] = note
+
+
+def test_computers_on_the_same_gmail_link_by_themselves(tmp_path, monkeypatch):
+    from jigstream import gmaillink
+    a, b = Computer(tmp_path / "mac.db", "mac"), Computer(tmp_path / "pc.db", "pc")
+    post = network(a, b)
+    monkeypatch.setattr(peersync, "my_url", lambda: f"https://{ACTIVE[-1].name}.trycloudflare.com")
+    monkeypatch.setattr(peersync, "sync_topic", lambda: "bottrack-sync-test")
+    label = {}
+    with a as con:
+        assert gmaillink.turn(con, None, True, [FakeBox(label)]) == []  # first one: nobody else yet
+    with b as con:
+        assert len(gmaillink.turn(con, None, True, [FakeBox(label)])) == 1  # found the first
+    with a as con:
+        gmaillink.meet(con, None, [FakeBox(label)])
+        assert [p["url"] for p in peersync.peers(con)] == ["https://pc.trycloudflare.com"]
+        order(con, "8008")
+    current = [a]
+    swap(a, b, post, current)
+    with b as con:
+        assert con.execute("SELECT COUNT(*) FROM tracked_orders WHERE order_number='8008'").fetchone()[0] == 1
+    with a as con:
+        gmaillink.turn(con, None, False, [FakeBox(label)])
+    assert len(label) == 1  # its note is gone; the other's stays
+
+
+def test_two_gmail_groups_started_at_once_become_one(tmp_path, monkeypatch):
+    from jigstream import gmaillink
+    a, b = Computer(tmp_path / "mac.db", "mac"), Computer(tmp_path / "pc.db", "pc")
+    monkeypatch.setattr(peersync, "my_url", lambda: "")
+    monkeypatch.setattr(peersync, "sync_topic", lambda: "t")
+    first, second = {}, {}
+    with a as con:
+        gmaillink.turn(con, None, True, [FakeBox(first)])
+    time.sleep(0.01)
+    with b as con:
+        gmaillink.turn(con, None, True, [FakeBox(second)])  # couldn't see the first yet
+        second.update(first)
+        gmaillink.meet(con, None, [FakeBox(second)])
+        assert peersync.meta(con, "gmail_group") == first[peersync.site(a.con)]["key"]
