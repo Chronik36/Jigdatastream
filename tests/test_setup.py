@@ -214,3 +214,13 @@ def test_privacy_screen_is_on_every_page(tmp_path, monkeypatch):
     for path in ("/", "/orders", "/profiles"):
         page = c.get(path).get_data(as_text=True)
         assert 'id="privsw"' in page and "Reveal sensitive info" in page and "html:not(.reveal) .pv" in page
+
+
+def test_light_mode_switch_and_eye_icons(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    c = appmod.create_app(str(tmp_path / "s.db")).test_client()
+    page = c.get("/profiles").get_data(as_text=True)
+    assert 'id="themesw"' in page and "html[data-theme=light]" in page and "bt-theme" in page
+    assert 'class="eye shut"' in page and 'class="eye open"' in page
+    assert 'href="/stock"' not in page  # hidden until the Discord stock monitors are hooked up
+    assert c.get("/stock").status_code == 200

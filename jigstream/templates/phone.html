@@ -7,6 +7,7 @@
   .top{padding-top:env(safe-area-inset-top,0px);height:calc(var(--top) + env(safe-area-inset-top,0px))}
   .ptabs{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(10,18,48,.97);backdrop-filter:blur(14px);
     border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+  html[data-theme=light] .ptabs{background:rgba(255,255,255,.97)}
   .ptabs a,.ptabs button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0 10px;color:var(--muted);font-size:11px;
     font-weight:600;background:none;border:0;box-shadow:none;border-radius:0;letter-spacing:0}
   .ptabs svg.i{width:22px;height:22px}
@@ -24,7 +25,7 @@ tr.pg-more{display:none !important}
 .pg-btn{display:block;width:100%;margin:-12px 0 24px}
 </style>
 <nav class="ptabs" aria-label="Main pages">
-{% for href, label, ic in [("/", "Home", "dash"), ("/orders", "Orders", "orders"), ("/expenses", "Expenses", "expenses"), ("/stock", "Stock", "stock")] %}
+{% for href, label, ic in [("/", "Home", "dash"), ("/orders", "Orders", "orders"), ("/expenses", "Expenses", "expenses"), ("/drop", "Drops", "drop")] %}
 <a href="{{href}}" class="{{'on' if (path == href if href == '/' else path.startswith(href))}}">{{ icon(ic) }}{{label}}</a>{% endfor %}
 <button type="button" onclick="document.documentElement.classList.toggle('open')">{{ icon("menu") }}More</button>
 </nav>

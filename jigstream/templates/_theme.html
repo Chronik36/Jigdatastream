@@ -1,0 +1,53 @@
+{# Light mode: the logo's navy, teal, green and orange on white instead of on navy. The Dark / Light switch in the top
+   bar sets html[data-theme]; the choice is remembered on this device (the head script applies it before the page draws). #}
+<style>
+html[data-theme=light]{
+  --bg:#f3f6fc;--side:#ffffff;--surface:#ffffff;--surface-2:#eef3fb;--line:#dde5f2;--line-2:#c6d2e8;
+  --text:#0e1838;--muted:#56628c;--accent:#0a8ea6;--accent-2:#076e81;--accent-soft:rgba(10,142,166,.10);
+  --blue:#1f6fe0;--green:#0f9a52;--green-soft:rgba(15,154,82,.10);--red:#d6334a;--sky:#0a8ea6;--orange:#e46a17;
+  color-scheme:light}
+html[data-theme=light] body{background:radial-gradient(1100px 560px at 90% -12%,rgba(10,142,166,.08),transparent 60%),radial-gradient(800px 480px at 20% 115%,rgba(15,154,82,.06),transparent 60%),var(--bg)}
+html[data-theme=light] ::selection{background:rgba(10,142,166,.22)}
+html[data-theme=light] .side{background:linear-gradient(180deg,#ffffff,#f7f9fe 40%);box-shadow:1px 0 0 var(--line)}
+html[data-theme=light] .snav .sec,html[data-theme=light] .collapse,html[data-theme=light] body .gside .lbl{color:#7a86ad}
+html[data-theme=light] .side a.it:hover,html[data-theme=light] .collapse:hover,html[data-theme=light] body .gside a:hover{background:rgba(14,24,56,.04)}
+html[data-theme=light] .side a.it.on{background:linear-gradient(90deg,rgba(10,142,166,.14),rgba(10,142,166,.02))}
+html[data-theme=light] .side a.it.on svg{filter:none}
+html[data-theme=light] .top{background:rgba(255,255,255,.94)}
+html[data-theme=light] .card,html[data-theme=light] .stats .card{box-shadow:0 1px 2px rgba(14,24,56,.05),0 6px 20px rgba(14,24,56,.04)}
+html[data-theme=light] .stats .card{background:radial-gradient(160px 90px at 100% 0,color-mix(in srgb,var(--c) 12%,transparent),transparent 70%),var(--surface)}
+html[data-theme=light] th,html[data-theme=light] body .fl{color:#6a76a0}
+html[data-theme=light] tr:hover>td{background:#f0f5fd}
+html[data-theme=light] input::placeholder,html[data-theme=light] textarea::placeholder{color:#97a1c2}
+html[data-theme=light] button{color:#fff;background:linear-gradient(135deg,#1f6fe0,var(--accent));box-shadow:0 3px 10px rgba(10,142,166,.22)}
+html[data-theme=light] button.ghost,html[data-theme=light] form.ghost button,html[data-theme=light] a.btn.ghost{background:#fff;color:var(--text)}
+html[data-theme=light] button.danger{background:#fff;color:var(--red)}
+html[data-theme=light] .collapse,html[data-theme=light] .menu{background:none;box-shadow:none}
+html[data-theme=light] .flash{color:var(--accent-2)}
+html[data-theme=light] body dialog{background:var(--surface);box-shadow:0 30px 80px rgba(14,24,56,.25)}
+html[data-theme=light] body dialog::backdrop{background:rgba(14,24,56,.35)}
+html[data-theme=light] body dialog .df{background:var(--surface-2)}
+html[data-theme=light] .privsw .knob:after{background:#fff;box-shadow:0 1px 2px rgba(14,24,56,.3)}
+html[data-theme=light] .privsw input:checked~.knob:after{background:#fff}
+/* The switch */
+.themesw{display:flex;align-items:center;padding:3px;border:1px solid var(--line-2);border-radius:999px;margin:0;cursor:pointer;flex:none}
+.themesw input{position:absolute;opacity:0;width:0;height:0}
+.themesw span{display:flex;align-items:center;justify-content:center;width:26px;height:22px;border-radius:999px;color:var(--muted);transition:background .15s,color .15s}
+.themesw svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.themesw input:not(:checked)~.dk,.themesw input:checked~.lt{background:var(--accent-soft);color:var(--accent)}
+.themesw input:focus-visible~span{outline:2px solid var(--accent-soft)}
+</style>
+<script>
+(function () {
+  var sw = document.getElementById('themesw'), root = document.documentElement;
+  if (!sw) return;
+  sw.checked = root.dataset.theme === 'light';
+  sw.addEventListener('change', function () {
+    var t = sw.checked ? 'light' : 'dark';
+    root.dataset.theme = t;
+    try { localStorage.setItem('bt-theme', t); } catch (e) {}
+    var m = document.querySelector('meta[name=theme-color]');
+    if (m) m.content = t === 'light' ? '#ffffff' : '#0a1230';
+  });
+})();
+</script>

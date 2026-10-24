@@ -10,8 +10,10 @@ html:not(.reveal) .pv{user-select:none}
 .privsw input{position:absolute;opacity:0;width:0;height:0}
 .privsw .knob{position:relative;width:34px;height:20px;border-radius:999px;background:var(--line-2);transition:background .15s;flex:none}
 .privsw .knob:after{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#c9d2f2;transition:transform .15s}
-.privsw input:checked+.knob{background:var(--accent)}.privsw input:checked+.knob:after{transform:translateX(14px);background:#0b1436}
-.privsw input:focus-visible+.knob{box-shadow:0 0 0 3px var(--accent-soft)}
+.privsw input:checked~.knob{background:var(--accent)}.privsw input:checked~.knob:after{transform:translateX(14px);background:#0b1436}
+.privsw input:focus-visible~.knob{box-shadow:0 0 0 3px var(--accent-soft)}
+.privsw .eye{display:flex;color:var(--muted);opacity:.35;transition:opacity .15s,color .15s}.privsw .eye svg.i{width:16px;height:16px}
+html:not(.reveal) .privsw .eye.shut{opacity:1;color:var(--text)}html.reveal .privsw .eye.open{opacity:1;color:var(--accent)}
 @media (max-width:700px){.privsw .lbl{display:none}}
 </style>
 <script>
