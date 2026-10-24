@@ -32,7 +32,7 @@ logger = logging.getLogger("jigstream.backup")
 bp = Blueprint("backup", __name__)
 
 MAGIC = b"BTBK1"
-KEEP = 14
+KEEP = 7
 EVERY = 24 * 3600
 MIN_PASSWORD = 8
 # Settings that belong to this computer, not to the backup: where it listens, its link and its update state.

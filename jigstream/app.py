@@ -66,6 +66,8 @@ def create_app(db_path=None):
     app.register_blueprint(peersync.bp)
     app.register_blueprint(ordersheet.bp)
     app.register_blueprint(backup.bp)
+    from . import storage
+    app.register_blueprint(storage.bp)
     app.register_blueprint(packs.bp)
 
     @app.context_processor
@@ -140,6 +142,11 @@ def create_app(db_path=None):
                         pricecheck.recheck(config, Store(con()), stop=sync_state["stop"].is_set)
                     except Exception:
                         logger.exception("re-checking saved prices failed")
+                    try:
+                        from .orderstore import drop_suggested_items
+                        drop_suggested_items(con())
+                    except Exception:
+                        logger.exception("dropping suggested items failed")
                     progress("Finding product pictures...")
                     try:
                         ordersheet.backfill_pictures(config, Store(con()), stop=sync_state["stop"].is_set)
