@@ -1,0 +1,58 @@
+{# Provider accounts on the Proxies tab: data left per plan, and fresh lists from each provider's API. #}
+<section class="panel" id="accounts" style="margin-bottom:16px">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Provider accounts</h3>
+<div style="display:flex;gap:8px;flex-wrap:wrap">{% if accounts %}<form method="post" action="/proxies/accounts/usage-all" style="margin:0"><button class="ghost">Check data left on all</button></form>{% endif %}
+<button type="button" onclick="pxAcct()">Connect a provider</button></div></div>
+<p class="muted" style="font-size:12.5px">Data used and left on each plan, and a Refresh pool button that swaps a group for the provider's current list. Uses each provider's own API with your key; the key stays on this Mac.</p>
+{% if accounts %}<div class="acgrid">{% for a in accounts %}<div class="acard{{' low' if a.low}}">
+<div class="actop"><b>{{a.name}}</b><span class="muted small">{{a.grp or a.name}} group{% if a.pool_size is not none %} · {{a.pool_size}} proxies{% endif %}</span></div>
+{% if a.used_gb is not none or a.left_gb is not none %}<div class="acnum">{% if a.left_gb is not none %}<b>{{"%g"|format(a.left_gb)}} GB</b> left{% endif %}{% if a.used_gb is not none %} <span class="muted">· {{"%g"|format(a.used_gb)}} GB used{% if a.total_gb %} of {{"%g"|format(a.total_gb)}}{% endif %}</span>{% endif %}</div>
+{% if a.pct_used is not none %}<div class="acbar"><i style="width:{{[a.pct_used, 100]|min}}%"></i></div>{% endif %}{% if a.low %}<div class="warnt small">Running low</div>{% endif %}
+{% elif a.usage_url %}<div class="muted small">Data left not checked yet.</div>{% else %}<div class="muted small">No usage address set.</div>{% endif %}
+{% if a.usage_error %}<div class="small" style="color:var(--red)">{{a.usage_error}}</div>{% endif %}{% if a.pool_error %}<div class="small" style="color:var(--red)">Pool: {{a.pool_error}}</div>{% endif %}
+<div class="muted small">{% if a.checked_at %}Checked {{a.checked_at[:16]|replace("T", " ")}}{% endif %}{% if a.refreshed_at %} · pool {{a.refreshed_at[:16]|replace("T", " ")}}{% endif %}</div>
+<div class="acbtn">{% if a.usage_url %}<form method="post" action="/proxies/accounts/{{a.id}}/usage"><button class="ghost sm">Check data</button></form>{% endif %}
+{% if a.list_url %}<form method="post" action="/proxies/accounts/{{a.id}}/pool" data-confirm="Replace the proxies in the {{a.grp or a.name}} group with {{a.name}}'s current list? Their speed tests are cleared."><button class="ghost sm">Refresh pool</button></form>{% endif %}
+<button type="button" class="ghost sm" onclick='pxAcct({{a|tojson}})'>Edit</button>
+<form method="post" action="/proxies/accounts/{{a.id}}/delete" data-confirm="Remove the {{a.name}} account? Its proxies stay."><button class="ghost sm">Remove</button></form></div>
+</div>{% endfor %}</div>{% endif %}
+</section>
+<dialog id="acdlg" class="md"><form method="post" action="/proxies/accounts/save" id="acform"><input type="hidden" name="id">
+<div class="dh"><h3>Provider account</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
+<div class="acf">
+<label>Name<input name="name" required placeholder="e.g. Oculus Resi"></label>
+<label>API key<input name="api_key" type="password" autocomplete="off" placeholder="from the provider's dashboard"><span class="muted small" id="ackeyhint"></span></label>
+<label>Key goes<select name="auth">{% for k, v in auths.items() %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></label>
+<label>Group on this tab<input name="grp" placeholder="defaults to the name"></label>
+<div class="sec2">Data used / left</div>
+<label class="full">Usage address (answers with JSON)<input name="usage_url" placeholder="https://api.provider.com/v1/usage?api_key={key}"></label>
+<label>Used field<input name="used_path" placeholder="e.g. data.used"></label>
+<label>Left field<input name="left_path" placeholder="e.g. data.remaining"></label>
+<label>Total field<input name="total_path" placeholder="optional"></label>
+<label>Numbers are in<select name="unit"><option value="gb">GB</option><option value="mb">MB</option><option value="bytes">bytes</option></select></label>
+<div class="sec2">Proxy pool</div>
+<label class="full">List address (answers with a proxy list)<input name="list_url" placeholder="https://api.provider.com/v1/proxies/list?key={key}&amp;count=50&amp;format=ip:port:user:pass"></label>
+<p class="muted small full">Both addresses come from the provider's API docs or dashboard ("API", "generate list", "usage"). Paste one in with your key replaced by {key}. Fields are dotted paths into the JSON answer, e.g. <code>data.traffic.left</code>; Check data shows the answer when a field isn't found.</p>
+</div>
+<div class="df"><button type="button" class="ghost" onclick="this.closest('dialog').close()">Cancel</button><button>Save</button></div></form></dialog>
+<style>
+.acgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:12px;margin-top:10px}
+.acard{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--surface-2);min-width:0;overflow-wrap:anywhere}
+.acard.low{border-color:color-mix(in srgb,var(--orange) 60%,var(--line))}.actop{display:flex;flex-direction:column}.acnum{font-size:14px}
+.acbar{height:6px;border-radius:99px;background:var(--line);overflow:hidden}.acbar i{display:block;height:100%;background:linear-gradient(90deg,#3ddc84,#7cc8ff 60%,#ffb27a)}
+.acbtn{display:flex;gap:6px;flex-wrap:wrap}.acbtn form{margin:0}.small{font-size:12px}.warnt{color:var(--orange)}
+button.sm{padding:4px 10px;font-size:12px;margin:0}
+.acf{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:16px}.acf label{display:flex;flex-direction:column;gap:4px;font-size:12px;margin:0;min-width:0}.acf input,.acf select{margin:0;width:100%}
+.acf .full{grid-column:1/-1}.sec2{grid-column:1/-1;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+@media (max-width:600px){.acf{grid-template-columns:1fr}}
+</style>
+<script>
+function pxAcct(a) {
+  const f = document.getElementById('acform'); f.reset();
+  a = a || {};
+  ['id', 'name', 'auth', 'grp', 'usage_url', 'used_path', 'left_path', 'total_path', 'unit', 'list_url'].forEach(k => { if (a[k] != null) f[k].value = a[k]; });
+  document.getElementById('ackeyhint').textContent = a.key_hint ? `Saved key ${a.key_hint}; leave blank to keep it.` : '';
+  f.api_key.required = !a.id;
+  document.getElementById('acdlg').showModal();
+}
+</script>

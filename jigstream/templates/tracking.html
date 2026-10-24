@@ -1,0 +1,51 @@
+{% extends "base.html" %}{% block body %}
+<div class="thead" style="margin-bottom:14px"><h2>Shipping</h2>
+<div class="tact">{% if shops|length > 1 %}<form method="get"><select name="store" onchange="this.form.submit()" title="Show one store"><option value="">All stores</option>{% for s in shops %}<option {{"selected" if s == shop}}>{{s}}</option>{% endfor %}</select></form>{% endif %}
+{% if can_check %}<form method="post" action="/tracking/check"><button class="ghost" title="Ask each carrier where every open package is">{{"Checking…" if checking.running else "Check carriers now"}}</button></form>
+{% else %}<a class="btn ghost" href="/setup#tracking" title="Key-free tracking reads the carriers' own pages on this Mac">Turn on live carrier checks</a>{% endif %}</div></div>
+{% if checking.last %}<p class="muted" style="margin-top:-6px">{{checking.last}}</p>{% endif %}
+<div class="stats">{% for key, title, hint in lanes %}<a class="card lanecard l-{{key}}" href="#lane-{{key}}">{{title}} <b>{{by_lane[key]|length}}</b></a>{% endfor %}
+{% if late %}<div class="card" style="--c:var(--orange)" title="The store's delivery estimate has passed and the package isn't marked delivered">Running late <b style="color:var(--orange)">{{late|length}}</b></div>{% endif %}</div>
+<div class="board">{% for key, title, hint in lanes %}<section class="lane" id="lane-{{key}}"><h3><span class="dotl l-{{key}}"></span>{{title}} <span class="muted">{{by_lane[key]|length}}</span></h3><p class="muted hint">{{hint}}</p>
+{% for o in by_lane[key] %}{% set status = o.shipping_status or "unknown" %}<article class="tcard{{' late' if o.id in late}}" id="order-{{o.id}}">
+<div class="trow"><b>{{o.retailer or "Unknown store"}}</b><span class="num">{{o.total|money(o.currency)}}</span></div>
+<div class="muted small">{{o.order_number or "No order #"}} · {{o.order_date or "no date"}}</div>
+<div class="titems" title="{% for i in o['items'] %}{{i.name}}{% if not loop.last %}; {% endif %}{% endfor %}">{% for i in o["items"] %}{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}{% if not loop.last %}; {% endif %}{% else %}<span class="muted">No items listed</span>{% endfor %}</div>
+{% include "_stagebar.html" %}
+<div class="steps"><span class="{{'on' if key in ('ordered','moving','out','delivered')}}">Ordered</span><span class="{{'on' if key in ('moving','out','delivered')}}">Shipped</span><span class="{{'on' if key in ('out','delivered')}}">Out</span><span class="{{'on' if key == 'delivered'}}">Delivered</span></div>
+<div class="tmeta">{% if o.tracking_number %}{% set url = o|track_url %}<a class="track" href="{{url}}" target="_blank" rel="noopener" title="Open the carrier's tracking page"><span class="muted">{{o.carrier or "Track"}}</span> {{o.tracking_number}} ↗</a>{% else %}<span class="muted small">No tracking number yet</span>{% endif %}
+{% if o.carrier_status %}<div class="small" title="From the carrier, checked {{o.carrier_checked_at}}">{{o.carrier_status}}</div>{% endif %}
+{% if o.estimated_delivery %}<div class="small {{'warnt' if o.id in late else 'muted'}}">{{"Was due" if o.id in late else "Due"}} {{o.estimated_delivery}}</div>{% endif %}
+{% if o.profile_name %}<div class="small">Profile <a href="/profile-orders?profile={{o.profile_name|urlencode}}">{{o.profile_name}}</a></div>{% endif %}
+{% set al = o|address_label %}{% if al %}<div class="small"><a href="/address?name={{al|urlencode}}" data-private title="Everything at this address">{{o.shipping_address}}</a></div>{% endif %}</div>
+<div class="tfoot"><span class="pill s-{{status}}">{{status|status_label}}</span>{% if o.status_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}
+{% if training %}<form method="post" action="/orders/{{o.id}}/label"><input type="hidden" name="back" value="1"><select name="status" class="relabel" title="Wrong stage? Pick the right one; the AI learns from this order's emails"><option value="">Fix status…</option>{% for c in label_choices %}{% if c == "not_an_order" %}<option disabled>──────────</option>{% endif %}<option value="{{c}}" {{"disabled" if c == status}}>{{c|status_label}}</option>{% endfor %}</select></form>{% endif %}
+<a class="small" href="/review?src=order&name={{o.id}}" title="Its checkouts, card charges, emails and profile">Linked ›</a></div>
+{% set lb = labels.get(o.id) %}{% if lb %}<div class="muted small">{{"Searching..." if lb.rescan == "pending" else lb.rescan}}</div>{% endif %}
+</article>{% else %}<p class="muted small empty">Nothing here.</p>{% endfor %}</section>{% endfor %}</div>
+<style>
+.thead{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}.thead h2{margin:0}
+.tact{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.tact form{margin:0}.tact select{margin:0}
+.lanecard{text-decoration:none;color:inherit}.l-ordered,.stats .card.l-ordered{--c:#ffb27a}.l-moving,.stats .card.l-moving{--c:#7cc8ff}.l-out,.stats .card.l-out{--c:#5aaefc}.l-delivered,.stats .card.l-delivered{--c:#3ddc84}
+.board{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;align-items:start;margin-top:14px}
+.lane{background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:12px;min-width:0}
+.lane h3{margin:0;font-size:14px;display:flex;align-items:center;gap:8px}.lane .hint{margin:2px 0 10px;font-size:12px}
+.dotl{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.tcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.tcard.late{border-color:color-mix(in srgb,var(--orange) 60%,var(--line))}
+.trow{display:flex;justify-content:space-between;gap:8px}.small{font-size:12px}.warnt{color:var(--orange);font-size:12px}
+.titems{font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.steps{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-top:-2px}.steps .on{color:var(--text)}
+.tmeta{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:anywhere}.tmeta a.track{word-break:normal;overflow-wrap:anywhere;align-self:flex-start}
+.tfoot{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}.tfoot form{margin:0;flex:1;min-width:120px}.tfoot select{margin:0;padding:4px 8px;font-size:12px;width:100%}
+.empty{margin:4px 2px}
+</style>
+<script>
+document.addEventListener('change', e => {
+  const sel = e.target;
+  if (!sel.classList.contains('relabel') || !sel.value) return;
+  if (sel.value !== 'not_an_order') sel.form.submit();
+  else btConfirm('Remove this from Orders? Its emails become examples of what is not an order.').then(ok => ok ? sel.form.submit() : sel.value = '');
+});
+</script>
+{% endblock %}

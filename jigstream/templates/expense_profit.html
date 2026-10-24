@@ -115,7 +115,7 @@ tr.off td{opacity:.55}
 </div>
 <label>Bought with order<br><select name="order_id" id="s-order_id" style="width:100%"><option value="">No order (type the cost)</option>{% for o in orders %}<option value="{{o.id}}">{{o.label}}</option>{% endfor %}</select></label>
 <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button>Save</button><span style="flex:1"></span>
-<button type="submit" class="danger" id="s-delete" formnovalidate onclick="return confirm('Delete this sale?')">Delete</button></div>
+<button type="submit" class="danger" id="s-delete" formnovalidate data-confirm="Delete this sale?">Delete</button></div>
 </form></dialog>
 <datalist id="plist">{% for pl in platforms %}<option value="{{pl}}">{% endfor %}</datalist>
 <script>

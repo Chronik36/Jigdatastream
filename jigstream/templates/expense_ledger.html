@@ -56,9 +56,9 @@ td{vertical-align:middle}.m{font-size:12.5px}.sub{display:block;font-size:12.5px
 {% if e and not e.subscription_id %}<button type="button" class="ghost" title="Track as a subscription" onclick='openRepeat({{ {"vendor": e.vendor, "amount": e.amount, "category": e.category, "expense_id": e.id, "period": e.billing_period if e.billing_period in rec_periods else "monthly"}|tojson }})'>Repeats</button>
 {% elif r.state == "charge_only" %}<button type="button" class="ghost" title="Track as a subscription" onclick='openRepeat({{ {"vendor": t.description, "amount": t.amount, "tx_id": t.id}|tojson }})'>Repeats</button>{% endif %}
 {% if e %}{% if e.refunded %}<form method="post" action="/expenses/{{e.id}}/refunded"><input type="hidden" name="undo" value="1"><button class="ghost" title="Count what it cost again">Refunded {{e.refunded|money}} ✕</button></form>
-{% else %}<form method="post" action="/expenses/{{e.id}}/refunded" onsubmit="return confirm('Returned or refunded in full? It comes off your spend.')"><button class="ghost" title="Returned or refunded: take it off your spend">Refunded</button></form>{% endif %}
+{% else %}<form method="post" action="/expenses/{{e.id}}/refunded" data-confirm="Returned or refunded in full? It comes off your spend."><button class="ghost" title="Returned or refunded: take it off your spend">Refunded</button></form>{% endif %}
 <button type="button" class="ghost" onclick='openExpense({{e|tojson}})'>Edit</button>
-<form method="post" action="/expenses/{{e.id}}/not-expense" onsubmit="return confirm('Not a botting expense? It is removed, and its email teaches the AI to skip emails like it.')"><button class="ghost" title="Not a botting expense: remove it and train the AI">Not an expense</button></form>{% endif %}
+<form method="post" action="/expenses/{{e.id}}/not-expense" data-confirm="Not a botting expense? It is removed, and its email teaches the AI to skip emails like it."><button class="ghost" title="Not a botting expense: remove it and train the AI">Not an expense</button></form>{% endif %}
 </div></td></tr>
 {% else %}<tr><td colspan="7" class="muted">{{"Nothing here." if counts.all else "No botting receipts or card charges yet. Sync your inboxes, or import a card statement on the Bank page."}}</td></tr>{% endfor %}
 </tbody></table>
