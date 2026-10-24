@@ -41,7 +41,7 @@ tr.off td{opacity:.6}
 
 <div class="xgrid">
 <div class="panel"><h4>Subscriptions<span class="sp"></span><button type="button" class="ghost" onclick="openRepeat()" style="padding:5px 12px;font-size:12.5px">+ Track one</button></h4>
-<div style="overflow-x:auto"><table><thead><tr><th>Vendor</th><th>Repeats</th><th>Next renewal</th><th class="num">Amount</th><th class="num">Per month</th><th>Status</th><th></th></tr></thead><tbody>
+<div><table><thead><tr><th>Vendor</th><th>Repeats</th><th>Next renewal</th><th class="num">Amount</th><th class="num">Per month</th><th>Status</th><th></th></tr></thead><tbody>
 {% for s in subs %}<tr class="{{'off' if s.status == 'cancelled'}}">
 <td><b>{{s.vendor}}</b><span class="sub"><span class="cdot" style="background:{{s.color}}"></span>{{s.category|replace("_", " ")|capitalize}} · {{s.payments}} payment{{"" if s.payments == 1 else "s"}}{% if s.last_paid %}, last {{s.last_paid}}{% endif %}</span></td>
 <td>{{s.label}}</td>
