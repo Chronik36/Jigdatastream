@@ -111,7 +111,7 @@ def open_window(url, icon=None, restarted=False):
     if html is None:
         wait_for(url)
     window = webview.create_window("BotTrack", None if html else url + start, html=html or "", width=1360, height=880,
-                                   min_size=(900, 600), background_color="#0a1230", text_select=True)
+                                   min_size=(900, 600), background_color="#f3f6fc" if os.environ.get("UI_THEME") == "light" else "#0a1230", text_select=True)
 
     def show_dashboard():
         shown_at = time.time()

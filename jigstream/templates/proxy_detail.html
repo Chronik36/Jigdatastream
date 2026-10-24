@@ -11,7 +11,7 @@
 <p class="muted" style="margin:0 0 16px">{{p.provider or "No provider"}} · {{p.grp or "No group"}} · {{p.scheme|upper}} · added {{(p.added_at or "")[:10]}}</p>
 <div class="pdbar" style="margin-bottom:16px">
 <form method="post" action="/proxies/test"><input type="hidden" name="id" value="{{p.id}}"><input type="hidden" name="back" value="/proxies/{{p.id}}">
-<select name="site"><option value="all">All sites</option>{% for s in sites %}<option>{{s}}</option>{% endfor %}</select><input type="hidden" name="wait" value="1"><button>Speed test</button></form>
+<select name="site">{% for s in sites %}<option>{{s}}</option>{% endfor %}</select><input type="hidden" name="wait" value="1"><button>Speed test</button></form>
 <form method="post" action="/proxies/{{p.id}}/locate"><button class="ghost">{{"Check location again" if p.exit else "Find where it comes out"}}</button></form>
 </div>
 <div class="pdgrid">
