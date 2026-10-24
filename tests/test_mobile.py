@@ -341,3 +341,20 @@ def test_phone_can_send_logs_but_not_read_them(app, monkeypatch):
                                    "consent": "yes", "sender": "me@gmail.com"}, headers={"User-Agent": "x BotTrackApp/5"})
     assert r.headers["Location"].endswith("/m/app")
     assert sent[0][0] == "me@gmail.com" and "Sent from a phone: x BotTrackApp/5" in sent[0][1]
+
+
+def test_other_websites_cannot_post_to_bottrack_on_the_mac(tmp_path, monkeypatch):
+    import os
+    import stat
+    from jigstream.app import create_app
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / "s.db"
+    app = create_app(str(path))
+    c = app.test_client()
+    assert c.post("/profiles/clear", data={"confirm": "0"}, headers={"Origin": "https://evil.example"}).status_code == 403
+    assert c.post("/sync/stop", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
+    assert c.post("/sync/stop", headers={"Origin": "http://127.0.0.1:8765"}).status_code in (200, 302)
+    assert c.post("/sync/stop").status_code in (200, 302)  # a local program
+    r = c.get("/")
+    assert r.headers["X-Frame-Options"] == "SAMEORIGIN" and r.headers["X-Content-Type-Options"] == "nosniff"
+    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
