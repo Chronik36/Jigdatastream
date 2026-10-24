@@ -14,7 +14,7 @@ without it a backup can't be opened, by you either.</p>
 <button>Turn on</button></form>
 </section>{% else %}
 <section class="panel" style="margin:14px 0;display:flex;flex-wrap:wrap;gap:12px;align-items:center">
-<div style="flex:1;min-width:220px"><b class="ok">Backups are on.</b> <span class="muted">A new one every day; the last 14 are kept.
+<div style="flex:1;min-width:220px"><b class="ok">Backups are on.</b> <span class="muted">A new one every day; the last 7 are kept.
 {% if state.last %}Last: {{state.last}}.{% endif %}</span>{% if state.error %}<div class="bad small">Last automatic backup failed: {{state.error}}</div>{% endif %}</div>
 <form method="post" action="{{url_for('backup.now')}}"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Back up now and download</button></form>
 <details style="flex-basis:100%"><summary class="muted">Change the backup password</summary>

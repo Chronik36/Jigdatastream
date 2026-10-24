@@ -96,6 +96,9 @@ The token is saved only on this Mac.</p>
 {% if is_developer or not keys_on %}<h3 id="keys">Account keys</h3>
 <p>Make the keys people need to use BotTrack. <a href="{{url_for('accountkeys.keys_page')}}">Account keys</a></p>{% endif %}
 
+<h3 id="storage">Storage</h3>
+<p>See how much room BotTrack takes and free what it doesn't need. <a href="{{url_for('storage.page')}}">Storage</a></p>
+
 <h3 id="computers">Your other computers</h3>
 <p>Use BotTrack on a Mac and a PC and keep both the same, linked through your Gmail or with a code. <a href="{{url_for('peersync.page')}}">Link a computer</a>{% if computers %}: linked with {{computers|join(", ")}}{% endif %}.</p>
 
