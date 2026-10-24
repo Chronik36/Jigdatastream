@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block body %}
+{% include "_drop_tabs.html" %}
+<style>.tcard{margin:14px 0}.tcard .ex{display:grid;grid-template-columns:minmax(90px,max-content) minmax(0,1fr);gap:4px 14px;font-size:13px;margin:10px 0}
+.tcard .ex dt{color:var(--muted)}.tcard .ex dd{margin:0;overflow-wrap:anywhere}.tform{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.tform label{display:flex;flex-direction:column;gap:4px;font-size:12px;flex:1 1 170px;min-width:0}.tform select,.tform input[type=text]{width:100%;margin:0}
+.tform .chk{flex-direction:row;align-items:center;flex:0 0 auto;font-size:13px}</style>
+<p class="muted">Webhooks BotTrack couldn't place: the bot isn't named in them, or it can't tell what the message is. Messages from the same sender with the same kind of title are one card, so each choice covers all of them, and every webhook like it from now on. <b>Not a checkout</b> (task logs, monitors, restock pings) is left out of every count. Order and cancel emails are taught on the <a href="/inbox">Inbox</a>.</p>
+<div class="panel" style="overflow-x:auto"><h3 style="margin-top:0">Webhooks by bot</h3>
+<table><thead><tr><th>Bot</th><th class="num" title="Successful, declined and failed checkouts">Checkout attempts</th><th class="num">Successful</th><th class="num">Not a checkout</th><th class="num">To train</th></tr></thead><tbody>
+{% for b in counts %}<tr><td><b>{{b.bot}}</b></td><td class="num">{{b.attempts}}</td><td class="num ok">{{b.success}}</td><td class="num muted">{{b.ignored}}</td><td class="num" style="color:var(--orange)">{{b.unsure}}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">No webhooks yet.</td></tr>{% endfor %}</tbody></table>
+<p class="muted" style="font-size:12px;margin-bottom:0">A bot that posts every failed task (Valor does) shows many attempts and few successes; only successful ones are checkouts.</p></div>
+<h3>{{left}} webhook{{"s" if left != 1}} to train{% if cards %} · {{cards|length + more}} kind{{"s" if cards|length + more != 1}}{% endif %}</h3>
+{% for g in cards %}<section class="panel tcard">
+<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><b>{{g.title or "(no title)"}}</b><span class="pill s-shipped">{{g.n}} like this</span></div>
+<div class="muted" style="font-size:12px">From <b>{{g.sender or "no sender name"}}</b> · BotTrack read it as {{g.bot}}, {{statuses.get(g.status, "can't tell")|lower}} · latest {{(g.ts or "")[:10]}}</div>
+<dl class="ex">{% if g.description %}<dt>Text</dt><dd>{{g.description}}</dd>{% endif %}{% for k, v in g.fields %}<dt>{{k}}</dt><dd>{{v[:160]}}</dd>{% endfor %}</dl>
+<form class="tform" method="post" action="/train/{{g.id}}">
+<label><span class="muted">Bot</span><select name="bot" onchange="this.form.querySelector('.other').hidden = this.value != '__other__'"><option value="">{{g.bot if g.bot != "Unknown" else "Pick the bot…"}}</option>{% for b in bots %}<option value="{{b}}">{{b}}</option>{% endfor %}<option value="__other__">Another bot…</option></select></label>
+<label class="other" hidden><span class="muted">Bot name</span><input type="text" name="bot_other" placeholder="e.g. Cyber"></label>
+<label><span class="muted">What it is</span><select name="status"><option value="">Keep as read</option>{% for k, v in statuses.items() %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></label>
+<label class="chk"><input type="checkbox" name="just_this" value="1"> Just this one</label>
+<button>Save</button></form></section>
+{% else %}<div class="panel muted">Nothing to train. Every webhook has a bot and a kind.</div>{% endfor %}
+{% if more %}<p class="muted">{{more}} more kinds after these.</p>{% endif %}
+{% if taught %}<form method="post" action="/train/forget" onsubmit="return confirm('Forget everything taught here? The webhooks are read again as BotTrack parses them.')"><button class="ghost">Forget what I taught ({{taught}} rule{{"s" if taught != 1}})</button></form>{% endif %}
+{% endblock %}
