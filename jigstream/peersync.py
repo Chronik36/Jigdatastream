@@ -58,7 +58,7 @@ LINKS = {("ai_task_examples", "task_id"): "ai_tasks", ("bank_transactions", "acc
          ("labels", "order_id"): "tracked_orders", ("ledger_rejects", "tx_id"): "bank_transactions",
          ("profiles", "card_id"): "cards", ("proxy_settings", "account_id"): "proxy_accounts",
          ("proxy_tests", "proxy_id"): "proxies", ("sales", "order_id"): "tracked_orders",
-         ("training_examples", "label_id"): "labels", ("training_examples", "order_id"): "tracked_orders"}
+         ("training_examples", "label_id"): "labels", ("tracking_events", "order_id"): "tracked_orders", ("training_examples", "order_id"): "tracked_orders"}
 # Numbers whose table depends on a kind column next to them.
 KIND_LINKS = {("bank_transactions", "match_id"): "match_kind", ("ledger_rejects", "target_id"): "kind",
               ("review_marks", "item_id"): "kind", ("price_fixes", "row_id"): "kind"}

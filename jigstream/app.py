@@ -9,7 +9,7 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import jigexpr, peersync, pricecheck, proxylogin, proxysessions, undo
+from . import jigexpr, ordersheet, peersync, pricecheck, proxylogin, proxysessions, undo
 from . import (analysis, bankpages, cardcheck, cardlocks, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
                packs, proxies, proxyaccounts, review, stock, stuck, tasks, tracking, training, updater, wallet, webtrain)
@@ -61,6 +61,7 @@ def create_app(db_path=None):
     app.register_blueprint(proxysessions.bp)
     app.register_blueprint(pricecheck.bp)
     app.register_blueprint(peersync.bp)
+    app.register_blueprint(ordersheet.bp)
     app.register_blueprint(packs.bp)
 
     @app.context_processor
@@ -135,6 +136,11 @@ def create_app(db_path=None):
                         pricecheck.recheck(config, Store(con()), stop=sync_state["stop"].is_set)
                     except Exception:
                         logger.exception("re-checking saved prices failed")
+                    progress("Finding product pictures...")
+                    try:
+                        ordersheet.backfill_pictures(config, Store(con()), stop=sync_state["stop"].is_set)
+                    except Exception:
+                        logger.exception("finding product pictures failed")
                     try:
                         recurring.refresh(con())  # new receipts move renewal dates forward
                     except Exception:

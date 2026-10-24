@@ -9,7 +9,7 @@
 {% if profile_names %}<select id="pf"><option value="">All profiles</option>{% for n in profile_names %}{% if profile_counts.get(n) %}<option value="{{n}}" {{"selected" if request.args.get("profile") == n}}>{{n}} ({{profile_counts[n]}})</option>{% endif %}{% endfor %}
 {% if profile_counts.get("?") %}<option value="?">Needs a pick ({{profile_counts["?"]}})</option>{% endif %}{% if profile_counts.get("") %}<option value="__none__" {{"selected" if request.args.get("profile") == "__none__"}}>No profile ({{profile_counts[""]}})</option>{% endif %}</select>{% endif %}
 <table class="otable"><thead><tr><th>Order</th><th>Items</th><th>Total</th><th>Status</th><th>Tracking</th><th>Profile</th><th>Ship to</th></tr></thead><tbody>
-{% for o in rows %}{% set status = o.shipping_status or "unknown" %}<tr data-f="{{status|status_group}}" data-p="{{o.profile_name or ('?' if o.profile_candidates else '')}}" id="order-{{o.id}}">
+{% for o in rows %}{% set status = o.shipping_status or "unknown" %}<tr data-sheet="{{o.id}}" data-f="{{status|status_group}}" data-p="{{o.profile_name or ('?' if o.profile_candidates else '')}}" id="order-{{o.id}}">
 <td><b>{{o.retailer or "-"}}</b>{% if o.order_number %}<div class="muted"><span data-copy>{{o.order_number}}</span></div>{% endif %}<div class="muted" style="font-size:12px">{{o.order_date or "No date"}}</div><a class="linked" href="/review?src=order&name={{o.id}}" title="Its checkouts, card charges, emails and profile, with the pickers that fix them">Everything linked ›</a></td>
 <td><ul class="items">{% for i in o["items"] %}<li>{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}</li>{% endfor %}</ul></td>
 <td class="num">{{o.total|money(o.currency)}}</td>

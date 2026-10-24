@@ -142,6 +142,39 @@ def _order_dict(row):
     return d
 
 
+PRODUCT_PICS = re.compile(r"scene7\.com/is/image/Target|media-amazon\.com/images/I/|walmartimages\.com|bbystatic\.com|"
+                          r"cdn\.shopify\.com/s/files|shopify\.com/cdn|pokemoncenter|gamestop|images\.footlocker|"
+                          r"nike\.com/is/image|static\.nike\.com|samsclub|costco", re.I)
+
+
+def _words(s):
+    return {w for w in re.findall(r"[a-z0-9]+", (s or "").lower()) if len(w) > 1}
+
+
+def with_pictures(items, images):
+    """Items with the product photo from their email: the picture whose alt text names the item, or for a
+    one-item order the store's own product picture. Returns True when one was added."""
+    added = False
+    for item in items or []:
+        if not isinstance(item, dict) or item.get("image") or not images:
+            continue
+        want = _words(item.get("name"))
+        best, score = "", 0.0
+        for alt, src in images:
+            have = _words(alt)
+            if want and have:
+                s = len(want & have) / min(len(want), len(have))
+                if s > score:
+                    best, score = src, s
+        if score < 0.5:
+            best = ""
+            if len(items) == 1:
+                best = next((src for _, src in images if PRODUCT_PICS.search(src)), "")
+        if best:
+            item["image"], added = best, True
+    return added
+
+
 def _key(s):
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
@@ -266,6 +299,7 @@ class Store:
         return picks[0] if len(picks) == 1 else None
 
     def _save_order(self, email, result):
+        with_pictures(result.get("items"), getattr(email, "images", None))
         row = self._find_order(result, email)
         if row is None:
             if result["order_number"]:
@@ -301,6 +335,10 @@ class Store:
             updates["tracking_url"] = result.get("tracking_url")  # a link for the old number no longer fits
         if result["items"] and not json.loads(row["items"] or "[]"):
             updates["items"] = json.dumps(result["items"])
+        else:
+            items = json.loads(row["items"] or "[]")
+            if with_pictures(items, getattr(email, "images", None)):  # a later email (shipped) shows the product
+                updates["items"] = json.dumps(items)
         status = result["shipping_status"]
         old = row["shipping_status"]
         if row["status_manual"]:
