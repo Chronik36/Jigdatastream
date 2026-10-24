@@ -6,8 +6,9 @@ from datetime import date
 
 from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, url_for
 
-from . import budget, db, inbox, ledger, recurring, sales
+from . import bank, budget, db, inbox, ledger, recurring, sales
 from .config import Config
+from .llm import from_config as llm_for
 from .extract import BILLING_PERIODS, EXPENSE_CATEGORIES
 from .orderstore import Store
 
@@ -33,6 +34,7 @@ _amounts = {"running": False, "last": None}
 def _fill_amounts(path):
     try:
         filled, removed = inbox.fill_missing_amounts(Config.from_env(), Store(db.connect(path)), limit=500, recheck=True)
+        filled += bank.fill_amounts_from_charges(db.connect(path))  # the rest from the card charges that paid them
         _amounts["last"] = (f"Found {filled} missing amount(s)" + (f" and removed {removed} reminder(s)" if removed else "")
                             + ". Any still blank have no total BotTrack can read; click the expense to type it in.")
     except Exception as e:
@@ -55,6 +57,7 @@ def fill_amounts():
 @pages.get("/expenses")
 def overview():
     c = _con()
+    bank.fill_amounts_from_charges(c)
     recurring.refresh(c)
     items, subs = ledger.rows(c), recurring.subscriptions(c)
     return render_template("expenses.html", tab="overview", o=ledger.overview(c), chart=ledger.month_chart(c),
@@ -69,6 +72,7 @@ def overview():
 @pages.get("/expenses/ledger")
 def ledger_page():
     c = _con()
+    bank.fill_amounts_from_charges(c)
     items = ledger.rows(c)
     show = request.args.get("show", "all")
     show = show if show in ledger.FILTERS else "all"
@@ -336,6 +340,31 @@ def expense_edit(expense_id):
         store.update_expense(expense_id, f)
         logger.info("expense %s edited", expense_id)
         flash(f"Saved {f['vendor']}.")
+    return _back()
+
+
+@pages.post("/expenses/<int:expense_id>/not-expense")
+def not_expense(expense_id):
+    """'Not an expense': remove it, and when it came from an email, teach the AI that emails like it aren't
+    botting expenses (the email is re-read and saved as a training example, as on the Inbox tab)."""
+    c = _con()
+    store = Store(c)
+    e = store.expense(expense_id)
+    if not e:
+        return _back()
+    c.execute("UPDATE bank_transactions SET match_kind = NULL, match_id = NULL, match_how = NULL"
+              " WHERE match_kind = 'expense' AND match_id = ?", (expense_id,))
+    mail = c.execute("SELECT message_id, account, sender, subject, date FROM emails WHERE message_id = ?",
+                     (e["message_id"],)).fetchone()
+    store.delete_expense(expense_id)
+    config = Config.from_env()
+    if mail and config.accounts:
+        threading.Thread(target=inbox.label_emails, args=(config, Store(_con()), llm_for(config), [dict(mail)], "other"),
+                         daemon=True).start()
+        flash(f"Removed {e['vendor'] or 'that'}. Its email is saved as a \"not an expense\" example so the AI learns from it.")
+    else:
+        flash(f"Removed {e['vendor'] or 'that'}.")
+    logger.info("expense %s marked not an expense (email: %s)", expense_id, bool(mail))
     return _back()
 
 
