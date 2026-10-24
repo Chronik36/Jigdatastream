@@ -108,7 +108,10 @@ so it learns how your retailers word things. Example emails are stored on this M
 {% else %}
 <p>Ollama is running. {% if config.llm_model in models or (config.llm_model ~ ":latest") in models %}<span class="ok">Using {{config.llm_model}}.</span>{% else %}<span class="bad">{{config.llm_model}} isn't downloaded yet; run the installer again, or pick another model.</span>{% endif %}</p>
 {% if models %}<form method="post" action="/setup/model"><select name="model">{% for m in models %}<option {{"selected" if m == config.llm_model}}>{{m}}</option>{% endfor %}</select><button>Use this model</button></form>{% endif %}
-<p class="muted">The default, huihui_ai/qwen3-abliterated:14b, uses about 9 GB of memory while reading mail, which fits a 16 GB Mac; an 8B model is faster if things feel slow.</p>
+<p class="muted">The 14B model uses about 9 GB of memory while reading mail; the 8B uses about 5 GB and reads each email roughly 3 times faster.</p>
+{% for size, m in [("8B", "huihui_ai/qwen3-abliterated:8b"), ("14B", "huihui_ai/qwen3-abliterated:14b")] %}{% if config.llm_model != m and m not in models %}
+<form method="post" action="/setup/engine" data-loader="Switching to the {{size}} model" data-loader-msg="BotTrack restarts and downloads the {{size}} model ({{"about 5 GB" if size == "8B" else "about 9 GB"}}). The model you're leaving is removed to free space."><input type="hidden" name="engine" value="ollama"><input type="hidden" name="model" value="{{m}}">
+<button class="{{'' if size == '8B' else 'ghost'}}">Switch to {{size}}{{" (faster)" if size == "8B" else " (more careful)"}}</button></form>{% endif %}{% endfor %}
 {% endif %}
 
 <h3 id="compare">Compare models</h3>
