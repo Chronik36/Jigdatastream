@@ -124,7 +124,7 @@ of the page. On a narrow window the sidebar hides behind the <b>☰</b> menu but
 <div class="where">Sidebar → Overview → <b>Dashboard</b></div>
 <p>The Dashboard is your year at a glance: what you really spent, the orders that stuck, and how your bots' checkouts went. Pick another year at the top right.</p>
 {{ fig("dashboard", "The Dashboard.", [
-  "Totals for the year: money spent (orders that stuck plus botting expenses; cancelled, refunded and returned orders aren't counted), orders, successful checkouts, and failures (declined, failed, or cancelled later).",
+  "Totals for the year: money spent (orders that stuck plus botting expenses; cancelled, refunded and returned orders aren't counted), orders, successful checkouts, money in from sales and payouts, and failures (declined, failed, or cancelled later).",
   "Checkouts by site: green is good, orange was cancelled later, red declined or failed. Click a site to open its drops.",
   "Checkouts by bot, the same way.",
   "Botting expenses for the year by category."]) }}
@@ -216,11 +216,14 @@ PayPal or whop.com, it names the actual seller.</p>
 <a href="#bank">Bank</a>. Each row gets a status:</p>
 <ul>
 <li><b>Matched</b>: the receipt (or order) and the card charge agree.</li>
-<li><b>Charge, no receipt</b>: money left your card, but no email explains it. Use <span class="ui">Match…</span> to pick the receipt or order, add it as an expense, or <span class="ui">Ignore</span> it if it isn't botting.</li>
+<li><b>Charge, no receipt</b>: money left your card, but no email explains it. Use <span class="ui">Match…</span> to pick the receipt or order, <span class="ui">Mark as expense…</span> to add it under a category, or <span class="ui">Not an expense</span> if it isn't botting.</li>
 <li><b>Receipt, no charge</b>: a receipt your imported cards never charged. If you paid with PayPal balance, crypto or a card you didn't import, choose it under <span class="ui">Paid another way</span>.</li>
 <li><b>Close amount</b>: a charge a few dollars off its receipt, from currency fees or tax added at checkout. Press <span class="ui">Confirm</span> if it's the same purchase, or <span class="ui">Not this</span>.</li>
 <li><b>No statement yet</b>: the receipt is from a date your statements don't cover, so there is nothing to check it against.</li>
 </ul>
+<p>Every receipt has <span class="ui">Not an expense</span> too: it's removed, and its email becomes a training example so the AI
+skips emails like it. A receipt whose email had no total BotTrack could read takes its amount from the card charge that paid
+it: the one charge naming the same vendor, dated from 2 days before the email to a week after.</p>
 {{ fig("expense-ledger", "The Ledger tab.", [
   "Show everything, or one status at a time.",
   "Narrow to one category or month. The total of the rows shown is on the right.",
@@ -368,13 +371,18 @@ good checkout can still turn red.</li>
 cancelled. Valor sends "Order Still Good ✅" (green) or "Order Canceled! (reason)" (red). BotTrack links it to its checkout by order number (or the same bot and
 account email), and doesn't count it as another checkout. A cancel from the bot always counts; the bot saying good counts unless an
 email or refund cancelled it.</p>
-<p>If a result is wrong, use the <b>Correct it</b> menu next to it: Good or Cancelled. Your choice sticks across syncs, and
+<p>If a result is wrong, use the <b>Correct it</b> menu next to it: Good, Bad (cancelled) or Not an order. The same menu is on
+Stuck, Every webhook and each profile's and address's checkouts. Not an order (a test or a duplicate webhook) is left out of
+every count. Your choice sticks across syncs, and
 "Back to auto" undoes it. When the checkout has an order email that said otherwise, the order is corrected too and its emails
 become training examples, the same as correcting an order on the Orders page. A cancel email or refund that arrives after you
 marked a checkout good still turns it red.</p>
 <p>The tables under the dates rank proxy groups, proxies, profiles and the best proxy + profile pairs by <b>real</b> checkouts
 (good + unsure). <b>Rate</b> is real checkouts out of every webhook, declines included. Proxy logins and passwords are never shown,
 only the host and port.</p>
+<p>Click any address to open its <b>Address</b> page: every profile that ships there, whatever the jig, the checkouts sent there,
+the full addresses used and the order emails that shipped there. From there, click a profile to see its orders and checkouts,
+and its address to come back. Profile names on Stuck, Every webhook and Orders open the profile the same way.</p>
 </section>
 
 <section id="card-check" data-title="Card check">
