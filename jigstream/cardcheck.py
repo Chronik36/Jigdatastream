@@ -135,7 +135,7 @@ def _checkout_fits(run, c, card, cards_of):
     if not stuck.same_site(c["site"], run["store"]) and not (
             c["order"] and stuck.same_site(c["order"]["retailer"], run["store"])):
         return None
-    profile_card = cards_of.get(c["profile"])
+    profile_card = cards_of.get(c.get("profile_key", c["profile"]))
     if card and profile_card and profile_card[-4:] != card:
         return None
     day = _local_day(c["ts"])
