@@ -113,3 +113,38 @@ def test_suggest_a_provider_emails_the_developer():
     assert to == "dev@example.com"
     body = sent[0].get_content()
     assert sent[0]["Subject"].endswith("Hype") and "login: Discord" in body and "docs:" not in body
+
+
+class Headers:
+    def __init__(self, cookies):
+        self.cookies = cookies
+
+    def get_all(self, name):
+        return self.cookies if name == "Set-Cookie" else None
+
+
+def test_saved_signin_is_sent_and_renewed(tmp_path, monkeypatch):
+    monkeypatch.setenv("BOTTRACK_CARD_KEY_FILE", str(tmp_path / "key"))
+    monkeypatch.setattr("jigstream.wallet._key", None)
+    con = proxyaccounts.ensure(db.connect(str(tmp_path / "a.db")))
+    recipe, _ = proxylogin.recipe_from([REQ], [], "")
+    saved = {"cookies": [{"name": "sess", "value": "old", "domain": ".prov.com", "path": "/"},
+                         {"name": "other", "value": "x", "domain": "elsewhere.com", "path": "/"}], "storage": {"tok": "T1"}}
+    sealed = proxylogin.seal(saved)
+    assert "old" not in sealed and proxylogin.unseal(sealed) == saved
+    con.execute("INSERT INTO proxy_accounts (name, auth, site_url, recipe, site_session) VALUES ('Hype', 'site', ?, ?, ?)",
+                (REQ["page"], json.dumps(recipe), sealed))
+    sent = []
+
+    def opener(req, timeout):
+        sent.append(req)
+        a = Answer(REQ["text"].encode())
+        a.headers = Headers(["sess=new; Path=/; Domain=.prov.com; HttpOnly"])
+        return a
+    acct = proxyaccounts._acct(con, 1)
+    assert proxyaccounts.refresh_pool(con, acct, opener) == 2
+    assert sent[0].get_header("Cookie") == "sess=old"  # only the provider's own cookies
+    kept = proxylogin.unseal(con.execute("SELECT site_session FROM proxy_accounts").fetchone()[0])
+    assert [c["value"] for c in kept["cookies"] if c["name"] == "sess"] == ["new"]
+    assert proxyaccounts.accounts(con)[0]["remembered"]
+    assert proxylogin.unseal("not sealed") == {}
