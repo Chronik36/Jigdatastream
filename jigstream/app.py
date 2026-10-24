@@ -18,7 +18,7 @@ from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
 from .mail import check_login
 from .orderstore import Store
-from .sync import run_sync, summary
+from .sync import quick_check as quick_check_inboxes, run_sync, summary
 
 logger = logging.getLogger("jigstream.app")
 
@@ -97,6 +97,7 @@ def create_app(db_path=None):
     # Email sync calls the local model once per email, so it runs in the background.
     sync_state = {"running": False, "last": None, "full": False, "stop": threading.Event()}
     app.config["SYNC_STATE"] = sync_state
+    mail_lock = threading.Lock()  # the full sync and the quick check never read the same email at once
     # An update stops a running sync and leaves this note, so the sync carries on after the restart.
     resume_note = Path(db_path or db.DB_PATH).with_name("resume-sync")
 
@@ -119,6 +120,7 @@ def create_app(db_path=None):
                     logger.exception("Discord sync failed")
                     parts.append(f"Discord sync failed: {e}.")
             if config.accounts:
+                mail_lock.acquire()  # a quick check that's running finishes first (a few emails at most)
                 try:
                     counts = run_sync(config, Store(con()), log=lambda *a, **k: None, progress=progress,
                                       stop=sync_state["stop"].is_set)
@@ -162,6 +164,8 @@ def create_app(db_path=None):
                 except Exception as e:
                     logger.exception("Gmail sync failed")
                     parts.append(f"Gmail sync failed: {e}")
+                finally:
+                    mail_lock.release()
             stopped = sync_state["stop"].is_set()
             sync_state["last"] = ("Sync stopped. Press Sync now to carry on where it left off. " if stopped
                                   else "Last sync. ") + " ".join(parts)
@@ -808,7 +812,34 @@ def create_app(db_path=None):
         resume_note.write_text("full" if sync_state["full"] else "normal")
         stop_sync(wait=20)
 
+    def quick_check():
+        """Read the newest few emails of each inbox (run.py and the Mac app call this every few minutes).
+        Skipped while a full sync runs, which reads them anyway."""
+        config = Config.from_env()
+        ai = app.config.get("AI_STATE")
+        if sync_state["running"] or not config.accounts or (ai and not ai["ready"]) \
+                or engines.compare_state["running"] or not mail_lock.acquire(blocking=False):
+            return None
+        try:
+            counts = quick_check_inboxes(config, Store(con()), newest=int(os.environ.get("QUICK_CHECK_NEWEST", 5)),
+                                         stop=lambda: sync_state["running"])
+            if counts["order"] or counts.get("sale") or counts["botting_expense"]:
+                try:
+                    Store(con()).repair_cancels()
+                    profilematch.match_orders(con())
+                    from .orderstore import drop_suggested_items
+                    drop_suggested_items(con())
+                except Exception:
+                    logger.exception("tidying after the quick check failed")
+            return counts
+        except Exception:
+            logger.exception("quick check failed")
+            return None
+        finally:
+            mail_lock.release()
+
     app.start_sync = start_sync
+    app.quick_check = quick_check
     app.stop_sync = stop_sync
     app.pause_sync_for_update = pause_sync_for_update
     app.sync_state = sync_state  # the phone's Update button checks it too

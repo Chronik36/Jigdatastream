@@ -364,6 +364,55 @@ def fetch_emails(config, address, password, days=None, skip_ids=(), on_total=Non
             pass
 
 
+def newest_emails(config, address, password, n=5, known=lambda ids: set()):
+    """The n newest matching emails of the last two days in All Mail and in Spam, minus the ones known(ids)
+    says were already read. Only their headers are looked at until one is new, so a quiet inbox costs one login."""
+    imap = imaplib.IMAP4_SSL(config.imap_host)
+    try:
+        try:
+            imap.login(address, password)
+        except imaplib.IMAP4.error as e:
+            raise RuntimeError(f"Gmail login failed for {address}: check the app password ({e})") from e
+        folders = [(config.mailbox, config.search_query + " newer_than:2d"),
+                   (spam_folder(imap), config.search_query.replace("-in:spam", "").strip() + " in:spam newer_than:2d")]
+        for folder, query in folders:
+            status, _ = imap.select(folder, readonly=True)
+            if status != "OK":
+                continue
+            status, data = imap.uid("SEARCH", "X-GM-RAW", _quote(query))
+            if status != "OK" or not data or not data[0]:
+                continue
+            uids = data[0].split()[::-1][:n]
+            status, data = imap.uid("FETCH", b",".join(uids), "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+            if status != "OK":
+                continue
+            ids = {}
+            for i, part in enumerate(data):
+                if not isinstance(part, tuple):
+                    continue
+                after = data[i + 1] if i + 1 < len(data) and isinstance(data[i + 1], bytes) else b""
+                m = re.search(rb"UID (\d+)", part[0]) or re.search(rb"UID (\d+)", after)
+                if m:
+                    ids[m.group(1)] = str(email.message_from_bytes(part[1])["Message-ID"] or "").strip()
+            seen = known([i for i in ids.values() if i])
+            for uid in uids:
+                if uid not in ids or (ids[uid] and ids[uid] in seen):
+                    continue
+                status, data = imap.uid("FETCH", uid, "(BODY.PEEK[])")
+                if status != "OK" or not data or not isinstance(data[0], tuple):
+                    continue
+                msg = parse_message(data[0][1])
+                if not msg.message_id:
+                    msg.message_id = f"uid-{address}-{folder}-{uid.decode()}"
+                msg.account = address
+                yield msg
+    finally:
+        try:
+            imap.logout()
+        except Exception:
+            pass
+
+
 def _header_rows(imap, uids, address, spam):
     rows = []
     for batch in _batches(uids, 100):
