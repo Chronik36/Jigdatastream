@@ -1,4 +1,5 @@
 """The Expenses area: Overview and Ledger tabs, plus adding and editing botting expenses on the desktop."""
+import json
 import logging
 import re
 import threading
@@ -393,4 +394,61 @@ def expense_delete(expense_id):
     Store(c).delete_expense(expense_id)
     logger.info("expense %s deleted", expense_id)
     flash("Expense deleted.")
+    return _back()
+
+
+# ---------- in-person buys and sales: what no email shows ----------
+
+IN_PERSON = "in person"
+STORES = ["Sam's Club", "Costco", "Target", "Walmart", "Best Buy", "GameStop", "Barnes & Noble", "Five Below", "Meijer"]
+SELL_PLACES = ["Tradepost", "Card show", "Local shop", "Facebook Marketplace", "Friend / local"]
+
+
+@pages.get("/expenses/in-person")
+def in_person_page():
+    c = _con()
+    buys = [dict(r) for r in c.execute(
+        "SELECT o.*, (SELECT COUNT(*) FROM sales s WHERE s.order_id = o.id) AS sold FROM tracked_orders o"
+        " WHERE o.account = ? ORDER BY o.order_date DESC, o.id DESC LIMIT 200", (IN_PERSON,))]
+    for b in buys:
+        b["items"] = json.loads(b["items"] or "[]")
+    sold = [s for s in sales.rows(c) if s["source"] == "in_person"]
+    return render_template("expense_in_person.html", tab="in_person", counts={}, buys=buys, sold=sold,
+                           stores=STORES, places=SELL_PLACES + [p for p in sales.platforms(c) if p not in SELL_PLACES],
+                           orders=sales.order_choices(c), today=date.today().isoformat(), **_dialogs())
+
+
+@pages.post("/expenses/in-person/buy")
+def in_person_buy():
+    f = request.form
+    store, total = _text("store"), _amount("total")
+    if not store or total is None:
+        flash("Enter the store and what you paid.")
+        return _back()
+    qty = request.form.get("quantity", type=int) or 1
+    item = _text("item") or "In-store buy"
+    oid = Store(_con()).add_order({"retailer": store, "order_date": _text("date") or date.today().isoformat(),
+                                   "items": [{"name": item, "quantity": qty, "price": round(total / qty, 2)}],
+                                   "total": total, "shipping_status": "delivered", "account": IN_PERSON})
+    bank.auto_match(_con())  # its card charge, if your statements have it, now has an order
+    logger.info("in-person buy %s added", oid)
+    flash(f"Added your {store} buy. It counts as an order, and as the cost when you sell it.")
+    return _back()
+
+
+@pages.post("/expenses/in-person/sale")
+def in_person_sale():
+    f = _sale_form()
+    f["platform"] = _text("place") or f["platform"]
+    if not f["platform"] or (f["payout"] is None and f["sale_price"] is None):
+        flash("Enter where you sold it and what you got for it.")
+        return _back()
+    c = _con()
+    if f["payout"] is None:
+        f["payout"] = (f["sale_price"] or 0) - (f["fees"] or 0)
+    if f["order_id"] and f["cost"] is None:
+        f["cost"] = c.execute("SELECT total FROM tracked_orders WHERE id = ?", (f["order_id"],)).fetchone()[0]
+    sales.add(c, f, "in_person")
+    logger.info("in-person sale added")
+    flash(f"Added your {f['platform']} sale.")
     return _back()
