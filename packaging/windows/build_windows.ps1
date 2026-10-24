@@ -33,9 +33,13 @@ Write-Host "==> App code"
 git -C $Root archive --format=zip -o "$Work\code.zip" HEAD jigstream run.py requirements.txt
 Expand-Archive "$Work\code.zip" "$App\app"
 $build = if ($env:BOTTRACK_BUILD) { $env:BOTTRACK_BUILD } else { git -C $Root rev-parse HEAD }
-Set-Content -NoNewline "$App\app\VERSION" "$build`n"
+$build = "$build".Trim()
+Write-Host "build $build"
+[IO.File]::WriteAllText((Join-Path $App "app\VERSION"), "$build`n")
 # Where Send logs and shared learning go, from the BOTTRACK_LOGS_TO Actions secret (kept out of the public code).
-if ($env:BOTTRACK_DEVELOPER_EMAIL) { Set-Content -NoNewline "$App\app\jigstream\developer.txt" $env:BOTTRACK_DEVELOPER_EMAIL }
+if ($env:BOTTRACK_DEVELOPER_EMAIL) {
+  [IO.File]::WriteAllText((Join-Path $App "app\jigstream\developer.txt"), $env:BOTTRACK_DEVELOPER_EMAIL.Trim())
+}
 Copy-Item "$PSScriptRoot\BotTrack.pyw" $App
 
 Write-Host "==> AI engine"
