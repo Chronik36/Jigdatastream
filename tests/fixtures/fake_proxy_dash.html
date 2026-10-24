@@ -1,0 +1,32 @@
+<!doctype html><meta charset="utf-8"><title>Fake proxy dashboard</title>
+<!-- Stand-in for a provider dashboard: rotating/sticky as tabs, the TTL as a dropdown, a click-to-open list or a
+     minutes box (?ttl=select|custom|typed), and a Generate button that writes the list into a textarea. -->
+<style>.dd ul{display:none}.dd.open ul{display:block}[hidden]{display:none}</style>
+<div role="tablist"><div role="tab" id="t-rot" aria-selected="true">Rotating</div><div role="tab" id="t-st">Sticky</div></div>
+<div id="sticky" hidden>
+  <label id="selwrap">Session duration <select id="dur"><option value="600">10 minutes</option><option value="1800">30 minutes</option><option value="3600">1 hour</option></select></label>
+  <div class="dd" id="ddwrap"><button type="button" class="opener">Duration: <span id="ddv">10 min</span></button>
+    <ul><li data-v="10">10 min</li><li data-v="30">30 min</li><li data-v="60">60 min</li></ul></div>
+  <div id="typedwrap"><span>Minutes</span><div><input id="mins" type="number" value="10"></div></div>
+</div>
+<label>Email <input type="email" id="em"></label>
+<label>Quantity <input name="qty" type="number" value="2"></label>
+<button id="gen">Generate</button>
+<textarea id="out" rows="6" cols="60"></textarea>
+<script>
+const mode = new URLSearchParams(location.search).get('ttl') || 'select';
+document.getElementById('selwrap').hidden = mode !== 'select';
+document.getElementById('ddwrap').hidden = mode !== 'custom';
+document.getElementById('typedwrap').hidden = mode !== 'typed';
+let sticky = false, ddmins = 10;
+document.getElementById('t-rot').onclick = () => { sticky = false; document.getElementById('sticky').hidden = true; };
+document.getElementById('t-st').onclick = () => { sticky = true; document.getElementById('sticky').hidden = false; };
+document.querySelector('.opener').onclick = () => document.getElementById('ddwrap').classList.toggle('open');
+document.querySelectorAll('.dd li').forEach(li => li.onclick = () => { ddmins = +li.dataset.v; document.getElementById('ddv').textContent = li.textContent; document.getElementById('ddwrap').classList.remove('open'); });
+document.getElementById('gen').onclick = () => {
+  const mins = mode === 'select' ? document.getElementById('dur').value / 60 : mode === 'custom' ? ddmins : +document.getElementById('mins').value;
+  const n = +document.querySelector('[name=qty]').value || 1, out = [];
+  for (let i = 0; i < n; i++) out.push(`gw.fake.io:7000:user-${sticky ? 'sticky-' + mins : 'rotating'}-s${Math.random().toString(36).slice(2, 7)}:pw`);
+  document.getElementById('out').value = out.join('\n');
+};
+</script>
