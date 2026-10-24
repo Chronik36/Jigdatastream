@@ -13,5 +13,46 @@ The key works on every computer (Mac or Windows) where that Gmail is connected.<
 <input type="email" name="address" value="{{email}}" placeholder="you@gmail.com" style="width:100%">
 <input type="password" name="password" placeholder="App password" autocomplete="off" style="width:100%;margin-top:8px"></details>
 <button>Unlock BotTrack</button></form>
+{% if asked %}<section class="panel" style="margin-top:14px">
+<h3 style="margin-top:0">Waiting for your key</h3>
+<p class="muted" style="margin:0">You asked for a key for <b>{{asked[0]}}</b> on {{asked[1]}}. When it's allowed, the key is emailed to that Gmail
+and BotTrack unlocks by itself. Keep this window open.</p>
+<p class="muted small" id="key-look" style="margin:8px 0 0">Looking in your Gmail every minute…</p>
+<button type="button" class="ghost" id="key-now" style="margin-top:8px">Look now</button>
+</section>{% endif %}
+{% if can_ask %}<section class="panel" style="margin-top:14px">
+<h3 style="margin-top:0">{{"Ask again" if asked else "No key yet? Request access"}}</h3>
+<p class="muted" style="margin:0 0 10px">Sends a request from your Gmail. Once it's allowed, your key arrives in that Gmail and BotTrack picks it up by itself.</p>
+<form method="post" action="{{url_for('keyrequests.request_access')}}" style="display:flex;flex-direction:column;gap:8px"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+{% if accounts %}<select name="address">{% for a in accounts %}<option>{{a}}</option>{% endfor %}<option value="">Another Gmail…</option></select>{% endif %}
+<div id="ask-new"{% if accounts %} hidden{% endif %} style="display:flex;flex-direction:column;gap:8px">
+<input type="email" name="{{'other' if accounts else 'address'}}" placeholder="you@gmail.com">
+<input type="password" name="password" placeholder="App password" autocomplete="off"></div>
+<input name="name" maxlength="60" placeholder="Your name (so they know who's asking)">
+<input name="note" maxlength="300" placeholder="A note (optional)">
+<button>Request access</button></form>
+</section>{% endif %}
 </div>
+<script>
+(function () {
+  var sel = document.querySelector('select[name="address"]'), box = document.getElementById('ask-new');
+  if (sel && box) sel.addEventListener('change', function () { box.hidden = sel.value !== ''; });
+  var form = sel && sel.form;
+  if (form) form.addEventListener('submit', function () {
+    if (sel.value === '') { var o = form.querySelector('input[name="other"]'); sel.options[sel.selectedIndex].value = o.value; }
+  });
+  {% if asked %}
+  var note = document.getElementById('key-look');
+  function look(now) {
+    fetch('{{url_for("keyrequests.check_now")}}' + (now ? '?now=1' : '')).then(function (r) { return r.json(); }).then(function (s) {
+      if (s.open) { note.textContent = 'Your key arrived. Opening BotTrack…'; location.href = '/orders'; }
+      else if (now) note.textContent = 'Not here yet. Still looking every minute.';
+    }).catch(function () {});
+  }
+  document.getElementById('key-now').addEventListener('click', function () { look(true); });
+  setInterval(function () { look(false); }, 60000);
+  look(false);
+  {% endif %}
+})();
+</script>
 {% endblock %}
