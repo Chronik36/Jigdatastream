@@ -1,0 +1,70 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.pxgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:16px;align-items:start}
+@media (max-width:900px){.pxgrid{grid-template-columns:1fr}}
+.pxf{display:grid;gap:10px}.pxf label{display:flex;flex-direction:column;gap:4px;font-size:12px}.pxf input,.pxf textarea{margin:0;width:100%}
+.pxf textarea{min-height:170px;font:12.5px/1.5 ui-monospace,Menlo,monospace}
+.pxbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 14px}.pxbar select{margin:0;width:auto}
+details.pxg{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px}
+details.pxg>summary{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;list-style:none}
+details.pxg>summary::-webkit-details-marker{display:none}
+details.pxg>summary b{color:var(--text);font-size:15px}
+details.pxg[open]>summary{border-bottom:1px solid var(--line)}
+.pxg .meta{color:var(--muted);font-size:12.5px}.pxg .grow{flex:1}
+.pxg form{margin:0}.pxg summary button{padding:4px 10px;font-size:12px;min-height:0}
+.pxg table{margin:0}.pxg td,.pxg th{padding:8px 14px}
+.ms{font-variant-numeric:tabular-nums;font-weight:600}
+.r-ok{color:var(--green)}.r-blocked,.r-login{color:var(--orange)}.r-dead,.r-error{color:var(--red)}
+.pxrow{cursor:pointer}.pxrow td:first-child a{color:var(--text);font-weight:500}
+#pxprog{display:none}#pxprog.on{display:flex}
+</style>
+<p class="muted">Paste proxies one per line, give them a provider and a group, then test how fast they reach a retail site.
+A test opens the site's home page once through each proxy. Click a proxy for where it really comes out.</p>
+<div class="banner" id="pxprog"><span>Testing: <b id="pxdone">{{state.done}}</b> of <b id="pxtotal">{{state.total}}</b></span></div>
+<div class="pxgrid">
+<section class="panel"><h3 style="margin-top:0">Add proxies</h3>
+<form method="post" action="/proxies/add" class="pxf">
+<label>Proxies, one per line<textarea name="list" required placeholder="host:port:user:pass&#10;user:pass@host:port&#10;http://host:port"></textarea></label>
+<label>Provider<input name="provider" placeholder="e.g. Leaf, Oculus, Stellar"></label>
+<label>Group<input name="group" list="pxgroups" placeholder="e.g. Target ISP"></label>
+<div><button>Add</button></div></form>
+<datalist id="pxgroups">{% for g in groups %}{% if g.name != "No group" %}<option value="{{g.name}}">{% endif %}{% endfor %}</datalist>
+</section>
+<section>
+<form method="post" action="/proxies/test" class="pxbar">
+<select name="site" id="pxsite"><option value="all">All sites</option>{% for s in sites %}<option {{"selected" if s == site}}>{{s}}</option>{% endfor %}</select>
+<button {{"disabled" if state.running or not groups}}>Test every proxy</button>
+<span class="muted" style="font-size:12px">or test a group or one proxy below</span></form>
+{% for g in groups %}
+<details class="pxg"{{" open" if groups|length == 1}}><summary>
+<b>{{g.name}}</b><span class="meta">{{g.proxies|length}} prox{{"y" if g.proxies|length == 1 else "ies"}} · {{g.providers|sort|join(", ")}}</span>
+<span class="grow"></span>
+{% if g.tested %}<span class="meta">{{g.ok}}/{{g.tested}} ok{% if g.avg %} · <span class="ms">{{g.avg}} ms</span> avg{% endif %}</span>{% endif %}
+<form method="post" action="/proxies/test" onsubmit="this.site.value=document.getElementById('pxsite').value"><input type="hidden" name="group" value="{{g.name}}"><input type="hidden" name="site"><button class="ghost" {{"disabled" if state.running}}>Test group</button></form>
+<form method="post" action="/proxies/delete" onsubmit="return confirm('Remove every proxy in {{g.name}}?')"><input type="hidden" name="group" value="{{g.name}}"><button class="danger">Remove</button></form>
+</summary>
+<table><thead><tr><th>Proxy</th><th>Provider</th><th>Exit</th><th class="num">Avg</th><th>Last results</th><th></th></tr></thead><tbody>
+{% for p in g.proxies %}<tr class="pxrow" onclick="if(!event.target.closest('form,a'))location='/proxies/{{p.id}}'">
+<td><a href="/proxies/{{p.id}}" class="pv">{{p.label}}</a></td><td>{{p.provider or "-"}}</td>
+<td>{% if p.exit %}{{p.exit.countryCode}}{% if p.exit.city %} · {{p.exit.city}}{% endif %}{% else %}<span class="muted">-</span>{% endif %}</td>
+<td class="num ms">{{p.avg ~ " ms" if p.avg else "-"}}</td>
+<td style="font-size:12px">{% for s, t in p.tests|dictsort %}<span class="r-{{t.result}}" title="{{t.error or ''}}">{{s}} {{(t.ms ~ "ms") if t.result == "ok" else t.result}}</span>{{ " · " if not loop.last }}{% else %}<span class="muted">not tested</span>{% endfor %}</td>
+<td><form method="post" action="/proxies/test" onsubmit="this.site.value=document.getElementById('pxsite').value"><input type="hidden" name="id" value="{{p.id}}"><input type="hidden" name="site"><button class="ghost" style="padding:3px 9px;font-size:12px;min-height:0" {{"disabled" if state.running}}>Test</button></form></td></tr>
+{% endfor %}</tbody></table></details>
+{% else %}<div class="panel muted">No proxies yet. Paste a list on the left.</div>{% endfor %}
+</section></div>
+<script>
+(function () {
+  const bar = document.getElementById('pxprog');
+  {% if state.running %}bar.classList.add('on');{% endif %}
+  if (!bar.classList.contains('on')) return;
+  (function poll() {
+    fetch('/proxies/status', {cache: 'no-store'}).then(r => r.json()).then(s => {
+      document.getElementById('pxdone').textContent = s.done; document.getElementById('pxtotal').textContent = s.total;
+      if (!s.running) return location.reload();
+      setTimeout(poll, 1000);
+    }).catch(() => setTimeout(poll, 3000));
+  })();
+})();
+</script>
+{% endblock %}
