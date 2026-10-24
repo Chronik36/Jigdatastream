@@ -167,3 +167,21 @@ def test_training_pack_scrubs_and_picks(tmp_path, monkeypatch):
     near = picker(Email("<2>", "Target <orders@target.com>", "Your order has shipped", "", "", "me@x"))
     far = picker(Email("<3>", "Shop <hi@elsewhere.io>", "Weekly deals", "", "", "me@x"))
     assert near and near[0][0].startswith("From: Target") and far == [("default", "{}")]
+
+
+def test_jig_styles_from_drop_results(tmp_path):
+    from jigstream import jigstats
+    con = db.connect(str(tmp_path / "j.db"))
+    con.execute("INSERT INTO profiles (name, ship_address1) VALUES ('front', 'XQZ 7100 County Road 9'),"
+                " ('after', '7100 KJH County Road 9 Apt 4')")
+    con.commit()
+    items = [{"site": "Target", "profile": "front", "outcome": "cancelled"}] * 6 + \
+            [{"site": "target.com", "profile": "after", "outcome": "confirmed"}] * 5 + \
+            [{"site": "Target", "profile": "after", "outcome": "cancelled"}] + \
+            [{"site": "Target", "profile": "after", "outcome": "decline"}] * 9
+    r = jigstats.report(con, items)["Target"]
+    front = {row["style"]: row for row in r["groups"]["Front"]}
+    assert front["Letters after the number"]["rate"] == 17 and front["Letters after the number"].get("best")
+    assert front["Letters before the number"]["rate"] == 100
+    assert front["Letters after the number"]["recipe"]["replace"] == r"\1 %c3% "
+    assert {row["style"] for row in r["groups"]["Unit"]} == {"Apt", "No unit"}
