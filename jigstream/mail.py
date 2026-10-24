@@ -4,7 +4,7 @@ import email
 import imaplib
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from email import policy
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
@@ -22,6 +22,7 @@ class Email:
     body: str
     account: str = ""  # the inbox it was read from
     to: str = ""  # the address the email was sent to (a profile's email that forwards here)
+    images: list = field(default_factory=list)  # [(alt text, url)] of the pictures in it, for product photos
 
 
 class _TextExtractor(HTMLParser):
@@ -76,9 +77,47 @@ def html_to_text(html):
     return text.strip()
 
 
+class _Images(HTMLParser):
+    """The pictures in an email that could be products: no tracking pixels, spacers, logos or icons."""
+    SMALL = re.compile(r"^\s*([0-9]|[1-4][0-9])(px)?\s*$")
+    NOT_PRODUCT = re.compile(r"logo|icon|pixel|spacer|track|beacon|social|facebook|twitter|instagram|badge|banner|"
+                             r"header|footer|button|arrow|star|rating|app-?store|google-?play", re.I)
+
+    def __init__(self):
+        super().__init__()
+        self.found = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag != "img":
+            return
+        a = dict(attrs)
+        src, alt = (a.get("src") or "").strip(), (a.get("alt") or a.get("title") or "").strip()
+        if not src.startswith("https://") or self.NOT_PRODUCT.search(src + " " + alt):
+            return
+        if any(self.SMALL.match(a.get(k) or "x") for k in ("width", "height")):
+            return
+        self.found.append((alt[:200], src[:600]))
+
+
+def images_in(html):
+    parser = _Images()
+    try:
+        parser.feed(html or "")
+    except Exception:
+        return []
+    return parser.found[:30]
+
+
 def message_text(msg):
     """Best readable text for a message: the HTML part (receipts put the
     details there), falling back to plain text."""
+    html, plain = _parts(msg)
+    if html:
+        return html_to_text(html)
+    return (plain or "").strip()
+
+
+def _parts(msg):
     html = plain = None
     for part in msg.walk():
         if part.get_content_maintype() == "multipart" or part.get_filename():
@@ -92,9 +131,7 @@ def message_text(msg):
             html = content
         elif ctype == "text/plain" and plain is None:
             plain = content
-    if html:
-        return html_to_text(html)
-    return (plain or "").strip()
+    return html, plain
 
 
 ADDRESS = re.compile(r"[\w.+'=-]+@[\w-]+(?:\.[\w-]+)+")
@@ -191,6 +228,7 @@ def parse_message(raw):
         date=date,
         body=body,
         to=original_recipients(msg, forwarded),
+        images=images_in(_parts(msg)[0]),
     )
 
 
