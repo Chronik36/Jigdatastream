@@ -299,3 +299,27 @@ def test_spend_counts_only_orders_that_stuck():
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_ad_senders_skip_the_model_after_three_ads():
+    store = Store(db.connect(":memory:"))
+    asked = []
+
+    class LLM:
+        def chat_json(self, system, user):
+            asked.append(user.split("\n")[1])
+            return {"kind": "other"}
+    ads = [mail(f"Deals week {i} - save $20 on your order", sender="Shop <news@shop.com>", mid=f"<ad{i}@x>") for i in range(3)]
+    run_sync(Config(), store, emails=ads, llm=LLM(), log=lambda *a, **k: None)
+    assert len(asked) == 3
+    later = [mail("Flash deals inside, $10 off", sender="Shop <News@shop.com>", mid="<ad9@x>"),
+             mail("Your order has shipped", sender="Shop <news@shop.com>", mid="<ship@x>")]
+    counts = run_sync(Config(), store, emails=later, llm=LLM(), log=lambda *a, **k: None)
+    assert asked[-1] == "Subject: Your order has shipped" and len(asked) == 4 and counts["skipped"] == 1
+
+
+def test_long_emails_keep_their_start_and_end():
+    from jigstream.extract import trim
+    text = "Order #123 items\n" + "x" * 20000 + "\nTotal $99.00"
+    out = trim(text, 8000)
+    assert len(out) <= 8000 and out.startswith("Order #123") and out.endswith("Total $99.00")
