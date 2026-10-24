@@ -7,7 +7,7 @@
 .toolbar button{padding:6px 12px}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
 .pcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px 16px 46px;position:relative;transition:border-color .15s}
-.pcard:hover{border-color:var(--line-2)}.pcard.warn{box-shadow:inset 3px 0 0 var(--orange)}.pcard.picked{border-color:rgba(61,216,239,.6)}
+.pcard{cursor:pointer}.pcard:hover{border-color:var(--line-2)}.pcard.warn{box-shadow:inset 3px 0 0 var(--orange)}.pcard.picked{border-color:rgba(61,216,239,.6)}
 .pcard .pick{position:absolute;left:18px;top:21px}
 .pcard h3{margin:0 0 4px;font-size:16px;color:var(--text);text-transform:none;letter-spacing:-.01em;font-weight:600;display:flex;align-items:center;gap:8px;padding-right:76px}
 .pcard .tag{font-size:11px;font-weight:600;background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:2px 8px}
@@ -183,6 +183,13 @@ function counted() {
   document.getElementById('count').textContent = n + ' selected';
   document.querySelectorAll('input.pick').forEach(c => c.closest('.pcard').classList.toggle('picked', c.checked));
 }
+// A click anywhere on a card ticks it, except on its links, buttons and the box itself.
+document.addEventListener('click', e => {
+  const card = e.target.closest('.pcard');
+  if (!card || e.target.closest('a, button, input, select, label, form') || getSelection().toString()) return;
+  const box = card.querySelector('input.pick');
+  box.checked = !box.checked; counted();
+});
 function pickAll(on) { document.querySelectorAll('input.pick').forEach(c => c.checked = on); counted(); }
 function copyPicks(id) {
   const box = document.getElementById(id); box.innerHTML = '';
