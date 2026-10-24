@@ -1,4 +1,4 @@
-"""BotTrack's entry point on a Mac (BotTrack.app) and on Windows: everything runs inside the app and one data folder.
+r"""BotTrack's entry point on a Mac (BotTrack.app) and on Windows: everything runs inside the app and one data folder.
 
 The app carries its own Python, this code, and an Ollama engine. Nothing is installed elsewhere: settings, the
 database, logs, code updates and AI models live in ~/Library/Application Support/BotTrack on a Mac and in
@@ -324,6 +324,8 @@ def main():
     peersync.start(app)  # keeps a linked Mac or PC the same as this one
     from . import backup
     backup.start(app)  # a locked backup every day, once a backup password is set
+    from . import keyrequests
+    keyrequests.start(app)  # requests for keys (jacob's computer), a key arriving by email (everyone else)
 
     def timers():
         """Sync every few hours (first once the AI is ready) and check for updates every few hours."""
