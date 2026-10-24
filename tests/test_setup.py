@@ -233,3 +233,14 @@ def test_theme_choice_survives_the_window_closing(tmp_path, monkeypatch):
     assert c.post("/prefs/theme", data={"theme": "light"}).status_code == 204
     assert "UI_THEME=light" in (tmp_path / ".env").read_text()
     assert '<html lang="en" data-theme="light">' in c.get("/").get_data(as_text=True)
+
+
+def test_switch_to_8b_button(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(os, "environ", {k: v for k, v in os.environ.items() if not k.startswith("LLM")})
+    monkeypatch.setattr(appmod, "installed_models", lambda url: ["huihui_ai/qwen3-abliterated:14b"])
+    c = appmod.create_app(str(tmp_path / "s.db")).test_client()
+    page = c.get("/setup").get_data(as_text=True)
+    assert "Switch to 8B (faster)" in page and "Switch to 14B" not in page
+    c.post("/setup/engine", data={"engine": "ollama", "model": "huihui_ai/qwen3-abliterated:8b"})
+    assert "LLM_MODEL=huihui_ai/qwen3-abliterated:8b" in (tmp_path / ".env").read_text()
