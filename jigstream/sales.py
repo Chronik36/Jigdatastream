@@ -148,7 +148,7 @@ def add(con, fields, source="manual"):
     cur = con.execute(
         f"INSERT INTO sales (message_id, account, source, link_manual, created_at, {', '.join(cols)})"
         f" VALUES (?,?,?,?,?,{','.join('?' * len(cols))})",
-        (f"{source}:{uuid.uuid4().hex}", "added by hand" if source == "manual" else "bank statement", source,
+        (f"{source}:{uuid.uuid4().hex}", {"manual": "added by hand", "in_person": "in person"}.get(source, "bank statement"), source,
          1 if fields.get("order_id") else 0, _now(), *vals.values()))
     con.commit()
     link_orders(con)

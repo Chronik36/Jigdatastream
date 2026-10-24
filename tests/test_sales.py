@@ -168,3 +168,17 @@ def test_a_deposit_for_a_payout_email_is_tied_to_it_and_the_dashboard_shows_mone
     assert overview.summary(con, "2026")["income"] == 88.5
     page = create_app(str(tmp_path / "s.db")).test_client().get("/?year=2026").get_data(as_text=True)
     assert "Sold in 2026" in page and "$88.50" in page
+
+
+def test_in_person_buys_and_sales(con, tmp_path):
+    client = create_app(str(tmp_path / "s.db")).test_client()
+    assert "Add an in-person buy" in client.get("/expenses/in-person").get_data(as_text=True)
+    client.post("/expenses/in-person/buy", data={"store": "Sam's Club", "date": "2026-10-10", "item": "ETB", "quantity": "4",
+                                                  "total": "200"})
+    oid = con.execute("SELECT id FROM tracked_orders WHERE account = 'in person'").fetchone()[0]
+    client.post("/expenses/in-person/sale", data={"place": "Tradepost", "date": "2026-10-12", "item": "ETB",
+                                                   "sale_price": "260", "order_id": str(oid)})
+    s = [r for r in sales.rows(con) if r["source"] == "in_person"][0]
+    assert (s["platform"], s["money_in"], s["cost"], s["profit"]) == ("Tradepost", 260, 200, 60)
+    page = client.get("/expenses/in-person").get_data(as_text=True)
+    assert "Sold</span>" in page and "$60.00" in page
