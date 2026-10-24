@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from . import sales
 from .extract import extract, looks_like_purchase
 from .llm import LLMError, from_config as llm_for
-from .mail import fetch_emails
+from .mail import fetch_emails, newest_emails
 from . import packs
 from .training import few_shot
 
@@ -169,6 +169,50 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None, sto
             store.mark_synced(address, started, full=days is None)
     counts.pop("streak", None)
     logger.info("sync %s: %s", "stopped" if counts.get("stopped") else "finished", summary(counts))
+    return counts
+
+
+def quick_check(config, store, llm=None, newest=5, stop=None, fetch=None):
+    """Read the newest few emails of every inbox, so new orders, shipping and cancels show up within minutes
+    instead of waiting for the next full sync. Emails already read are skipped by Message-ID before anything
+    is downloaded. fetch replaces Gmail in tests. Returns the counts, like run_sync."""
+    stop = stop or (lambda: False)
+    fetch = fetch or newest_emails
+    counts = {"order": 0, "botting_expense": 0, "other": 0, "skipped": 0, "error": 0, "failed_inboxes": []}
+    picked = {}
+    config.search_query = sales.with_terms(config.search_query, sales.custom_platforms(store.db))
+
+    def known(ids):
+        if not ids:
+            return set()
+        marks = ",".join("?" * len(ids))
+        return {r[0] for r in store.db.execute(
+            "SELECT message_id FROM emails WHERE error IS NULL AND message_id IN (%s)" % marks, ids)}
+
+    def log(message, file=None):
+        (logger.warning if file is sys.stderr else logger.debug)(message.strip())
+
+    for address, password in config.accounts:
+        if stop():
+            break
+        try:
+            for email in fetch(config, address, password, newest, known):
+                if stop():
+                    break
+                if not picked:  # only worth building once there's something new to read
+                    llm = llm or llm_for(config)
+                    picked.update(platforms=sales.platforms(store.db), quiet=quiet_senders(store.db),
+                                  examples=packs.picker(store, few_shot(store)) if config.use_examples else [])
+                process(email, store, llm, config, counts, log, picked["examples"], picked["platforms"],
+                        picked["quiet"])
+        except LLMError:
+            raise
+        except Exception as e:
+            counts["failed_inboxes"].append(address)
+            logger.warning("quick check of %s failed: %s", address, e)
+    counts.pop("streak", None)
+    if picked:
+        logger.info("quick check: %s", summary(counts))
     return counts
 
 
