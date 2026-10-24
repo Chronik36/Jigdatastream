@@ -322,6 +322,8 @@ def main():
     else:
         tunnel.stop()
     peersync.start(app)  # keeps a linked Mac or PC the same as this one
+    from . import backup
+    backup.start(app)  # a locked backup every day, once a backup password is set
 
     def timers():
         """Sync every few hours (first once the AI is ready) and check for updates every few hours."""

@@ -267,6 +267,7 @@ body .fl{color:#7884b3}
   {% if ai and ai.ready and not ai.error %}<span class="chip ai"><i></i>AI ready</span>{% endif %}
 </header>
 <main>
+{% if key_grace and not path.startswith('/activate') %}<div class="banner"><span>BotTrack now needs a key for your Gmail. You can keep using it until {{key_grace}}.</span><span class="grow" style="flex:1"></span><a class="btn" href="/activate">Enter key</a></div>{% endif %}
 {% if update and update.available and not path.startswith('/setup') %}<div class="banner"><span>A new version of BotTrack is ready{% if update.message %}: <span class="muted">{{update.message}}</span>{% endif %}</span><span class="grow" style="flex:1"></span>
 <form method="post" action="{{update_url}}" data-loader="Installing the update"><button>Update now</button></form></div>
 {% elif apk_update %}<div class="banner"><span>A new version of the BotTrack app is ready</span><span class="grow" style="flex:1"></span>
