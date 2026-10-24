@@ -1,0 +1,44 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.pdgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;align-items:start}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13.5px}.kv dt{color:var(--muted)}.kv dd{margin:0;color:var(--text);word-break:break-word}
+.ms{font-variant-numeric:tabular-nums;font-weight:600}
+.r-ok{color:var(--green)}.r-blocked,.r-login{color:var(--orange)}.r-dead,.r-error{color:var(--red)}
+.pdbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.pdbar form{margin:0;display:flex;gap:8px}.pdbar select,.pdbar input{margin:0;width:auto}
+</style>
+<p><a href="/proxies">← Proxies</a></p>
+<h2 class="pv" style="margin:0 0 4px">{{p.label}}</h2>
+<p class="muted" style="margin:0 0 16px">{{p.provider or "No provider"}} · {{p.grp or "No group"}} · {{p.scheme|upper}} · added {{(p.added_at or "")[:10]}}</p>
+<div class="pdbar" style="margin-bottom:16px">
+<form method="post" action="/proxies/test"><input type="hidden" name="id" value="{{p.id}}"><input type="hidden" name="back" value="/proxies/{{p.id}}">
+<select name="site"><option value="all">All sites</option>{% for s in sites %}<option>{{s}}</option>{% endfor %}</select><input type="hidden" name="wait" value="1"><button>Speed test</button></form>
+<form method="post" action="/proxies/{{p.id}}/locate"><button class="ghost">{{"Check location again" if p.exit else "Find where it comes out"}}</button></form>
+</div>
+<div class="pdgrid">
+<section class="panel"><h3 style="margin-top:0">Exit (what sites see)</h3>
+{% if p.exit %}<dl class="kv"><dt>IP</dt><dd class="pv">{{p.exit_ip}}</dd><dt>Location</dt><dd>{{place(p.exit) or "-"}}</dd>
+<dt>Looks like</dt><dd>{{kind(p.exit)}}</dd><dt>ISP</dt><dd>{{p.exit.isp or "-"}}</dd><dt>Network</dt><dd>{{p.exit.org or "-"}}</dd>
+<dt>ASN</dt><dd>{{p.exit.as or "-"}}</dd><dt>Time zone</dt><dd>{{p.exit.timezone or "-"}}</dd><dt>Checked</dt><dd>{{(p.located_at or "")[:16]|replace("T", " ")}}</dd></dl>
+{% else %}<p class="muted">Not checked yet. "Find where it comes out" asks ip-api.com through this proxy.</p>{% endif %}</section>
+<section class="panel"><h3 style="margin-top:0">Entry (what you connect to)</h3>
+<dl class="kv"><dt>Host</dt><dd class="pv">{{p.host}}:{{p.port}}</dd>
+{% if p.entry %}<dt>IP</dt><dd class="pv">{{p.entry_ip}}</dd><dt>Location</dt><dd>{{place(p.entry) or "-"}}</dd><dt>Run by</dt><dd>{{p.entry.org or p.entry.isp or "-"}}</dd><dt>ASN</dt><dd>{{p.entry.as or "-"}}</dd>{% endif %}
+<dt>Login</dt><dd>{{"user " ~ p.user[:4] ~ "••••" if p.user else "none (IP allowlisted)"}}</dd></dl>
+{% if p.exit and p.entry and p.exit_ip == p.entry_ip %}<p class="muted" style="font-size:12px">Entry and exit are the same IP: a static (ISP or datacenter) proxy.</p>
+{% elif p.exit and p.entry %}<p class="muted" style="font-size:12px">The exit differs from the entry: the provider routes you out through another IP (usual for rotating residential).</p>{% endif %}
+</section>
+<section class="panel"><h3 style="margin-top:0">Provider</h3>
+<form method="post" action="/proxies/{{p.id}}/edit" style="display:grid;gap:8px">
+<label style="font-size:12px;display:flex;flex-direction:column;gap:4px">Provider<input name="provider" value="{{p.provider or ''}}" style="margin:0"></label>
+<label style="font-size:12px;display:flex;flex-direction:column;gap:4px">Group<input name="group" value="{{p.grp or ''}}" style="margin:0"></label>
+<div><button class="ghost">Save</button></div></form>
+<p class="muted" style="font-size:12.5px;margin:12px 0 0">In your checkouts: <b class="ok">{{record.success}}</b> success · <b class="bad">{{record.decline}}</b> declined · {{record.failure}} failed</p>
+</section>
+</div>
+<details class="panel" style="margin-top:16px"{{" open" if tests}}><summary style="cursor:pointer"><b>Speed by site</b> <span class="muted">({{tests|length}} tested)</span></summary>
+<table style="margin-top:10px"><thead><tr><th>Site</th><th class="num">Time</th><th>Result</th><th>Tested</th></tr></thead><tbody>
+{% for s in sites %}{% set t = tests.get(s) %}<tr><td>{{s}}</td><td class="num ms">{{(t.ms ~ " ms") if t and t.ms is not none else "-"}}</td>
+<td>{% if t %}<span class="r-{{t.result}}">{{ {"ok": "OK", "blocked": "Site turned it away", "login": "Login rejected", "dead": "No answer", "error": "Error"}[t.result] }}</span>{% if t.error %} <span class="muted" style="font-size:12px">{{t.error}}</span>{% endif %}{% else %}<span class="muted">not tested</span>{% endif %}</td>
+<td class="muted">{{(t.tested_at or "")[:16]|replace("T", " ") if t else ""}}</td></tr>{% endfor %}</tbody></table></details>
+<form method="post" action="/proxies/delete" style="margin-top:16px" onsubmit="return confirm('Remove this proxy?')"><input type="hidden" name="id" value="{{p.id}}"><button class="danger">Remove proxy</button></form>
+{% endblock %}
