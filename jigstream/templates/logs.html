@@ -5,6 +5,6 @@ App passwords are always hidden. If something goes wrong, send the logs to the d
 <p>{% for f in files %}<a href="/logs?file={{f}}" {% if f == name %}style="font-weight:bold"{% endif %}>{{f}}</a> &nbsp; {% endfor %}
 <a href="/logs/download"><button class="ghost">Download all logs (.zip)</button></a>
 <a href="/logs/send"><button>Send logs to developer</button></a></p>
-<pre style="white-space:pre-wrap;font-size:12px;max-height:70vh;overflow:auto">{{text or "Nothing logged yet."}}</pre>
+<pre style="white-space:pre-wrap;font-size:12px;overflow-wrap:anywhere">{{text or "Nothing logged yet."}}</pre>
 <script>const pre = document.querySelector('pre'); pre.scrollTop = pre.scrollHeight;</script>
 {% endblock %}
