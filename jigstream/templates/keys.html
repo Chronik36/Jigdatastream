@@ -56,6 +56,13 @@ Allow emails them a key from your Gmail and their BotTrack unlocks by itself.</p
 {% if not r.revoked_at %}<form method="post" action="{{url_for('accountkeys.keys_revoke', kid=r.kid)}}" data-confirm="Take back the key for {{r.email}}?"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button class="ghost">Take back</button></form>{% endif %}
 </div>{% else %}<p class="muted">None yet.</p>{% endfor %}
 </section>
+<section class="panel" style="margin:14px 0">
+<h3 style="margin-top:0">Try it yourself</h3>
+<p class="muted">Locks this copy like anyone else's, so you can go through the key screen: request access or paste a key you made for your own Gmail.
+Your data isn't touched. This page stays open while you test.</p>
+<form method="post" action="{{url_for('accountkeys.keys_test_lock')}}"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+{% if testing %}<button class="ghost">Stop testing</button>{% else %}<input type="hidden" name="on" value="1"><button>Lock me out to test</button>{% endif %}</form>
+</section>
 <details class="muted small"><summary>Your signing key (keep a copy somewhere safe)</summary>
 <p>Without it you can't make keys that existing copies accept. To make keys on another computer, paste it there under "I already have one".</p>
 <p style="font-family:ui-monospace,Menlo,monospace;word-break:break-all" data-copy>{{mine}}</p></details>
