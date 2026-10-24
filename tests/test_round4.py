@@ -234,3 +234,13 @@ def test_star_paths_sum_every_plan_and_list_body_is_posted(tmp_path):
     assert json.loads(post.data)["package_id"] == 0
     # ResiFactory's plain list answer: one string of lines inside the JSON.
     assert proxyaccounts.pool_lines(json.dumps({"proxies": "h:7777:a:b\nh:7777:c:d", "count": 2})) == ["h:7777:a:b", "h:7777:c:d"]
+
+
+def test_vantage_preset_reads_balances_and_lines():
+    p = proxyaccounts.PRESETS["Vantage Proxies"]
+    ans = {"balances": [{"tier": "mobile", "total_gb": 10.0, "used_gb": 2.415, "remaining_gb": 7.585},
+                        {"tier": "core_residential", "total_gb": 100.0, "used_gb": 0.0, "remaining_gb": 100.0}]}
+    assert proxyaccounts.dig(ans, p["left_path"]) == 107.585 and proxyaccounts.dig(ans, p["total_path"]) == 110
+    lines = {"count": 2, "lines": ["mob.vantageproxies.com:8000:u-sid-a:p", "mob.vantageproxies.com:8000:u-sid-b:p"]}
+    assert proxyaccounts.pool_lines(json.dumps(lines)) == lines["lines"]
+    assert json.loads(p["list_body"])["tier"] == "apex_residential"
