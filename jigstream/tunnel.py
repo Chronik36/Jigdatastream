@@ -19,6 +19,7 @@ import logging
 import os
 import platform
 import re
+import sys
 import shutil
 import signal
 import subprocess
@@ -40,6 +41,7 @@ ANNOUNCE_EVERY = 6 * 3600  # ntfy.sh keeps messages for 12 hours
 
 # Kept in BotTrack's data folder (the working directory of the Mac app).
 BIN, STATE, LOG = Path("bin/cloudflared"), Path("tunnel.json"), Path("logs/tunnel.log")
+WINDOWS = sys.platform == "win32"
 
 state = {"status": "off", "url": "", "error": ""}  # status: off, starting, on, error
 _gen = [0]  # bumped by ensure() and stop(); an older watcher thread notices and ends
@@ -50,7 +52,16 @@ def _arch():
 
 
 def binary(get=urllib.request.urlopen):
-    """Our copy of cloudflared, downloading it the first time; or one installed with Homebrew."""
+    """Our copy of cloudflared, downloading it the first time; or one installed with Homebrew. The Windows app
+    ships it next to its Python, checked when the installer was built."""
+    if WINDOWS:
+        shipped = Path(os.environ.get("BOTTRACK_BUNDLE", ".")) / "cloudflared.exe"
+        if shipped.exists():
+            return str(shipped)
+        found = shutil.which("cloudflared")
+        if found:
+            return found
+        raise RuntimeError("cloudflared.exe is missing from the BotTrack folder; install BotTrack again")
     if BIN.exists():
         return str(BIN)
     found = shutil.which("cloudflared")
@@ -73,6 +84,15 @@ def binary(get=urllib.request.urlopen):
 
 
 def _alive(pid):
+    if WINDOWS:  # os.kill(pid, 0) would send Ctrl+C there
+        if not pid:
+            return False
+        try:
+            out = subprocess.run(["tasklist", "/FI", f"PID eq {int(pid)}", "/NH"], capture_output=True, text=True,
+                                 timeout=10, creationflags=subprocess.CREATE_NO_WINDOW).stdout
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            return False
+        return "cloudflared" in out.lower()
     try:
         os.kill(pid, 0)
     except (OSError, TypeError):
@@ -104,8 +124,10 @@ def _start(port):
     LOG.parent.mkdir(parents=True, exist_ok=True)
     with open(LOG, "wb") as log:
         # Its own session, so it keeps running (and keeps its address) while BotTrack restarts.
+        apart = {"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP} \
+            if WINDOWS else {"start_new_session": True}
         p = subprocess.Popen([exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{port}"],
-                             stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+                             stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **apart)
     STATE.write_text(json.dumps({"pid": p.pid, "port": port}))
     logger.info("started cloudflared (pid %s) for port %s", p.pid, port)
     return p.pid
@@ -162,6 +184,10 @@ def announce(url, post=urllib.request.urlopen):
 
 
 def _kill(pid):
+    if WINDOWS:
+        subprocess.run(["taskkill", "/PID", str(int(pid)), "/F"], capture_output=True,
+                       creationflags=subprocess.CREATE_NO_WINDOW)
+        return
     try:
         os.kill(pid, signal.SIGTERM)
     except OSError:
