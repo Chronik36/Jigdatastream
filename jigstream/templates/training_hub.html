@@ -21,6 +21,9 @@ model for the task on this Mac. Everything stays on this Mac.</p>
     <span class="pill">{{t.n}} example{{'' if t.n == 1 else 's'}}</span> <span class="pill">{{"JSON" if t.answer == "json" else "Text"}} answers</span>
     {% if t.adapter_id %}<span class="pill s-delivered">Trained</span>{% endif %}</a>{% endfor %}
 </div>
+<div class="panel" style="margin-bottom:22px;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+<div><h3 style="margin:0 0 4px">Shared learning</h3><p class="muted" style="margin:0;font-size:13px">Share your corrections (scrubbed of names, addresses, emails and card numbers) so every BotTrack learns faster, and see the shared examples this copy uses.</p></div>
+<a class="btn" href="/training/share">Shared learning ›</a></div>
 <div class="panel tk-new">
 <h3 style="margin-top:0">New task</h3>
 <form method="post" action="/training/tasks" style="display:block">
