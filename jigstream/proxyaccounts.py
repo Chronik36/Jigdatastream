@@ -1,0 +1,241 @@
+"""Proxy provider accounts: data left on each plan and fresh proxy lists, from the providers' own APIs, in one place.
+
+Providers don't share one API, so each account says where to ask:
+- a usage address that answers with JSON, and which fields in it are the data used / left / total
+  (dotted paths such as "data.traffic_left"), in GB, MB or bytes;
+- a list address that answers with a proxy list (one per line, or a JSON list of them). Refresh pool replaces the
+  account's group on the Proxies tab with what it returns.
+The API key goes in the address as {key}, or in a header. It is kept in BotTrack's database on this Mac and is
+only ever sent to the provider's own addresses. Presets fill in what's known for a provider; anything else can be
+typed from the provider's API docs.
+"""
+import json
+import urllib.error
+import urllib.request
+from datetime import datetime
+
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+
+from . import db, proxies
+
+bp = Blueprint("proxyaccounts", __name__)
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS proxy_accounts (
+    id INTEGER PRIMARY KEY, name TEXT, api_key TEXT, auth TEXT DEFAULT 'url',
+    usage_url TEXT, used_path TEXT, left_path TEXT, total_path TEXT, unit TEXT DEFAULT 'gb',
+    list_url TEXT, grp TEXT,
+    used_gb REAL, left_gb REAL, total_gb REAL, usage_error TEXT, checked_at TEXT,
+    pool_size INTEGER, pool_error TEXT, refreshed_at TEXT
+);
+"""
+AUTHS = {"url": "In the address as {key}", "bearer": "Authorization: Bearer key", "x-api-key": "X-API-Key header",
+         "token": "Authorization: Token key"}
+UNITS = {"gb": 1, "mb": 1 / 1024, "bytes": 1 / 1024 ** 3}
+LOW_GB = 1.0  # warn when a plan has less than this left
+
+
+def ensure(con):
+    proxies.ensure(con)
+    return db.setup_once(con, "proxyaccounts", lambda c: c.executescript(SCHEMA))
+
+
+def _con():
+    return ensure(db.connect(current_app.config.get("DB_PATH")))
+
+
+def now():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _request(url, key, auth):
+    headers = {"User-Agent": "BotTrack", "Accept": "application/json, text/plain, */*"}
+    if auth == "bearer":
+        headers["Authorization"] = f"Bearer {key}"
+    elif auth == "token":
+        headers["Authorization"] = f"Token {key}"
+    elif auth == "x-api-key":
+        headers["X-API-Key"] = key
+    return urllib.request.Request(url.replace("{key}", urllib.request.quote(key or "", safe="")), headers=headers)
+
+
+def fetch(url, key, auth, opener=None):
+    """The provider's answer as text. Errors read like the provider's, without the key."""
+    if not (url or "").startswith("https://"):
+        raise ValueError("The address must start with https://")
+    try:
+        with (opener or urllib.request.urlopen)(_request(url, key, auth), timeout=20) as r:
+            return r.read(2_000_000).decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        raise ValueError(f"The provider answered {e.code} {e.reason}"
+                         + (" (check the API key)" if e.code in (401, 403) else "")) from None
+    except urllib.error.URLError as e:
+        raise ValueError(f"Couldn't reach the provider: {e.reason}") from None
+
+
+def dig(data, path):
+    """A value from JSON by a dotted path ("data.0.left"); None when it isn't there."""
+    for part in (path or "").split("."):
+        if not part:
+            continue
+        if isinstance(data, list) and part.isdigit() and int(part) < len(data):
+            data = data[int(part)]
+        elif isinstance(data, dict) and part in data:
+            data = data[part]
+        else:
+            return None
+    return data
+
+
+def _gb(v, unit):
+    try:
+        return round(float(str(v).replace(",", "")) * UNITS.get(unit, 1), 3)
+    except (TypeError, ValueError):
+        return None
+
+
+def check_usage(con, acct, opener=None):
+    """Ask the provider how much data is used and left; saves and returns (used, left, total) in GB."""
+    try:
+        data = json.loads(fetch(acct["usage_url"], acct["api_key"], acct["auth"], opener))
+        used, left, total = (_gb(dig(data, acct[p]), acct["unit"]) if acct[p] else None
+                             for p in ("used_path", "left_path", "total_path"))
+        if left is None and used is not None and total is not None:
+            left = round(total - used, 3)
+        if used is None and left is None:
+            raise ValueError("The answer has no number at those fields: " + json.dumps(data)[:200])
+        con.execute("UPDATE proxy_accounts SET used_gb=?, left_gb=?, total_gb=?, usage_error=NULL, checked_at=? WHERE id=?",
+                    (used, left, total, now(), acct["id"]))
+        con.commit()
+        return used, left, total
+    except (ValueError, json.JSONDecodeError) as e:
+        msg = str(e) if isinstance(e, ValueError) and not isinstance(e, json.JSONDecodeError) else "The answer wasn't JSON"
+        con.execute("UPDATE proxy_accounts SET usage_error=?, checked_at=? WHERE id=?", (msg[:300], now(), acct["id"]))
+        con.commit()
+        raise ValueError(msg) from None
+
+
+def pool_lines(text):
+    """Proxy lines from a list answer: plain lines, or JSON (a list of strings, or of {host, port, ...})."""
+    s = text.strip()
+    if s[:1] in "[{":
+        try:
+            data = json.loads(s)
+        except json.JSONDecodeError:
+            data = None
+        if isinstance(data, dict):
+            data = next((v for v in data.values() if isinstance(v, list)), [])
+        if isinstance(data, list):
+            out = []
+            for x in data:
+                if isinstance(x, str):
+                    out.append(x)
+                elif isinstance(x, dict) and (x.get("host") or x.get("ip")) and x.get("port"):
+                    login = f":{x.get('username') or x.get('user')}:{x.get('password') or x.get('pass')}" if (x.get("username") or x.get("user")) else ""
+                    out.append(f"{x.get('host') or x.get('ip')}:{x['port']}{login}")
+            return out
+    return [line for line in s.splitlines() if line.strip()]
+
+
+def refresh_pool(con, acct, opener=None):
+    """Replace the account's group with the provider's current list. Returns how many proxies it has now."""
+    group = acct["grp"] or acct["name"]
+    try:
+        lines = pool_lines(fetch(acct["list_url"], acct["api_key"], acct["auth"], opener))
+        if not [line for line in lines if proxies.parse_line(line)]:
+            raise ValueError("The provider's list had no proxies BotTrack could read")
+    except ValueError as e:
+        con.execute("UPDATE proxy_accounts SET pool_error=?, refreshed_at=? WHERE id=?", (str(e)[:300], now(), acct["id"]))
+        con.commit()
+        raise
+    old = [r[0] for r in con.execute("SELECT id FROM proxies WHERE grp = ? AND provider = ?", (group, acct["name"]))]
+    con.executemany("DELETE FROM proxy_tests WHERE proxy_id = ?", [(i,) for i in old])
+    con.execute("DELETE FROM proxies WHERE grp = ? AND provider = ?", (group, acct["name"]))
+    added, dup, _ = proxies.add_list(con, "\n".join(lines), acct["name"], group)
+    con.execute("UPDATE proxy_accounts SET pool_size=?, pool_error=NULL, refreshed_at=? WHERE id=?",
+                (added + dup, now(), acct["id"]))
+    con.commit()
+    return added + dup
+
+
+def accounts(con):
+    out = []
+    for r in con.execute("SELECT * FROM proxy_accounts ORDER BY name"):
+        a = dict(r)
+        a["key_hint"] = ("••••" + a["api_key"][-4:]) if a["api_key"] and len(a["api_key"]) > 6 else ("set" if a["api_key"] else "")
+        a.pop("api_key")
+        a["pct_used"] = round(100 * a["used_gb"] / a["total_gb"]) if a["used_gb"] is not None and a["total_gb"] else None
+        a["low"] = a["left_gb"] is not None and a["left_gb"] < LOW_GB
+        out.append(a)
+    return out
+
+
+FIELDS = ("name", "auth", "usage_url", "used_path", "left_path", "total_path", "unit", "list_url", "grp")
+
+
+@bp.post("/proxies/accounts/save")
+def save():
+    con = _con()
+    f = {k: (request.form.get(k) or "").strip() for k in FIELDS}
+    if not f["name"]:
+        flash("Give the provider account a name.")
+        return redirect(url_for("proxies.page") + "#accounts")
+    f["auth"] = f["auth"] if f["auth"] in AUTHS else "url"
+    f["unit"] = f["unit"] if f["unit"] in UNITS else "gb"
+    for u in ("usage_url", "list_url"):
+        if f[u] and not f[u].startswith("https://"):
+            flash("Provider addresses must start with https://")
+            return redirect(url_for("proxies.page") + "#accounts")
+    key = (request.form.get("api_key") or "").strip()
+    aid = request.form.get("id", type=int)
+    if aid:
+        con.execute(f"UPDATE proxy_accounts SET {', '.join(k + '=?' for k in FIELDS)} WHERE id=?", (*f.values(), aid))
+        if key:  # left blank keeps the saved key
+            con.execute("UPDATE proxy_accounts SET api_key=? WHERE id=?", (key, aid))
+    else:
+        con.execute(f"INSERT INTO proxy_accounts ({', '.join(FIELDS)}, api_key) VALUES ({', '.join('?' * (len(FIELDS) + 1))})",
+                    (*f.values(), key))
+    con.commit()
+    flash(f"Saved {f['name']}.")
+    return redirect(url_for("proxies.page") + "#accounts")
+
+
+def _acct(con, aid):
+    row = con.execute("SELECT * FROM proxy_accounts WHERE id=?", (aid,)).fetchone()
+    return dict(row) if row else None
+
+
+@bp.post("/proxies/accounts/<int:aid>/<action>")
+def act(aid, action):
+    con = _con()
+    a = _acct(con, aid)
+    if not a:
+        return redirect(url_for("proxies.page"))
+    try:
+        if action == "usage":
+            used, left, total = check_usage(con, a)
+            flash(f"{a['name']}: " + ", ".join(f"{label} {v:g} GB" for label, v in (("used", used), ("left", left), ("of", total))
+                                                if v is not None) + ".")
+        elif action == "pool":
+            n = refresh_pool(con, a)
+            flash(f"{a['name']}: the {a['grp'] or a['name']} group now has {n} prox{'y' if n == 1 else 'ies'} from the provider.")
+        elif action == "delete":
+            con.execute("DELETE FROM proxy_accounts WHERE id=?", (aid,))
+            con.commit()
+            flash(f"Removed {a['name']}. Its proxies stay on the list.")
+    except ValueError as e:
+        flash(f"{a['name']}: {e}")
+    return redirect(url_for("proxies.page") + "#accounts")
+
+
+@bp.post("/proxies/accounts/usage-all")
+def usage_all():
+    con = _con()
+    bad = []
+    for a in con.execute("SELECT * FROM proxy_accounts WHERE COALESCE(usage_url, '') != ''").fetchall():
+        try:
+            check_usage(con, dict(a))
+        except ValueError:
+            bad.append(a["name"])
+    flash("Checked data left on every account." + (f" Couldn't check {', '.join(bad)}." if bad else ""))
+    return redirect(url_for("proxies.page") + "#accounts")

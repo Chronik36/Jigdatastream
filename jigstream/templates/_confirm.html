@@ -1,0 +1,36 @@
+{# "Are you sure?" asked inside the page. The Mac window doesn't reliably show the browser's own confirm box, so
+   anything that deletes or removes asks here instead: put data-confirm="question" on the form or on its button. #}
+<dialog id="btconfirm" class="btconfirm"><p id="btconfirm-msg"></p>
+<div class="bcrow"><button type="button" class="ghost" value="no">Cancel</button><button type="button" class="danger" value="yes">Yes, go ahead</button></div></dialog>
+<style>
+.btconfirm{max-width:420px;width:calc(100vw - 32px);border:1px solid var(--line-2);border-radius:14px;background:var(--surface);color:var(--text);padding:20px}
+.btconfirm::backdrop{background:rgba(4,8,24,.6)}.btconfirm p{margin:0 0 16px;line-height:1.45}
+.bcrow{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}.bcrow button{margin:0}
+</style>
+<script>
+window.btAlert = function (msg) {  // a notice with just OK, shown in the page like btConfirm
+  const d = document.getElementById('btconfirm');
+  d.querySelector('[value=no]').hidden = true;
+  return btConfirm(msg).then(() => { d.querySelector('[value=no]').hidden = false; });
+};
+window.btConfirm = function (msg) {
+  const d = document.getElementById('btconfirm');
+  document.getElementById('btconfirm-msg').textContent = msg;
+  return new Promise(done => {
+    const pick = e => { const b = e.target.closest('button'); if (!b) return; d.removeEventListener('click', pick); d.close(); done(b.value === 'yes'); };
+    d.addEventListener('click', pick);
+    d.addEventListener('cancel', () => { d.removeEventListener('click', pick); done(false); }, {once: true});
+    d.querySelector('.danger').textContent = d.querySelector('[value=no]').hidden ? 'OK' : 'Yes, go ahead';
+    d.showModal();
+    d.querySelector('.danger').focus();
+  });
+};
+document.addEventListener('submit', e => {
+  const form = e.target, by = e.submitter;
+  const msg = (by && by.dataset.confirm) || form.dataset.confirm;
+  if (!msg) return;
+  if (form.dataset.confirmed) { delete form.dataset.confirmed; return; }
+  e.preventDefault(); e.stopImmediatePropagation();
+  btConfirm(msg).then(ok => { if (ok) { form.dataset.confirmed = '1'; form.requestSubmit(by || undefined); } });
+}, true);
+</script>

@@ -215,6 +215,17 @@ def leaderboard(items, key):
     return sorted(board, key=lambda t: (-t["real"], -t["rate"], t["tries"]))
 
 
+def site_name(names):
+    """One name for a store the bots spell several ways ("amazon", "amazonv3"): the most used spelling without a
+    module version, capitalised when the bot wrote it all in lower case."""
+    names = [n for n in names if n]
+    if not names:
+        return "Unknown site"
+    plain = [n for n in names if re.sub(r"[^a-z0-9]", "", n.lower()) == stuck.site_key(n)] or names
+    name = Counter(plain).most_common(1)[0][0]
+    return name[:1].upper() + name[1:] if name == name.lower() else name
+
+
 def drops(items, sort="proxy", cards=None):
     """Site -> day -> checkouts, newest day first; each drop's checkouts sorted by proxy or by profile, with
     real checkouts first inside each proxy/profile."""
@@ -224,7 +235,7 @@ def drops(items, sort="proxy", cards=None):
         sites.setdefault(key, []).append(c)
     out = []
     for key, group in sites.items():
-        name = Counter(c["site"] or "Unknown site" for c in group).most_common(1)[0][0]
+        name = site_name(c["site"] for c in group)
         days = {}
         for c in group:
             days.setdefault(c["day"], []).append(c)
@@ -250,7 +261,11 @@ def report(con, site=None, sort="proxy", day=None, by=None, name=None):
     matched = stuck.cross_reference(con)
     cards = cardcheck.report(con, matched)
     items = rows(con, matched, cards["links"])
-    sites = sorted({c["site"] for c in items if c["site"]}, key=str.lower)
+    by_key = {}
+    for c in items:
+        if c["site"]:
+            by_key.setdefault(stuck.site_key(c["site"]) or c["site"], []).append(c["site"])
+    sites = sorted((site_name(names) for names in by_key.values()), key=str.lower)
     if site:
         items = [c for c in items if stuck.same_site(c["site"], site)]
     if day:

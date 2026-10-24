@@ -1,0 +1,105 @@
+{% extends "base.html" %}{% from "_verdict.html" import verdict with context %}{% block body %}
+{% set here = "/review?" ~ (base|urlencode) %}
+{% set outcome_names = {"confirmed": "Good", "no_email": "Unsure", "cancelled": "Cancelled", "decline": "Declined", "failure": "Failed", "not_order": "Not an order"} %}
+<div class="rvhead"><div><h2 style="margin:0">Go through: {{title}}</h2>
+<p class="muted" style="margin:4px 0 0">{{keys|length}} item{{"s" if keys|length != 1}} · {{keys|select("in", done)|list|length}} checked{% if picked %} · only the ones you ticked (<a href="/review?{{dict(base, ids='')|urlencode}}">show all</a>){% endif %}</p></div>
+<a class="btn ghost" href="{{request.referrer if request.referrer and '/review' not in request.referrer else '/spend'}}">Done</a></div>
+{% if not keys %}<div class="panel muted">Nothing here.</div>{% else %}
+<div class="rv">
+<aside class="rvlist panel"><form id="pickform" method="get" action="/review">{% for k, v in base.items() if k != "ids" %}<input type="hidden" name="{{k}}" value="{{v}}">{% endfor %}<input type="hidden" name="ids" id="ids">
+<div class="rvtools"><label class="muted"><input type="checkbox" id="all"> All</label><button type="submit" class="ghost" id="gosel" disabled>Go through ticked</button></div></form>
+<ol>{% for k in keys %}{% set l = labels.get(k) %}{% if l %}<li class="{{'on' if k == at}}{{' ok' if k in done}}"><input type="checkbox" class="pk" value="{{k}}" aria-label="Tick"><a href="{{here}}&at={{k}}"><span class="rk">{{l.kind}}</span> <b>{{l.title}}</b>{% if l.amount is not none %} <span class="num">{{l.amount|money}}</span>{% endif %}<span class="muted rs">{{l.date}} · {{l.sub[:60]}}</span></a>{% if k in done %}<span class="tick" title="Checked">✓</span>{% endif %}</li>{% endif %}{% endfor %}</ol></aside>
+
+<section class="rvbody">
+<div class="rvnav"><a class="btn ghost{{' dis' if not prev_key}}" href="{{here ~ '&at=' ~ prev_key if prev_key else '#'}}" id="prev">‹ Back</a>
+<span class="muted">{{i + 1}} of {{keys|length}}</span>
+<a class="btn ghost{{' dis' if not next_key}}" href="{{here ~ '&at=' ~ next_key if next_key else '#'}}" id="next">Next ›</a></div>
+{% if not d %}<div class="panel muted">This one is gone (removed or merged).</div>
+{% elif d.kind == "order" %}{% set o = d.o %}{% set status = o.shipping_status or "unknown" %}
+<article class="panel rvcard"><div class="rvtop"><div><span class="rk">Order</span><h3>{{o.retailer or "Order"}} <span class="muted">{{o.order_number or ""}}</span></h3>
+<div class="muted">{{o.order_date or "no date"}}{% if o.account %} · <span data-private>{{o.account}}</span>{% endif %}</div></div><div class="big">{{o.total|money(o.currency)}}</div></div>
+<ul class="items">{% for it in o["items"] %}<li>{{it.name}}{% if it.quantity and it.quantity != 1 %} x{{it.quantity}}{% endif %}</li>{% else %}<li class="muted">No items listed</li>{% endfor %}</ul>
+<div class="rvgrid">
+<div><div class="fl">Status</div><span class="pill s-{{status}}">{{status|status_label}}</span>{% if o.status_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}{% include "_stagebar.html" %}
+<form method="post" action="/orders/{{o.id}}/label" class="fix"><input type="hidden" name="back" value="1"><select name="status" class="relabel" title="Set the right status; the AI learns from this order's emails"><option value="">Fix status…</option>{% for st in statuses %}<option value="{{st}}" {{"disabled" if st == status}}>{{st|status_label}}</option>{% endfor %}<option disabled>──────────</option><option value="not_an_order">Not an order (remove)</option></select></form></div>
+<div><div class="fl">Tracking</div>{% if o.tracking_number %}<a class="track" href="{{o|track_url}}" target="_blank" rel="noopener"><span class="muted">{{o.carrier or "Track"}}</span> {{o.tracking_number}} ↗</a>{% else %}<span class="muted">No tracking yet</span>{% endif %}{% if o.carrier_status %}<div class="muted small">{{o.carrier_status}}</div>{% endif %}{% if o.estimated_delivery %}<div class="muted small">ETA {{o.estimated_delivery}}</div>{% endif %}</div>
+<div><div class="fl">Profile</div>{% if o.profile_name %}<a href="/profile-orders?profile={{o.profile_name|urlencode}}"><b>{{o.profile_name}}</b></a> <span class="muted small">{{o.profile_match or ""}}</span>{% elif o.profile_candidates %}<span style="color:var(--orange)">Could be {{o.profile_candidates|join(", ")}}</span>{% else %}<span class="muted">No match</span>{% endif %}
+<form method="post" action="/orders/{{o.id}}/profile" class="fix"><input type="hidden" name="back" value="{{here}}&at={{at}}"><select name="profile" onchange="if (this.value !== '__keep__') this.form.submit()" title="Pick the profile this order was placed with"><option value="__keep__">Change profile…</option>{% for n in o.profile_candidates %}<option value="{{n}}">{{n}}</option>{% endfor %}{% for n in profile_names if n not in o.profile_candidates %}<option value="{{n}}">{{n}}</option>{% endfor %}<option value="">None of my profiles</option>{% if o.profile_manual %}<option value="__auto__">Match automatically</option>{% endif %}</select></form></div>
+<div><div class="fl">Ship to</div><div data-private>{% if o.shipping_name %}<b>{{o.shipping_name}}</b><br>{% endif %}{% set al = o|address_label %}{% if al %}<a href="/address?name={{al|urlencode}}" title="Everything at this address">{{o.shipping_address}}</a>{% else %}{{o.shipping_address or "-"}}{% endif %}</div></div>
+</div>
+{% include "_review_links.html" %}
+</article>
+{% elif d.kind == "expense" %}{% set e = d.e %}
+<article class="panel rvcard"><div class="rvtop"><div><span class="rk">Receipt</span><h3>{{e.vendor or "Receipt"}}</h3><div class="muted">{{e.date or "no date"}}{% if e.billing_period %} · {{e.billing_period|replace("_", " ")}}{% endif %}</div></div>
+<div class="big">{{e.amount|money(e.currency)}}{% if e.refunded %}<div class="muted small">{{e.refunded|money}} refunded</div>{% endif %}</div></div>
+<p>{{e.description or ""}}</p>
+<div class="rvgrid"><div><div class="fl">Category</div><form method="post" action="/review/expense/{{e.id}}/category" class="fix"><input type="hidden" name="back" value="{{here}}&at={{at}}"><select name="category" onchange="this.form.submit()" title="What kind of botting cost this is">{% for cat in categories %}<option value="{{cat}}" {{"selected" if cat == e.category}}>{{cat|replace("_", " ")|capitalize}}</option>{% endfor %}</select></form></div>
+<div><div class="fl">Fix it</div><div class="btnrow">
+<form method="post" action="/expenses/{{e.id}}/refunded"><input type="hidden" name="back" value="{{here}}&at={{at}}">{% if e.refunded %}<input type="hidden" name="undo" value="1"><button class="ghost">Not refunded</button>{% else %}<button class="ghost" data-confirm="Returned or refunded in full? It comes off your spend.">Refunded</button>{% endif %}</form>
+<form method="post" action="/expenses/{{e.id}}/not-expense" data-confirm="Not a botting expense? It is removed, and its email teaches the AI to skip emails like it."><input type="hidden" name="back" value="{{here}}{% if next_key %}&at={{next_key}}{% endif %}"><button class="danger">Not an expense</button></form></div></div></div>
+{% include "_review_links.html" %}
+</article>
+{% else %}{% set c = d.c %}
+<article class="panel rvcard"><div class="rvtop"><div><span class="rk">Checkout</span><h3>{{c.site or "Checkout"}}</h3><div class="muted">{{c.day}} {{(c.ts or "")[11:16]}} · {{c.bot or ""}}</div></div><div><span class="pill s-{{ {'confirmed':'delivered','no_email':'ordered'}.get(c.outcome, 'cancelled' if c.outcome in ('cancelled','decline','failure') else 'unknown') }}">{{outcome_names.get(c.outcome, c.outcome)}}</span></div></div>
+<p>{{c.product or ""}}{% if c.order_number %} <span class="muted">· {{c.order_number}}</span>{% endif %}</p>
+<div class="rvgrid">
+<div><div class="fl">Is it right?</div>{% if c.status == "success" %}{{ verdict(c) }}{% else %}<span class="muted small">Declines and failures don't need a verdict.</span>{% endif %}</div>
+<div><div class="fl">Profile</div>{% if c.profile %}<a href="/profile-orders?profile={{c.profile|urlencode}}">{{c.profile}}</a>{% else %}-{% endif %}</div>
+<div><div class="fl">Proxy</div>{{c.proxy_group or ""}}{% if c.proxy %}<div class="small muted">{{c.proxy}}</div>{% endif %}</div>
+<div><div class="fl">Address</div>{% if c.address %}<a href="/address?name={{c.address|urlencode}}" data-private>{{c.address}}</a>{% else %}<span class="muted">-</span>{% endif %}</div>
+<div><div class="fl">Order email</div>{% if c.order %}<a href="{{here}}&at=o{{c.order.id}}">{{c.order.retailer}} {{c.order.order_number or ""}}</a> <span class="pill s-{{c.order.shipping_status or 'unknown'}}">{{(c.order.shipping_status or "unknown")|status_label}}</span>{% else %}<span class="muted">None found</span>{% endif %}</div>
+</div>
+{% include "_review_links.html" %}
+</article>{% endif %}
+{% if d %}<div class="rvact"><form method="post" action="/review/mark"><input type="hidden" name="key" value="{{at}}"><input type="hidden" name="back" value="{{here}}"><input type="hidden" name="next" value="{{next_open or ''}}">
+{% if at in done %}<button class="ghost" name="undo" value="1">Uncheck</button>{% else %}<button title="Mark it checked and go to the next one not checked yet (keyboard: Enter)">✓ Looks right{{", next" if next_open}}</button>{% endif %}</form>
+<span class="muted small">Keys: ← back, → next, Enter looks right. Fixing a status, category or verdict teaches the AI.</span></div>{% endif %}
+</section></div>{% endif %}
+<style>
+.rvhead{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.rv{display:grid;grid-template-columns:minmax(220px,320px) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.rv{grid-template-columns:minmax(0,1fr)}.rvlist{max-height:260px}}
+.rvlist{padding:10px;max-height:calc(100vh - 180px);overflow:auto;position:sticky;top:70px}
+.rvlist ol{list-style:none;margin:0;padding:0}.rvlist li{display:flex;gap:8px;align-items:flex-start;padding:7px 6px;border-radius:8px}
+.rvlist li.on{background:var(--accent-soft)}.rvlist li a{flex:1;min-width:0;color:inherit;text-decoration:none;font-size:13px}
+.rvlist li .rs{display:block;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rvlist li .num{float:right}
+.rvlist li.ok a{opacity:.65}.tick{color:var(--green)}.rvlist input{margin:3px 0 0}
+.rvtools{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}.rvtools label{display:flex;gap:6px;align-items:center;font-size:12px;margin:0}.rvtools button{margin:0;padding:5px 10px;font-size:12px}
+.rk{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.rvnav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}.btn.dis{opacity:.35;pointer-events:none}
+.rvcard h3{margin:2px 0;text-transform:none;letter-spacing:0;font-size:20px;color:var(--text)}.rvtop{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.big{font-size:22px;font-weight:700;text-align:right}
+.rvgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:14px;margin:14px 0}.rvgrid>div{min-width:0;overflow-wrap:anywhere}
+.fl{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.fix{margin:8px 0 0}.fix select{margin:0;width:100%;max-width:260px;font-size:13px;padding:5px 8px}.small{font-size:12px}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}.btnrow form{margin:0}.btnrow button{margin:0}
+.rvact{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px}.rvact form{margin:0}.rvact button{margin:0}
+.links h4{margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.links ul{margin:0;padding-left:18px}.links li{margin:3px 0;font-size:13px}
+</style>
+<script>
+(function () {
+  const boxes = [...document.querySelectorAll('.pk')], all = document.getElementById('all'), go = document.getElementById('gosel');
+  if (!go) return;
+  const sync = () => { const n = boxes.filter(b => b.checked).length; go.disabled = !n; go.textContent = n ? `Go through ${n} ticked` : 'Go through ticked'; };
+  boxes.forEach(b => b.addEventListener('change', sync));
+  all.addEventListener('change', () => { boxes.forEach(b => b.checked = all.checked); sync(); });
+  document.getElementById('pickform').addEventListener('submit', () => {
+    document.getElementById('ids').value = boxes.filter(b => b.checked).map(b => b.value).join(',');
+  });
+  document.addEventListener('change', e => {
+    const sel = e.target;
+    if (!sel.classList.contains('relabel') || !sel.value) return;
+    if (sel.value !== 'not_an_order') sel.form.submit();
+    else btConfirm('Remove this from Orders? Its emails become examples of what is not an order.').then(ok => ok ? sel.form.submit() : sel.value = '');
+  });
+  document.addEventListener('keydown', e => {
+    if (e.target.closest('input,select,textarea,dialog') || e.metaKey || e.ctrlKey || e.altKey) return;
+    const go = id => { const a = document.getElementById(id); if (a && !a.classList.contains('dis')) location.href = a.href; };
+    if (e.key === 'ArrowLeft') go('prev');
+    else if (e.key === 'ArrowRight') go('next');
+    else if (e.key === 'Enter') { const f = document.querySelector('.rvact form'); if (f) f.requestSubmit(); }
+  });
+  const on = document.querySelector('.rvlist li.on'); if (on) on.scrollIntoView({block: 'center'});
+})();
+</script>
+{% endblock %}

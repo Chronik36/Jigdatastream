@@ -11,7 +11,7 @@ It only works while BotTrack is open on this Mac.</p>
 <p class="muted" style="margin:0">Link: <span id="phoneurl" style="user-select:all;font-family:ui-monospace,Menlo,monospace">{{phone_link.url}}</span></p>
 <p class="muted" style="margin:8px 0 0">Phones stay connected through updates and when BotTrack is closed and opened again. The link only changes when this Mac restarts:
 the Android app finds the new one by itself; on an iPhone, scan the code again.</p>
-<form method="post" action="{{url_for('mobile.forget_phones')}}" class="ghost" style="margin-top:12px" onsubmit="return confirm('Sign out every phone? Each one will need to scan the new code.')">
+<form method="post" action="{{url_for('mobile.forget_phones')}}" class="ghost" style="margin-top:12px" data-confirm="Sign out every phone? Each one will need to scan the new code.">
 <input type="hidden" name="csrf" value="{{csrf_token()}}"><button class="ghost">Forget all phones</button></form>
 </div></div>
 {% endif %}

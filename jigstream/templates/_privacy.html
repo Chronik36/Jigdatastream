@@ -1,7 +1,7 @@
 {# Privacy screen: addresses, emails, phone numbers and card numbers are blurred until "Reveal sensitive info" is
-   switched on in the top bar. The choice is remembered on this device only. #}
+   switched on in the top bar. The choice is saved with BotTrack's settings, so it stays put after a restart. #}
 <style>
-html:not(.reveal) .pv,html:not(.reveal) td[data-label="Ship to"],html:not(.reveal) [data-private],
+html:not(.reveal) .pv,html:not(.reveal) [data-private],
 html:not(.reveal) main input:not(:focus):is([name*=address],[name*=email],[name*=phone],[name*=zip],[name*=city],[name*=card],[name*=number],[name*=first_name],[name*=last_name],[name*=holder],[type=email],[type=tel]),
 html:not(.reveal) dialog input:not(:focus):is([name*=address],[name*=email],[name*=phone],[name*=zip],[name*=city],[name*=card],[name*=number],[name*=first_name],[name*=last_name],[name*=holder],[type=email],[type=tel])
 {filter:blur(5px);transition:filter .15s}
@@ -18,14 +18,16 @@ html:not(.reveal) .privsw .eye.shut{opacity:1;color:var(--text)}html.reveal .pri
 </style>
 <script>
 (function () {
-  var root = document.documentElement, KEY = 'bt-reveal';
-  try { if (localStorage.getItem(KEY) === '1') root.classList.add('reveal'); } catch (e) {}
+  var root = document.documentElement;
+  // The page arrives with html.reveal already set from BotTrack's settings (.env): the Mac window forgets its own
+  // storage when BotTrack closes, so the switch's position is kept on the server.
   var sw = document.getElementById('privsw');
   if (sw) {
     sw.checked = root.classList.contains('reveal');
     sw.addEventListener('change', function () {
       root.classList.toggle('reveal', sw.checked);
-      try { localStorage.setItem(KEY, sw.checked ? '1' : '0'); } catch (e) {}
+      var body = new FormData(); body.append('reveal', sw.checked ? '1' : '0');
+      fetch('/prefs/reveal', {method: 'POST', body: body}).catch(function () {});
     });
   }
   // Find personal details in the page text and wrap them so they can be blurred.

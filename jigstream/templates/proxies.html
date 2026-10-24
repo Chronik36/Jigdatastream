@@ -20,6 +20,7 @@ details.pxg[open]>summary{border-bottom:1px solid var(--line)}
 </style>
 <p class="muted">Paste proxies one per line, give them a provider and a group, then test how fast they reach a retail site.
 A test opens the site's home page once through each proxy. Click a proxy for where it really comes out.</p>
+{% include "_proxy_accounts.html" %}
 <div class="banner" id="pxprog"><span>Testing: <b id="pxdone">{{state.done}}</b> of <b id="pxtotal">{{state.total}}</b></span></div>
 <div class="pxgrid">
 <section class="panel"><h3 style="margin-top:0">Add proxies</h3>
@@ -41,7 +42,7 @@ A test opens the site's home page once through each proxy. Click a proxy for whe
 <span class="grow"></span>
 {% if g.tested %}<span class="meta">{{g.ok}}/{{g.tested}} ok{% if g.avg %} · <span class="ms">{{g.avg}} ms</span> avg{% endif %}</span>{% endif %}
 <form method="post" action="/proxies/test" onsubmit="this.site.value=document.getElementById('pxsite').value"><input type="hidden" name="group" value="{{g.name}}"><input type="hidden" name="site"><button class="ghost" {{"disabled" if state.running}}>Test group</button></form>
-<form method="post" action="/proxies/delete" onsubmit="return confirm('Remove every proxy in {{g.name}}?')"><input type="hidden" name="group" value="{{g.name}}"><button class="danger">Remove</button></form>
+<form method="post" action="/proxies/delete" data-confirm="Remove every proxy in {{g.name}}?"><input type="hidden" name="group" value="{{g.name}}"><button class="danger">Remove</button></form>
 </summary>
 <table><thead><tr><th>Proxy</th><th>Provider</th><th>Exit</th><th class="num">Avg</th><th>Last results</th><th></th></tr></thead><tbody>
 {% for p in g.proxies %}<tr class="pxrow" onclick="if(!event.target.closest('form,a'))location='/proxies/{{p.id}}'">
