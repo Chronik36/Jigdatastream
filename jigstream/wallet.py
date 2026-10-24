@@ -141,10 +141,22 @@ def add_cards(con, cards, provider="Other", card_type="Standard", spend_limit=No
     return added, dup
 
 
+def add_last4(con, provider, last4, name=None, exp=None, card_type="Virtual"):
+    """A card known only by its last 4 (found on the bank's page without its full number). True when it's new."""
+    key = f"last4:{provider}:{last4}"  # not a secret: stands in for the number's fingerprint so it's added once
+    if con.execute("SELECT 1 FROM cards WHERE fingerprint=? OR (provider=? AND last4=?)", (key, provider, last4)).fetchone():
+        return False
+    con.execute("INSERT INTO cards (provider, name, last4, exp, card_type, status, fingerprint, created_at)"
+                " VALUES (?,?,?,?,?, 'active', ?, ?)", (provider, name or None, last4, exp or None, card_type, key,
+                                                        datetime.now(timezone.utc).isoformat()))
+    con.commit()
+    return True
+
+
 def reveal(con, card_id):
     """Full card details for one card: for the eye button and for exports."""
     row = con.execute("SELECT * FROM cards WHERE id=?", (card_id,)).fetchone()
-    if not row:
+    if not row or not row["secret"]:  # a card known only by its last 4
         return None
     secret = json.loads(_fernet().decrypt(row["secret"].encode()))
     month, year = (row["exp"] or "/").split("/")
