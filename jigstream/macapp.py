@@ -328,11 +328,14 @@ def main():
     keyrequests.start(app)  # requests for keys (jacob's computer), a key arriving by email (everyone else)
 
     def timers():
-        """Sync every few hours (first once the AI is ready) and check for updates every few hours."""
+        """Sync every few hours (first once the AI is ready), read the newest emails every few minutes, and check
+        for updates every few hours."""
         sync_every = float(os.environ.get("SYNC_EVERY_HOURS", 4)) * 3600
         check_every = float(os.environ.get("UPDATE_CHECK_HOURS", 6)) * 3600
         track_every = float(os.environ.get("TRACK_EVERY_HOURS", 3)) * 3600
+        quick_every = float(os.environ.get("QUICK_CHECK_MINUTES", 3)) * 60  # newest few emails of each inbox
         last_sync = last_check = last_track = 0
+        last_quick = time.time()
         time.sleep(30)
         while True:
             now = time.time()
@@ -342,6 +345,10 @@ def main():
                 except Exception:
                     logger.exception("scheduled sync failed to start")
                 last_sync = now
+            elif quick_every > 0 and now - last_quick >= quick_every:
+                # its own thread: a new email takes the model a little while to read
+                threading.Thread(target=app.quick_check, daemon=True).start()
+                last_quick = now
             if track_every > 0 and now - last_track >= track_every and carriers.available(os.environ):
                 # its own thread: reading tracking pages one at a time can take several minutes
                 threading.Thread(target=carriers.run, args=(db.connect(), dict(os.environ)), daemon=True).start()

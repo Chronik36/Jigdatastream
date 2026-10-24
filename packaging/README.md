@@ -45,7 +45,7 @@ its Gmail is connected.
 
 On **Setup**, add each Gmail inbox with an app password (https://myaccount.google.com/apppasswords, 2-Step
 Verification has to be on) and optionally connect Discord. BotTrack then checks your inboxes (Spam too) every
-few hours while it's open. Tap any price or status that looks wrong to fix it: the AI learns from it.
+few hours while it's open, and reads the newest emails every 3 minutes so new orders show up fast. Tap any price or status that looks wrong to fix it: the AI learns from it.
 
 ## Updates, backups, space
 
