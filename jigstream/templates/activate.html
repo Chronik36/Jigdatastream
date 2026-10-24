@@ -16,6 +16,13 @@ The key works on every computer (Mac or Windows) where that Gmail is connected.<
 <input type="email" name="address" value="{{email}}" placeholder="you@gmail.com" style="width:100%">
 <input type="password" name="password" placeholder="App password" autocomplete="off" style="width:100%;margin-top:8px"></details>
 <button>Unlock BotTrack</button></form>
+<details class="muted small" style="margin-top:14px"{% if testing %} open{% endif %}><summary>This is my copy: I make the keys</summary>
+<div class="panel" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+{% if testing %}<a class="btn" href="{{url_for('accountkeys.keys_page')}}#requests">Open Account keys</a>
+<form method="post" action="{{url_for('accountkeys.activate_developer')}}"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button class="ghost">Stop testing</button></form>
+{% else %}<form method="post" action="{{url_for('accountkeys.activate_developer')}}" style="display:flex;gap:8px;flex-wrap:wrap;flex:1"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+<input type="password" name="private" placeholder="Your signing key" autocomplete="off" style="flex:1;min-width:200px"><button class="ghost">Open with my signing key</button></form>{% endif %}
+</div></details>
 {% if asked %}<section class="panel" style="margin-top:14px">
 <h3 style="margin-top:0">Waiting for your key</h3>
 <p class="muted" style="margin:0">You asked for a key for <b>{{asked[0]}}</b> on {{asked[1]}}. When it's allowed, the key is emailed to that Gmail
