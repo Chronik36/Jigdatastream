@@ -63,7 +63,7 @@ def set_budgets(con, amounts, today=None):
 def spent(con, month):
     ensure(con)
     return {r["category"] or "other": r["total"] or 0 for r in con.execute(
-        "SELECT category, SUM(amount) AS total FROM expenses WHERE substr(date, 1, 7) = ? GROUP BY category", (month,))}
+        "SELECT category, SUM(amount - COALESCE(refunded, 0)) AS total FROM expenses WHERE substr(date, 1, 7) = ? GROUP BY category", (month,))}
 
 
 def month_view(con, month, today=None):
