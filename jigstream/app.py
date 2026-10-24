@@ -11,7 +11,7 @@ from flask import Flask, Response, flash, jsonify, redirect, render_template, re
 from . import address as A
 from . import (analysis, bankpages, cardcheck, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
-               stock, stuck, tasks, training, updater, wallet, webtrain)
+               proxies, stock, stuck, tasks, training, updater, wallet, webtrain)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
@@ -50,6 +50,7 @@ def create_app(db_path=None):
     app.register_blueprint(manual.bp)
     app.register_blueprint(keywords.bp)
     app.register_blueprint(products.bp)
+    app.register_blueprint(proxies.bp)
 
     @app.context_processor
     def nav_flags():
