@@ -24,7 +24,21 @@ main img{height:auto}
   table.cardy td:before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:600;text-align:left;flex:none;max-width:40%}
   table.cardy td[data-label=""]:before{display:none}
   table.cardy td[data-label=""]{justify-content:flex-start;text-align:left}
+
 }
+/* A table too wide for its space turns into cards at any window size, instead of scrolling sideways. */
+  table.cardy.stack,table.cardy.stack tbody{display:block;border:0;background:none;overflow:visible}
+  table.cardy.stack tbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:10px;align-items:start}
+  table.cardy.stack tbody>tr{margin:0}
+  table.cardy.stack thead{display:none}
+  table.cardy.stack tr{display:block;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px}
+  table.cardy.stack td{display:flex;flex-wrap:wrap;gap:6px 12px;justify-content:space-between;align-items:baseline;border:0;padding:5px 0;text-align:right;white-space:normal}
+  table.cardy.stack td>*{min-width:0;max-width:100%;overflow-wrap:anywhere}
+  table.cardy.stack td>form,table.cardy.stack td>select{margin-left:auto}
+  table.cardy.stack td:first-child{white-space:normal}
+  table.cardy.stack td:before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:600;text-align:left;flex:none;max-width:40%}
+  table.cardy.stack td[data-label=""]:before{display:none}
+  table.cardy.stack td[data-label=""]{justify-content:flex-start;text-align:left}
 </style>
 <script>
 (function () {
@@ -35,6 +49,18 @@ main img{height:auto}
     }
     return false;
   }
+  // Cards when the table can't fit across its box; back to a table when the window is widened again.
+  function fit(t) {
+    t.classList.remove('stack');
+    var box = t.parentElement;
+    if (box && box.classList.contains('pwide')) box = box.parentElement;
+    if (box && t.scrollWidth > box.clientWidth) t.classList.add('stack');
+  }
+  var resizing;
+  addEventListener('resize', function () {
+    clearTimeout(resizing);
+    resizing = setTimeout(function () { document.querySelectorAll('main table.cardy').forEach(fit); }, 150);
+  });
   document.querySelectorAll('main table').forEach(function (t) {
     // Label each cell with its column, so a narrow window can show the rows as cards.
     var first = t.querySelector('tbody tr');
@@ -48,6 +74,7 @@ main img{height:auto}
       });
       t.classList.add('cardy');
     }
+    if (t.classList.contains('cardy')) fit(t);
     if (!scrolls(t)) {  // too wide for the window: it scrolls sideways on its own, the page doesn't
       var box = document.createElement('div');
       box.className = 'pwide'; t.before(box); box.appendChild(t);
