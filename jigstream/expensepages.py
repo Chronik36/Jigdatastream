@@ -343,6 +343,22 @@ def expense_edit(expense_id):
     return _back()
 
 
+@pages.post("/expenses/<int:expense_id>/refunded")
+def expense_refunded(expense_id):
+    """Returned or refunded: what came back comes off what it cost (all of it unless an amount is typed)."""
+    c = _con()
+    e = Store(c).expense(expense_id)
+    if e:
+        back = None if request.form.get("undo") else (_amount("amount") or e["amount"])
+        c.execute("UPDATE expenses SET refunded = ? WHERE id = ?", (back, expense_id))
+        if back is None:
+            c.execute("UPDATE bank_transactions SET match_kind = NULL, match_id = NULL, match_how = 'manual'"
+                      " WHERE match_kind = 'expense_refund' AND match_id = ?", (expense_id,))
+        c.commit()
+        flash(f"{e['vendor']}: " + (f"{back:.2f} refunded, taken off your spend." if back else "refund removed."))
+    return _back()
+
+
 @pages.post("/expenses/<int:expense_id>/not-expense")
 def not_expense(expense_id):
     """'Not an expense': remove it, and when it came from an email, teach the AI that emails like it aren't

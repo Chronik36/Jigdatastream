@@ -1,7 +1,7 @@
 """The Dashboard's numbers for one year: what was really spent, orders that stuck, and how checkouts went."""
 from datetime import date
 
-from . import sales, stuck
+from . import bank, sales, stuck
 from .ledger import CATEGORY_COLORS
 from .orderstore import NOT_SPENT
 
@@ -29,10 +29,14 @@ def summary(con, year):
     dropped = con.execute(f"SELECT COUNT(*) FROM tracked_orders WHERE {ORDER_DAY} = ?"
                           " AND shipping_status IN ('cancelled', 'returned', 'refunded')", (year,)).fetchone()[0]
     cats = [dict(r) for r in con.execute(
-        "SELECT category, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS n FROM expenses WHERE substr(date, 1, 4) = ?"
+        "SELECT category, COALESCE(SUM(amount - COALESCE(refunded, 0)), 0) AS total, COUNT(*) AS n FROM expenses WHERE substr(date, 1, 4) = ?"
         " GROUP BY category ORDER BY total DESC", (year,))]
     for c in cats:
         c["color"] = CATEGORY_COLORS.get(c["category"], "#8592bd")
+    card_only = bank.botting_card_spend(con, year)
+    if card_only:
+        cats.append({"category": "card_charges", "total": card_only, "n": None, "color": "#8592bd"})
+        cats.sort(key=lambda c: -c["total"])
     expense_total = sum(c["total"] for c in cats)
 
     # A "successful" checkout only counts once no cancel email, bot cancel or refund came for it.
@@ -64,3 +68,25 @@ def summary(con, year):
         "rate": _rate(good, len(wins) + len(lost)), "sites": boards["site"], "bots": boards["bot"],
         "income": sales.year_income(con, year),
     }
+
+
+def spend_breakdown(con, year):
+    """Where a year's spend comes from: orders by store, the biggest orders, botting receipts by vendor, and
+    charges on botting-only cards, so a number that looks too big can be traced and corrected."""
+    year = str(year)
+    marks = ",".join("?" * len(NOT_SPENT))
+    kept = f"{ORDER_DAY} = ? AND COALESCE(shipping_status, '') NOT IN ({marks})"
+    stores = [dict(r) for r in con.execute(
+        f"SELECT COALESCE(retailer, '?') AS name, COUNT(*) AS n, SUM(total) AS total FROM tracked_orders WHERE {kept}"
+        " GROUP BY lower(COALESCE(retailer, '?')) ORDER BY total DESC LIMIT 25", (year, *NOT_SPENT))]
+    biggest = [dict(r) for r in con.execute(
+        f"SELECT id, retailer, order_number, order_date, total, currency, shipping_status, account FROM tracked_orders"
+        f" WHERE {kept} AND total IS NOT NULL ORDER BY total DESC LIMIT 30", (year, *NOT_SPENT))]
+    vendors = [dict(r) for r in con.execute(
+        "SELECT vendor AS name, category, COUNT(*) AS n, SUM(amount - COALESCE(refunded, 0)) AS total,"
+        " SUM(COALESCE(refunded, 0)) AS refunded FROM expenses WHERE substr(date, 1, 4) = ?"
+        " GROUP BY lower(vendor) ORDER BY total DESC LIMIT 25", (year,))]
+    no_total = con.execute(f"SELECT COUNT(*) FROM tracked_orders WHERE {kept} AND total IS NULL",
+                           (year, *NOT_SPENT)).fetchone()[0]
+    return {"year": year, "stores": stores, "biggest": biggest, "vendors": vendors, "no_total": no_total,
+            "cards": bank.botting_card_spend(con, year)}

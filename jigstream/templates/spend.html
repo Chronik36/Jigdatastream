@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block body %}
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Where {{b.year}}'s spend comes from</h2>
+<form method="get"><select name="year" onchange="this.form.submit()" aria-label="Year">{% for y in years %}<option {{"selected" if y == b.year}}>{{y}}</option>{% endfor %}</select></form></div>
+<p class="muted">Every part of the <b>{{s.total_out|money}}</b> on the Dashboard: orders that stuck ({{s.spend|money}}) plus botting expenses ({{s.expenses|money}}). If a number looks too big, find it below and fix it: an order that isn't yours or was cancelled, a receipt counted twice, or a refund that hasn't come off.</p>
+<div class="dgrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:16px">
+<section class="panel"><h3 style="margin-top:0">Orders by store</h3><table><thead><tr><th>Store</th><th class="num">Orders</th><th class="num">Total</th></tr></thead><tbody>
+{% for r in b.stores %}<tr><td><b>{{r.name}}</b></td><td class="num">{{r.n}}</td><td class="num">{{(r.total or 0)|money}}</td></tr>{% else %}<tr><td colspan="3" class="muted">No orders.</td></tr>{% endfor %}</tbody></table>
+{% if b.no_total %}<p class="muted" style="font-size:12px">{{b.no_total}} order{{"s" if b.no_total != 1}} with no total aren't counted.</p>{% endif %}</section>
+<section class="panel"><h3 style="margin-top:0">Botting expenses by vendor</h3><table><thead><tr><th>Vendor</th><th class="num">Receipts</th><th class="num">Total</th></tr></thead><tbody>
+{% for r in b.vendors %}<tr><td><b>{{r.name}}</b><div class="muted" style="font-size:12px">{{(r.category or "")|replace("_", " ")}}{% if r.refunded %} · {{r.refunded|money}} refunded{% endif %}</div></td><td class="num">{{r.n}}</td><td class="num">{{(r.total or 0)|money}}</td></tr>{% else %}<tr><td colspan="3" class="muted">No expenses.</td></tr>{% endfor %}</tbody></table>
+{% if b.cards %}<p style="font-size:13px">Plus <b>{{b.cards|money}}</b> in charges on botting-only cards that no receipt or order explains (<a href="/expenses/ledger?show=charge_only">see them</a>).</p>{% endif %}
+<p class="muted" style="font-size:12px">Returned or refunded? Press Refunded on its row in the <a href="/expenses/ledger">Ledger</a>; refunds on your statements come off by themselves.</p></section>
+</div>
+<section class="panel" style="margin-top:16px"><h3 style="margin-top:0">Biggest orders</h3><table><thead><tr><th>Date</th><th>Store / order #</th><th class="num">Total</th><th>Status</th><th>Correct it</th></tr></thead><tbody>
+{% for o in b.biggest %}<tr><td>{{o.order_date or "-"}}</td><td><a href="/orders#order-{{o.id}}"><b>{{o.retailer or "-"}}</b></a><div class="muted">{{o.order_number or ""}}</div></td><td class="num">{{o.total|money(o.currency)}}</td>
+<td><span class="pill s-{{o.shipping_status or 'unknown'}}">{{(o.shipping_status or "unknown")|status_label}}</span></td>
+<td><form method="post" action="/orders/{{o.id}}/label" style="margin:0"><input type="hidden" name="back" value="1"><select name="status" onchange="if (this.value) this.form.submit()" aria-label="Correct this order"><option value="">Change…</option><option value="cancelled">Cancelled</option><option value="returned">Returned</option><option value="not_an_order">Not an order</option></select></form></td></tr>
+{% else %}<tr><td colspan="5" class="muted">No orders.</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}
