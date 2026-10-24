@@ -1,7 +1,8 @@
 """Your payment cards, stored encrypted on this Mac.
 
-Card numbers and CVVs are encrypted with a key kept in the macOS Keychain (a key file with
-owner-only permissions elsewhere), so the database alone never reveals them. The pages show only
+Card numbers and CVVs are encrypted with a key kept in the macOS Keychain (on Windows, a key file locked to your
+Windows account with DPAPI; elsewhere, a key file with owner-only permissions), so the database alone never
+reveals them. The pages show only
 the last 4 digits unless you press the eye; numbers are never written to logs. A card reaches a
 bot export only through the profile you linked it to yourself.
 """
@@ -39,6 +40,24 @@ def _keychain(*args):
     return subprocess.run(["security", *args], capture_output=True, text=True)
 
 
+def _dpapi(data, protect):
+    """Windows DPAPI: data only this Windows user account can unlock (CryptProtectData / CryptUnprotectData)."""
+    import ctypes
+    from ctypes import wintypes
+
+    class Blob(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+    buf = ctypes.create_string_buffer(data, len(data))
+    src, out = Blob(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char))), Blob()
+    crypt = ctypes.windll.crypt32.CryptProtectData if protect else ctypes.windll.crypt32.CryptUnprotectData
+    if not crypt(ctypes.byref(src), None, None, None, None, 0x1, ctypes.byref(out)):  # 0x1: no prompt
+        raise OSError("DPAPI couldn't " + ("lock" if protect else "unlock") + " the card key")
+    try:
+        return ctypes.string_at(out.pbData, out.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(out.pbData)
+
+
 def key():
     """The Fernet key: from the Keychain on a Mac, else from a 0600 key file in the data folder."""
     global _key
@@ -57,12 +76,20 @@ def key():
             _key = new
             return _key
         logger.warning("couldn't use the Keychain for the card key; using a key file instead")
+    windows = sys.platform == "win32" and "BOTTRACK_CARD_KEY_FILE" not in os.environ
     if key_file.exists():
-        _key = key_file.read_bytes().strip()
+        raw = key_file.read_bytes()
+        plain = raw.strip().removeprefix(b"plain:")
+        locked = windows and not raw.startswith(b"plain:") and len(raw.strip()) != 44  # a Fernet key is 44 characters
+        _key = _dpapi(raw, False) if locked else plain
     else:
         _key = Fernet.generate_key()
         key_file.parent.mkdir(parents=True, exist_ok=True)
-        key_file.write_bytes(_key)
+        try:
+            key_file.write_bytes(_dpapi(_key, True) if windows else _key)
+        except OSError:
+            logger.warning("couldn't lock the card key to this Windows account; it's kept in a plain key file")
+            key_file.write_bytes(b"plain:" + _key)
         os.chmod(key_file, 0o600)
     return _key
 
