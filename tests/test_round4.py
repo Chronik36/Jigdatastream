@@ -185,3 +185,15 @@ def test_jig_styles_from_drop_results(tmp_path):
     assert front["Letters before the number"]["rate"] == 100
     assert front["Letters after the number"]["recipe"]["replace"] == r"\1 %c3% "
     assert {row["style"] for row in r["groups"]["Unit"]} == {"Apt", "No unit"}
+
+
+def test_provider_presets():
+    from datetime import datetime
+    p = proxyaccounts.PRESETS["Webshare"]
+    url = proxyaccounts.fill_dates(p["usage_url"], datetime(2026, 10, 24, 5, 6, 7))
+    assert "timestamp__gte=2026-10-01T00:00:00Z" in url and "timestamp__lte=2026-10-24T05:06:07Z" in url
+    page = json.dumps({"count": 2, "results": [
+        {"proxy_address": "1.2.3.4", "port": 80, "username": "u", "password": "p", "valid": True},
+        {"proxy_address": "5.6.7.8", "port": 81, "username": "u", "password": "p", "valid": False}]})
+    assert proxyaccounts.pool_lines(page) == ["1.2.3.4:80:u:p"]
+    assert proxyaccounts._request(p["list_url"], "K", p["auth"]).headers["Authorization"] == "Token K"
