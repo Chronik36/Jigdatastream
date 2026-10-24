@@ -8,7 +8,7 @@
 {% if late %}<div class="card" style="--c:var(--orange)" title="The store's delivery estimate has passed and the package isn't marked delivered">Running late <b style="color:var(--orange)">{{late|length}}</b></div>{% endif %}</div>
 <div class="board">{% for key, title, hint in lanes %}<section class="lane" id="lane-{{key}}"><h3><span class="dotl l-{{key}}"></span>{{title}} <span class="muted">{{by_lane[key]|length}}</span></h3><p class="muted hint">{{hint}}</p>
 {% for o in by_lane[key] %}{% set status = o.shipping_status or "unknown" %}<article class="tcard{{' late' if o.id in late}}" id="order-{{o.id}}" data-sheet="{{o.id}}">
-<div class="trow"><b>{{o.retailer or "Unknown store"}}</b><span class="num">{{o.total|money(o.currency)}}</span></div>
+<div class="trow"><b>{{o.retailer or "Unknown store"}}</b><span class="num" data-edit-price="{{o.id}}" data-value="{{o.total if o.total is not none else ''}}">{{o.total|money(o.currency)}}</span></div>
 <div class="muted small">{% if o.order_number %}<span data-copy>{{o.order_number}}</span>{% else %}No order #{% endif %} · {{o.order_date or "no date"}}</div>
 <div class="titems" title="{% for i in o['items'] %}{{i.name}}{% if not loop.last %}; {% endif %}{% endfor %}">{% for i in o["items"] %}{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}{% if not loop.last %}; {% endif %}{% else %}<span class="muted">No items listed</span>{% endfor %}</div>
 {% include "_stagebar.html" %}
@@ -18,7 +18,7 @@
 {% if o.estimated_delivery %}<div class="small {{'warnt' if o.id in late else 'muted'}}">{{"Was due" if o.id in late else "Due"}} {{o.estimated_delivery}}</div>{% endif %}
 {% if o.profile_name %}<div class="small">Profile <a href="/profile-orders?profile={{o.profile_name|urlencode}}">{{o.profile_name}}</a></div>{% endif %}
 {% set al = o|address_label %}{% if al %}<div class="small"><a href="/address?name={{al|urlencode}}" data-private title="Everything at this address">{{o.shipping_address}}</a></div>{% endif %}</div>
-<div class="tfoot"><span class="pill s-{{status}}">{{status|status_label}}</span>{% if o.status_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}
+<div class="tfoot"><span class="pill s-{{status}}" data-edit-status="{{o.id}}" data-status="{{status}}">{{status|status_label}}</span>{% if o.status_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}
 {% if training %}<form method="post" action="/orders/{{o.id}}/label"><input type="hidden" name="back" value="1"><select name="status" class="relabel" title="Wrong stage? Pick the right one; the AI learns from this order's emails"><option value="">Fix status…</option>{% for c in label_choices %}{% if c == "not_an_order" %}<option disabled>──────────</option>{% endif %}<option value="{{c}}" {{"disabled" if c == status}}>{{c|status_label}}</option>{% endfor %}</select></form>{% endif %}
 <a class="small" href="/review?src=order&name={{o.id}}" title="Its checkouts, card charges, emails and profile">Linked ›</a></div>
 {% set lb = labels.get(o.id) %}{% if lb %}<div class="muted small">{{"Searching..." if lb.rescan == "pending" else lb.rescan}}</div>{% endif %}

@@ -75,7 +75,8 @@ def create_app(db_path=None):
         return {"update": updater.state,
                 "ai": app.config.get("AI_STATE"), "syncing": app.config["SYNC_STATE"],
                 "whats_new": updater.whats_new_pending() is not None,
-                "ui_theme": os.environ.get("UI_THEME", "dark"), "ui_reveal": os.environ.get("UI_REVEAL") == "1"}
+                "ui_theme": os.environ.get("UI_THEME", "dark"), "ui_reveal": os.environ.get("UI_REVEAL") == "1",
+                "edit_statuses": STATUS_CHOICES}
 
     @app.post("/prefs/theme")
     def set_theme():
