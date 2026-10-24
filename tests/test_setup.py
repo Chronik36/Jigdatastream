@@ -224,3 +224,12 @@ def test_light_mode_switch_and_eye_icons(tmp_path, monkeypatch):
     assert 'class="eye shut"' in page and 'class="eye open"' in page
     assert 'href="/stock"' not in page  # hidden until the Discord stock monitors are hooked up
     assert c.get("/stock").status_code == 200
+
+
+def test_theme_choice_survives_the_window_closing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(os, "environ", dict(os.environ))
+    c = appmod.create_app(str(tmp_path / "s.db")).test_client()
+    assert c.post("/prefs/theme", data={"theme": "light"}).status_code == 204
+    assert "UI_THEME=light" in (tmp_path / ".env").read_text()
+    assert '<html lang="en" data-theme="light">' in c.get("/").get_data(as_text=True)

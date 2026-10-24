@@ -1,0 +1,22 @@
+<!doctype html><html><body>
+<nav>Account ending in 9999 · Profile · Sign out</nav>
+<h1>Virtual card numbers</h1>
+<div id="list">
+  <div class="vcn"><h4>Target drops</h4><span>•••• 1234</span><span class="st">Active</span>
+    <button class="lk" aria-label="Lock Target drops">Lock</button><button>Delete</button></div>
+  <div class="vcn"><h4>Walmart</h4><span>Card ending in 5678</span>
+    <label>Lock card <input type="checkbox" class="sw"></label></div>
+  <div class="vcn"><h4>Pokemon</h4><span>4111 1111 1111 1111</span><span>Exp 09/28</span><span>CVV 123</span><span class="st">Locked</span>
+    <button class="lk">Unlock</button></div>
+  <div class="vcn"><h4>Odd one</h4><span>•••• 4321</span><div class="icon" onclick="this.parentNode.querySelector('.st2').textContent='Locked'">🔒</div><span class="st2">Active</span></div>
+</div>
+<div id="modal" role="dialog" style="display:none"><p>Are you sure?</p><button id="cancel">Cancel</button><button id="ok">Lock card</button></div>
+<script>
+let pending = null;
+document.querySelectorAll('button.lk').forEach(b => b.onclick = () => {
+  if (b.textContent === 'Lock') { pending = b; document.getElementById('ok').textContent = 'Lock card'; document.getElementById('modal').style.display = 'block'; }
+  else { b.textContent = 'Lock'; b.setAttribute('aria-label', 'Lock'); b.parentNode.querySelector('.st').textContent = 'Active'; }
+});
+document.getElementById('ok').onclick = () => { pending.textContent = 'Unlock'; pending.setAttribute('aria-label', 'Unlock');
+  pending.parentNode.querySelector('.st').textContent = 'Locked'; document.getElementById('modal').style.display = 'none'; };
+</script></body></html>

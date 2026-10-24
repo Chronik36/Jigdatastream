@@ -9,7 +9,7 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import (analysis, bankpages, cardcheck, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
+from . import (analysis, bankpages, cardcheck, cardlocks, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
                proxies, stock, stuck, tasks, training, updater, wallet, webtrain)
 from .config import Config, format_accounts, save_env
@@ -51,12 +51,21 @@ def create_app(db_path=None):
     app.register_blueprint(keywords.bp)
     app.register_blueprint(products.bp)
     app.register_blueprint(proxies.bp)
+    app.register_blueprint(cardlocks.bp)
 
     @app.context_processor
     def nav_flags():
         return {"update": updater.state,
                 "ai": app.config.get("AI_STATE"), "syncing": app.config["SYNC_STATE"],
-                "whats_new": updater.whats_new_pending() is not None}
+                "whats_new": updater.whats_new_pending() is not None,
+                "ui_theme": os.environ.get("UI_THEME", "dark")}
+
+    @app.post("/prefs/theme")
+    def set_theme():
+        # Kept in .env as well as the page's own storage: the Mac window forgets its storage when it closes.
+        theme = "light" if request.form.get("theme") == "light" else "dark"
+        save_env({"UI_THEME": theme})
+        return ("", 204)
 
     def con():
         return db.connect(db_path)
