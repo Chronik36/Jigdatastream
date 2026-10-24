@@ -127,5 +127,7 @@ def open_window(url, icon=None, restarted=False):
     browsertrack.register(page_reader(webview))  # key-free package tracking
     from . import vcclock
     vcclock.register(webview)  # bank window for card locks
+    from . import proxylogin
+    proxylogin.register(webview)  # proxy dashboards you sign in to
     # Private: nothing a site sets (the bank sign-in included) is kept after BotTrack closes.
     webview.start(show_dashboard, user_agent=safari_agent(), private_mode=True)

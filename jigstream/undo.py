@@ -26,7 +26,7 @@ SKIP = {"undo_log", "undo_steps", "change_count", "sqlite_sequence"}
 # Page actions that aren't edits: syncing, checks, settings, sending logs, the phone app, and Undo/Redo themselves.
 NOT_STEPS = re.compile(r"^/(undo|redo|sync|logs|m/|prefs|update|whats-new|setup|api/|tracking/check|proxies/test|"
                        r"proxies/\d+/locate|cards/locks/(run|scan|open|stop)|bank/plaid/(sync|link-token)|"
-                       r"training/train|training/tasks/\d+/(try|run)|products/sources/test|keywords$|keywords/ai|stock$)")
+                       r"training/train|training/tasks/\d+/(try|run)|products/sources/test|keywords$|keywords/ai|stock$|proxies/suggest)")
 _triggers = {}  # (database file, schema version) -> trigger SQL
 
 
