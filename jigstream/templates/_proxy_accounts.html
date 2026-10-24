@@ -25,7 +25,7 @@
 <div class="actop"><b>{{a.name}}</b><span class="muted small">{{a.grp or a.name}} group{% if a.pool_size is not none %} · {{a.pool_size}} proxies{% endif %}</span></div>
 {% if a.used_gb is not none or a.left_gb is not none %}<div class="acnum">{% if a.left_gb is not none %}<b>{{"%g"|format(a.left_gb)}} GB</b> left{% endif %}{% if a.used_gb is not none %} <span class="muted">· {{"%g"|format(a.used_gb)}} GB used{% if a.total_gb %} of {{"%g"|format(a.total_gb)}}{% endif %}</span>{% endif %}</div>
 {% if a.pct_used is not none %}<div class="acbar"><i style="width:{{[a.pct_used, 100]|min}}%"></i></div>{% endif %}{% if a.low %}<div class="warnt small">Running low</div>{% endif %}
-{% elif a.learned %}<div class="muted small">Signed-in dashboard: Refresh pool makes a fresh list the way you showed it.</div>{% elif a.signed_in %}<div class="muted small">Not learned yet: press Sign in again, then generate a list once in the window.</div>{% elif a.usage_url %}<div class="muted small">Data left not checked yet.</div>{% else %}<div class="muted small">No usage address set.</div>{% endif %}
+{% elif a.learned %}<div class="muted small">Signed-in dashboard: Refresh pool makes a fresh list the way you showed it.{% if a.remembered %} Sign-in kept on this Mac.{% endif %}</div>{% elif a.signed_in %}<div class="muted small">Not learned yet: press Sign in again, then generate a list once in the window.</div>{% elif a.usage_url %}<div class="muted small">Data left not checked yet.</div>{% else %}<div class="muted small">No usage address set.</div>{% endif %}
 {% if a.usage_error %}<div class="small" style="color:var(--red)">{{a.usage_error}}</div>{% endif %}{% if a.pool_error %}<div class="small" style="color:var(--red)">Pool: {{a.pool_error}}</div>{% endif %}
 <div class="muted small">{% if a.checked_at %}Checked {{a.checked_at[:16]|replace("T", " ")}}{% endif %}{% if a.refreshed_at %} · pool {{a.refreshed_at[:16]|replace("T", " ")}}{% endif %}</div>
 <div class="acbtn">{% if a.usage_url %}<form method="post" action="/proxies/accounts/{{a.id}}/usage"><button class="ghost sm">Check data</button></form>{% endif %}
@@ -58,7 +58,7 @@
 <dialog id="sidlg" class="md"><form method="post" action="/proxies/login/open">
 <div class="dh"><h3>Sign in to a provider's dashboard</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
 <div class="acf">
-<p class="muted small full">For providers with no API. BotTrack opens their site in a window; sign in there yourself (Discord works), then generate a proxy list once the way you normally do. BotTrack watches how the page makes it, and Refresh pool repeats that for you. The window stays signed in until BotTrack closes; after a restart, press Sign in again on the account.</p>
+<p class="muted small full">For providers with no API. BotTrack opens their site in a window; sign in there yourself (Discord works), then generate a proxy list once the way you normally do. BotTrack watches how the page makes it, and Refresh pool repeats that for you. The sign-in is kept on this Mac, encrypted, so you only sign in again when the site itself signs you out.</p>
 <label>Name<input name="name" required placeholder="e.g. Hype Proxies"></label>
 <label>Dashboard address<input name="site_url" required placeholder="https://dash.provider.com"></label>
 <p class="muted small full">Some providers' terms don't allow automating their dashboard; use this at your own judgment for each one.</p>
