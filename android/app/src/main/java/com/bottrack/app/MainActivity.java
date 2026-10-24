@@ -53,6 +53,7 @@ import java.nio.charset.StandardCharsets;
  */
 public class MainActivity extends Activity {
     private static final int NAVY = Color.parseColor("#132048");
+    private static final int LIGHT = Color.parseColor("#f3f6fc");  // light mode's page color
     private static final int SURFACE = Color.parseColor("#111c46");
     private static final int TEXT = Color.parseColor("#e8eeff");
     private static final int MUTED = Color.parseColor("#8e9bc6");
@@ -183,11 +184,13 @@ public class MainActivity extends Activity {
     private void showWeb(String page) {
         home = Uri.parse(address());
         final FrameLayout frame = new FrameLayout(this);
-        frame.setBackgroundColor(NAVY);
+        // Between pages the WebView shows its own color: match the page's mode so light mode doesn't flash navy.
+        final int bg = prefs.getBoolean("light", false) ? LIGHT : NAVY;
+        frame.setBackgroundColor(bg);
         final TextView connecting = text("Connecting to your Mac…", 16, MUTED);
         final boolean[] loaded = {false};
         web = new WebView(this);
-        web.setBackgroundColor(NAVY);
+        web.setBackgroundColor(bg);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);  // confirm() before deletes
         s.setDomStorageEnabled(true);
@@ -238,6 +241,13 @@ public class MainActivity extends Activity {
                 lookedForNewLink = false;  // reached the Mac, so look again next time it's gone
                 loaded[0] = true;
                 frame.removeView(connecting);
+                view.evaluateJavascript("document.documentElement.getAttribute('data-theme')||''", v -> {
+                    boolean light = v != null && v.contains("light");
+                    int c = light ? LIGHT : NAVY;
+                    frame.setBackgroundColor(c);
+                    web.setBackgroundColor(c);
+                    if (light != prefs.getBoolean("light", false)) prefs.edit().putBoolean("light", light).apply();
+                });
             }
         });
         frame.addView(web);

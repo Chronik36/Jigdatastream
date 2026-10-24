@@ -35,10 +35,11 @@ CREATE TABLE IF NOT EXISTS proxy_tests (
 );
 """
 
-# The home page each test opens. Pick one in the dropdown, or "All sites".
+# The home page each test opens, one site per test. Pokemon Center is left out on purpose: testing proxies
+# against it gets them flagged there (jacob, 2026-10-24).
 SITES = {
     "Target": "https://www.target.com/", "Walmart": "https://www.walmart.com/", "Best Buy": "https://www.bestbuy.com/",
-    "Amazon": "https://www.amazon.com/", "Pokemon Center": "https://www.pokemoncenter.com/",
+    "Amazon": "https://www.amazon.com/",
     "Sam's Club": "https://www.samsclub.com/", "Costco": "https://www.costco.com/", "GameStop": "https://www.gamestop.com/",
     "Nike": "https://www.nike.com/", "Foot Locker": "https://www.footlocker.com/", "Shopify": "https://www.shopify.com/",
     "Google (baseline)": "https://www.google.com/generate_204",
@@ -296,13 +297,13 @@ def add():
 
 @bp.post("/proxies/test")
 def test():
-    """Test one proxy, a group or everything, on one site or all of them, in the background."""
+    """Test one proxy, a group or everything, on one site, in the background."""
     if _state.get("running"):
         flash("A speed test is already running.")
         return redirect(url_for("proxies.page"))
     con = _con()
     site = request.form.get("site", "")
-    sites = list(SITES) if site in ("", "all") else [site] if site in SITES else []
+    sites = [site] if site in SITES else []
     if not sites:
         abort(400)
     if request.form.get("id"):

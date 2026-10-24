@@ -418,8 +418,10 @@ def manifest():
     # On an iPhone the home screen app keeps its own cookies, so it opens through the pairing link.
     s = settings()
     start = f"/m/pair?k={s['pair_key']}" if signed_in() and s["pair_key"] else "/"
+    light = os.environ.get("UI_THEME") == "light"
     return jsonify(name="BotTrack", short_name="BotTrack", start_url=start, scope="/",
-                   display="standalone", background_color="#132048", theme_color="#0b1436",
+                   display="standalone", background_color="#f3f6fc" if light else "#132048",
+                   theme_color="#ffffff" if light else "#0b1436",
                    icons=[{"src": icon, "sizes": "1024x1024", "type": "image/png", "purpose": "any"}]), \
         200, {"Content-Type": "application/manifest+json"}
 
