@@ -35,6 +35,7 @@ dialog .db{padding:16px 22px;max-height:60vh;overflow:auto}dialog form{display:b
 {% if accounts %}<h3 style="margin-top:16px">Accounts</h3>{% for a in accounts %}<div class="acct">
 <a href="/bank?account={{a.id}}" class="grow{{' on' if account == a.id}}">{{a.name}}</a>
 <span class="muted">{{a.count}} · {{a.first or ""}} to {{a.last or ""}}{% if a.source == "plaid" %} · Plaid{% endif %}</span>
+<form method="post" action="/bank/accounts/{{a.id}}/botting" style="margin:0" title="Every charge on this card is a botting purchase: charges no receipt or order explains count as botting spend"><label style="display:flex;gap:6px;align-items:center;font-size:12px;white-space:nowrap"><input type="checkbox" onchange="this.form.submit()" {{"checked" if a.all_botting}}> All botting</label></form>
 {% if a.source != "plaid" %}<form method="post" action="/bank/accounts/{{a.id}}/delete" onsubmit="return confirm('Remove {{a.name|e}} and its imported transactions?')"><button class="danger">Remove</button></form>{% endif %}
 </div>{% endfor %}{% endif %}</div>
 

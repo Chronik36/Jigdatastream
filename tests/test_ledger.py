@@ -169,3 +169,23 @@ def test_mark_as_expense_or_not_from_the_ledger(con, tmp_path, monkeypatch):
     client.post(f"/expenses/{eid}/not-expense")
     s = states(con)
     assert ("expense", "IPRoyal") not in s and s[("charge", "IPROYAL PROXIES")] == "charge_only"
+
+
+def test_refunds_come_off_and_botting_cards_count(con, tmp_path, monkeypatch):
+    from jigstream import overview
+    rows = "Date,Description,Amount\n10/20/2026,IPROYAL PROXIES REFUND,-45.00\n10/21/2026,PAYMENT THANK YOU,-500.00\n"
+    bank.import_file(con, "amex2.csv", rows.encode(), "Amex Gold", "positive")
+    assert con.execute("SELECT refunded FROM expenses WHERE vendor = 'IPRoyal'").fetchone()[0] == 45
+    s = overview.summary(con, "2026")
+    assert sum(c["total"] for c in s["categories"] if c["category"] == "proxy") == 0
+    acct = con.execute("SELECT id FROM bank_accounts").fetchone()[0]
+    monkeypatch.chdir(tmp_path)
+    client = create_app(str(tmp_path / "l.db")).test_client()
+    client.post(f"/bank/accounts/{acct}/botting")
+    # Capsolver 25 + Trader Joes 62.18 have no receipt; the card payment isn't spend.
+    assert bank.botting_card_spend(con, 2026) == 87.18
+    page = client.get("/spend?year=2026").get_data(as_text=True)
+    assert "Biggest orders" in page and "$87.18" in page and "IPRoyal" in page
+    eid = con.execute("SELECT id FROM expenses WHERE vendor = 'Kodai'").fetchone()[0]
+    client.post(f"/expenses/{eid}/refunded")
+    assert con.execute("SELECT refunded FROM expenses WHERE id = ?", (eid,)).fetchone()[0] == 75
