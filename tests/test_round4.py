@@ -244,3 +244,32 @@ def test_vantage_preset_reads_balances_and_lines():
     lines = {"count": 2, "lines": ["mob.vantageproxies.com:8000:u-sid-a:p", "mob.vantageproxies.com:8000:u-sid-b:p"]}
     assert proxyaccounts.pool_lines(json.dumps(lines)) == lines["lines"]
     assert json.loads(p["list_body"])["tier"] == "apex_residential"
+
+
+def test_guessed_fields_and_wrapped_errors(tmp_path):
+    body = {"code": 200, "message": "ok", "body": {"planName": "basic", "price": 12, "totalFlow": 10, "usedFlow": 2.5,
+                                                    "remainingFlow": 7.5, "expireTime": "2026-12-01"}}
+    assert proxyaccounts.guess(body) == (2.5, 7.5, 10)
+    assert proxyaccounts.guess({"data": {"remaining_bytes": 3 * 1024 ** 3, "used_mb": 512}}) == (0.5, 3.0, None)
+
+    con = proxyaccounts.ensure(db.connect(str(tmp_path / "a.db")))
+    p = proxyaccounts.PRESETS["IPFist Residential"]
+    con.execute("INSERT INTO proxy_accounts (name, api_key, auth, usage_url, used_path, left_path, total_path, unit)"
+                " VALUES ('IPFist', 'ak_k', ?, ?, '', '', '', 'gb')", (p["auth"], p["usage_url"]))
+    answers = [body, {"code": 403, "message": "API key scope cannot access this resource", "body": None}]
+
+    class Answer(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    opener = lambda req, timeout: Answer(json.dumps(answers.pop(0)).encode())  # noqa: E731
+    acct = proxyaccounts._acct(con, 1)
+    assert proxyaccounts.check_usage(con, acct, opener) == (2.5, 7.5, 10)
+    try:
+        proxyaccounts.check_usage(con, acct, opener)
+        raise AssertionError("a wrapped 403 should fail")
+    except ValueError as e:
+        assert "scope cannot access" in str(e)

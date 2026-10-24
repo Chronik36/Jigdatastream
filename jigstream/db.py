@@ -132,4 +132,6 @@ def connect(path=None):
     if path != ":memory:":
         con.execute("PRAGMA synchronous = NORMAL")  # safe with WAL; saves a disk flush per write
         _owner_only(path)
-    return setup_once(con, "core", _setup)
+    setup_once(con, "core", _setup)
+    from . import undo  # a page action's changes are kept for Undo
+    return undo.attach(con)
