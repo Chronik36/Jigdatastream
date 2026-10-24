@@ -83,3 +83,19 @@ def test_jacob_can_lock_himself_out_to_try_it(tmp_path, monkeypatch):
     assert c.get("/orders").status_code == 200
     c.post("/keys/test-lock")
     assert os.environ["BOTTRACK_TEST_LOCK"] == ""
+
+
+def test_the_key_screen_lets_jacob_back_in(tmp_path, monkeypatch):
+    private, public = accountkeys.new_signing_key()
+    keys(tmp_path, monkeypatch, public)
+    for k in ("BOTTRACK_KEY", "BOTTRACK_KEY_GRACE", "BOTTRACK_SIGNING_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("BOTTRACK_TEST_LOCK", "1")
+    monkeypatch.chdir(tmp_path)
+    c = create_app(str(tmp_path / "b.db")).test_client()
+    assert c.get("/orders").status_code == 302
+    assert "Open with my signing key" in c.get("/activate").get_data(as_text=True)
+    c.post("/activate/developer", data={"private": accountkeys.new_signing_key()[0]})  # someone else's
+    assert c.get("/orders").status_code == 302
+    c.post("/activate/developer", data={"private": private})
+    assert c.get("/orders").status_code == 200 and os.environ["BOTTRACK_TEST_LOCK"] == ""
