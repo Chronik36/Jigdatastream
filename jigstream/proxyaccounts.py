@@ -72,7 +72,8 @@ def _setup(con):
     con.executescript(SCHEMA)
     have = {r[1] for r in con.execute("PRAGMA table_info(proxy_accounts)")}
     # list_body: JSON POSTed to the list address. site_url / recipe / site_cookie: dashboards you sign in to (proxylogin.py).
-    for col in ("list_body", "site_url", "recipe", "site_cookie", "site_session"):
+    # sess_kind / sess_ttl: the session type and TTL last picked for Generate (proxysessions.py).
+    for col in ("list_body", "site_url", "recipe", "site_cookie", "site_session", "sess_kind", "sess_ttl"):
         if col not in have:
             con.execute(f"ALTER TABLE proxy_accounts ADD COLUMN {col} TEXT")
 
@@ -266,12 +267,13 @@ def pool_lines(text):
     return [line for line in s.splitlines() if line.strip()]
 
 
-def refresh_pool(con, acct, opener=None):
-    """Replace the account's group with the provider's current list. Returns how many proxies it has now."""
+def refresh_pool(con, acct, opener=None, setting=None):
+    """Replace the account's group with the provider's current list. Returns how many proxies it has now.
+    setting: a taught session type and TTL for a signed-in dashboard (proxysessions.find)."""
     try:
-        if acct.get("recipe") or acct.get("auth") == "site":
+        if setting or acct.get("recipe") or acct.get("auth") == "site":
             from . import proxylogin
-            lines = proxylogin.fresh_lines(acct, opener, con)
+            lines = proxylogin.fresh_lines(acct, opener, con, setting)
         else:
             body = (acct.get("list_body") or "").strip() or None
             text = fetch(acct["list_url"], acct["api_key"], acct["auth"], opener, body)
@@ -305,6 +307,7 @@ def replace_group(con, acct, lines):
 
 
 def accounts(con):
+    from . import proxysessions
     out = []
     for r in con.execute("SELECT * FROM proxy_accounts ORDER BY name"):
         a = dict(r)
@@ -314,6 +317,10 @@ def accounts(con):
         a["signed_in"] = a["learned"] or a["auth"] == "site"
         a.pop("site_cookie", None)
         a["remembered"] = bool(a.pop("site_session", None))
+        if a["signed_in"]:
+            a["settings"] = proxysessions.settings(con, a["id"])
+            a["taught"] = [f"{st['session']}-{st['ttl']}" for st in a["settings"]]
+            a["sess_ttl"] = int(a.get("sess_ttl") or 0)
         a["pct_used"] = round(100 * a["used_gb"] / a["total_gb"]) if a["used_gb"] is not None and a["total_gb"] else None
         a["low"] = a["left_gb"] is not None and a["left_gb"] < LOW_GB
         out.append(a)
@@ -372,6 +379,9 @@ def act(aid, action):
             used, left, total = check_usage(con, a)
             flash(f"{a['name']}: " + ", ".join(f"{label} {v:g} GB" for label, v in (("used", used), ("left", left), ("of", total))
                                                 if v is not None) + ".")
+        elif action == "pool" and request.form.get("session") is not None:
+            from . import proxysessions  # a signed-in dashboard: the picked session type and TTL
+            return proxysessions.generate(con, a, request.form)
         elif action == "pool":
             n = refresh_pool(con, a)
             flash(f"{a['name']}: the {a['grp'] or a['name']} group now has {n} prox{'y' if n == 1 else 'ies'} from the provider.")
