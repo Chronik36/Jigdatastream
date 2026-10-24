@@ -93,6 +93,23 @@ def _setup(con):
     parsers.move_updates(con)  # bot follow-ups (Valor) stored as checkouts before they were told apart
 
 
+_locked_down = set()
+
+
+def _owner_only(path):
+    """The database holds names, addresses and order history: only your Mac account may read it."""
+    if path in _locked_down:
+        return
+    path = str(path)
+    for p in (path, path + "-wal", path + "-shm"):
+        try:
+            if os.path.exists(p) and os.stat(p).st_mode & 0o077:
+                os.chmod(p, 0o600)
+        except OSError:
+            pass
+    _locked_down.add(path)
+
+
 def connect(path=None):
     path = path or DB_PATH
     d = os.path.dirname(path)
@@ -108,4 +125,5 @@ def connect(path=None):
     con.row_factory = sqlite3.Row
     if path != ":memory:":
         con.execute("PRAGMA synchronous = NORMAL")  # safe with WAL; saves a disk flush per write
+        _owner_only(path)
     return setup_once(con, "core", _setup)
