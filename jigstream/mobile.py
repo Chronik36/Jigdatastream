@@ -164,6 +164,8 @@ def init_app(app):
                                request.headers.get("Origin") or request.headers.get("Sec-Fetch-Site"))
                 abort(403)
             return None
+        if request.path.startswith("/sync/peer/") and _is_loopback(request.remote_addr):
+            return None  # a linked computer, through the link; each request is sealed with that computer's key
         s = settings()
         if not s["on"] or not network_allowed(request.remote_addr, s["allow_lan"]):
             logger.warning("blocked %s %s from %s", request.method, request.path, request.remote_addr)
@@ -278,10 +280,11 @@ def _link_on(on):
     """Start or stop the phone link right away (only in the Mac app, which sets PHONE_LINK)."""
     if not current_app.config.get("PHONE_LINK"):
         return
+    from . import peersync
     if on:
         tunnel.ensure(current_app.config.get("PORT") or 8765)
-    else:
-        tunnel.stop()
+    elif not (os.environ.get("SYNC_LINK") == "1" and peersync.link_wanted(current_app.config.get("DB_PATH"))):
+        tunnel.stop()  # still needed by a linked computer otherwise
 
 
 def _local_form_only():

@@ -95,6 +95,8 @@ def _setup(con):
     con.executescript(discord.SCHEMA)
     con.executescript(wallet.SCHEMA)
     con.executescript(emailbook.SCHEMA)
+    from . import peersync
+    con.executescript(peersync.SCHEMA)
     parsers.reclassify(con)  # Hayha declines stored before they were told apart by color
     parsers.move_updates(con)  # bot follow-ups (Valor) stored as checkouts before they were told apart
 
@@ -132,6 +134,8 @@ def connect(path=None):
     if path != ":memory:":
         con.execute("PRAGMA synchronous = NORMAL")  # safe with WAL; saves a disk flush per write
         _owner_only(path)
+    # A row replaced by INSERT OR REPLACE counts as deleted, so linked computers (peersync.py) hear about it.
+    con.execute("PRAGMA recursive_triggers = ON")
     setup_once(con, "core", _setup)
     from . import undo  # a page action's changes are kept for Undo
     return undo.attach(con)
