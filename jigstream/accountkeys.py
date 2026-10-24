@@ -179,10 +179,12 @@ def start_grace(had_data):
 
 
 def init_app(app, had_data=False):
+    from . import keyrequests
     start_grace(had_data)
     if public_key():
         threading.Thread(target=revoked_ids, daemon=True).start()
     app.register_blueprint(bp)
+    app.register_blueprint(keyrequests.bp)
 
     @app.before_request
     def need_key():
@@ -195,12 +197,18 @@ def init_app(app, had_data=False):
 
     @app.context_processor
     def key_banner():
+        asks = 0
+        if signing_key():
+            try:
+                asks = len(keyrequests.waiting(_keys_con()))
+            except Exception:
+                pass
         if not public_key():
-            return {"keys_on": False, "is_developer": bool(signing_key()), "key_grace": ""}
+            return {"keys_on": False, "is_developer": bool(signing_key()), "key_grace": "", "key_asks": asks}
         from .config import Config
         s = status([a for a, _ in Config.from_env().accounts])
         return {"keys_on": True, "key_grace": s["grace_until"] if s["open"] and s["why"] else "",
-                "is_developer": bool(signing_key())}
+                "is_developer": bool(signing_key()), "key_asks": asks}
 
 
 # ---- pages ----
@@ -238,14 +246,21 @@ def activate():
         logger.info("BotTrack key entered for %s", body["e"])
         flash("Welcome to BotTrack. Your key works on every computer where this Gmail is connected.")
         return redirect(url_for("orders"))
+    from .keyrequests import developer
     s = status(accounts)
-    return render_template("activate.html", s=s, accounts=accounts, email=request.args.get("email", ""))
+    asked = os.environ.get("BOTTRACK_KEY_ASKED", "").split("|")
+    return render_template("activate.html", s=s, accounts=accounts, email=request.args.get("email", ""),
+                           can_ask=bool(developer()), asked=asked if len(asked) == 2 else None)
+
+
+def ensure(con):
+    from . import db
+    return db.setup_once(con, "accountkeys", lambda c: c.executescript(SCHEMA))
 
 
 def _keys_con():
     from . import db
-    con = db.connect(current_app.config.get("DB_PATH"))
-    return db.setup_once(con, "accountkeys", lambda c: c.executescript(SCHEMA))
+    return ensure(db.connect(current_app.config.get("DB_PATH")))
 
 
 @bp.get("/keys")
@@ -254,9 +269,11 @@ def keys_page():
     if not from_this_mac():
         return redirect("/")
     mine = signing_key()
-    rows = [dict(r) for r in _keys_con().execute("SELECT * FROM license_keys ORDER BY issued_at DESC")]
+    from . import keyrequests
+    con = _keys_con()
+    rows = [dict(r) for r in con.execute("SELECT * FROM license_keys ORDER BY issued_at DESC")]
     return render_template("keys.html", mine=mine, public=public_of(mine) if mine else "", shipped=public_key(),
-                           rows=rows, made=request.args.get("made", ""))
+                           rows=rows, made=request.args.get("made", ""), asks=keyrequests.waiting(con) if mine else [])
 
 
 @bp.post("/keys/setup")
