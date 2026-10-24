@@ -27,13 +27,19 @@ class Email:
 class _TextExtractor(HTMLParser):
     SKIP = {"script", "style", "head", "title"}
     BLOCK = {"br", "p", "div", "tr", "li", "h1", "h2", "h3", "h4", "table", "td", "th"}
+    # Cents drawn small next to the dollars ($45<sup>00</sup>, Amazon's a-price-fraction): without the dot they
+    # read as $4500.
+    CENTS = re.compile(r"fraction|cents?\b|decimal|price-small|price__cents", re.I)
 
     def __init__(self):
         super().__init__()
         self.parts = []
         self._skip = 0
+        self._cents = []  # one entry per open tag: is it a cents tag?
 
     def handle_starttag(self, tag, attrs):
+        if tag not in ("br", "img", "hr", "meta", "input", "wbr"):
+            self._cents.append(tag == "sup" or bool(self.CENTS.search(dict(attrs).get("class") or "")))
         if tag == "a":
             href = dict(attrs).get("href") or ""
             # Tracking numbers often only appear inside carrier links.
@@ -47,10 +53,18 @@ class _TextExtractor(HTMLParser):
     def handle_endtag(self, tag):
         if tag in self.SKIP and self._skip:
             self._skip -= 1
+        if tag not in ("br", "img", "hr", "meta", "input", "wbr") and self._cents:
+            self._cents.pop()
 
     def handle_data(self, data):
-        if not self._skip:
-            self.parts.append(data)
+        if self._skip:
+            return
+        if self._cents and self._cents[-1] and re.fullmatch(r"\s*\d{2}\s*", data):
+            before = "".join(self.parts[-3:]).rstrip()
+            if re.search(r"[$\u00a3\u20ac]\s?\d[\d,]*$", before):
+                self.parts[-1] = self.parts[-1].rstrip()
+                data = "." + data.strip()
+        self.parts.append(data)
 
 
 def html_to_text(html):
@@ -378,6 +392,35 @@ def fetch_by_message_id(config, address, password, message_id):
                 msg.message_id = msg.message_id or message_id
                 return msg
         return None
+    finally:
+        try:
+            imap.logout()
+        except Exception:
+            pass
+
+
+def fetch_many(config, address, password, message_ids):
+    """Several emails by Message-ID from one inbox over one sign-in: yields (message_id, Email or None)."""
+    imap = imaplib.IMAP4_SSL(config.imap_host, timeout=30)
+    try:
+        imap.login(address, password)
+        folders = [config.mailbox, spam_folder(imap)]
+        for message_id in message_ids:
+            found = None
+            for folder in folders:
+                if not folder or imap.select(folder, readonly=True)[0] != "OK":
+                    continue
+                status, data = imap.uid("SEARCH", "X-GM-RAW", _quote(f"rfc822msgid:{message_id.strip('<>')}"))
+                uids = data[0].split() if status == "OK" and data and data[0] else []
+                if not uids:
+                    continue
+                status, data = imap.uid("FETCH", uids[0], "(BODY.PEEK[])")
+                if status == "OK" and data and isinstance(data[0], tuple):
+                    found = parse_message(data[0][1])
+                    found.account = address
+                    found.message_id = found.message_id or message_id
+                    break
+            yield message_id, found
     finally:
         try:
             imap.logout()
