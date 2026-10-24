@@ -500,6 +500,14 @@ def create_app(db_path=None):
             flash(error or f"Updated {n} profile(s).")
         return _back_to_profiles()
 
+    @app.get("/profiles/jig-stats")
+    def jig_stats():
+        """Cancel rate per jig style per store, from Drops, for the Expressions window."""
+        from . import jigstats
+        c = con()
+        Store(c)
+        return jsonify(jigstats.report(c))
+
     @app.post("/profiles/rewrite")
     def profile_rewrite():
         """Change a field on the ticked profiles with expressions or find & replace; preview=1 only shows what
