@@ -156,13 +156,14 @@ def status(accounts):
     """{"open": bool, "why": str, "grace_until": str, "email": str}"""
     if not public_key():
         return {"open": True, "why": "", "grace_until": "", "email": ""}
-    if signing_key() and public_of(signing_key()) == public_key():
+    testing = os.environ.get("BOTTRACK_TEST_LOCK") == "1"  # jacob trying the key screen on his own copy
+    if signing_key() and public_of(signing_key()) == public_key() and not testing:
         return {"open": True, "why": "", "grace_until": "", "email": "developer"}
     key = os.environ.get("BOTTRACK_KEY", "")
     why = check(key, accounts) if key else "Enter your BotTrack key."
     if why is None:
         return {"open": True, "why": "", "grace_until": "", "email": read(key).get("e", "")}
-    grace = os.environ.get("BOTTRACK_KEY_GRACE", "")
+    grace = "" if testing else os.environ.get("BOTTRACK_KEY_GRACE", "")
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return {"open": bool(grace and grace >= today), "why": why, "grace_until": grace, "email": ""}
 
@@ -250,7 +251,8 @@ def activate():
     s = status(accounts)
     asked = os.environ.get("BOTTRACK_KEY_ASKED", "").split("|")
     return render_template("activate.html", s=s, accounts=accounts, email=request.args.get("email", ""),
-                           can_ask=bool(developer()), asked=asked if len(asked) == 2 else None)
+                           can_ask=bool(developer()), asked=asked if len(asked) == 2 else None,
+                           testing=os.environ.get("BOTTRACK_TEST_LOCK") == "1" and bool(signing_key()))
 
 
 def ensure(con):
@@ -273,7 +275,8 @@ def keys_page():
     con = _keys_con()
     rows = [dict(r) for r in con.execute("SELECT * FROM license_keys ORDER BY issued_at DESC")]
     return render_template("keys.html", mine=mine, public=public_of(mine) if mine else "", shipped=public_key(),
-                           rows=rows, made=request.args.get("made", ""), asks=keyrequests.waiting(con) if mine else [])
+                           rows=rows, made=request.args.get("made", ""), asks=keyrequests.waiting(con) if mine else [],
+                           testing=os.environ.get("BOTTRACK_TEST_LOCK") == "1")
 
 
 @bp.post("/keys/setup")
@@ -312,6 +315,21 @@ def keys_new():
                         (body["i"], email, body.get("n", ""), body["t"], body.get("x"), key))
     logger.info("made a BotTrack key for %s (%s)", email, body["i"])
     return redirect(url_for("accountkeys.keys_page", made=body["i"]))
+
+
+@bp.post("/keys/test-lock")
+def keys_test_lock():
+    """Lock this copy as if it weren't jacob's, to go through the key screen; on again clears any key entered."""
+    from .config import save_env
+    from .mobile import from_this_mac
+    if not from_this_mac() or not signing_key():
+        return redirect("/")
+    if request.form.get("on") == "1":
+        save_env({"BOTTRACK_TEST_LOCK": "1", "BOTTRACK_KEY": "", "BOTTRACK_KEY_ASKED": ""})
+        return redirect(url_for("accountkeys.activate"))
+    save_env({"BOTTRACK_TEST_LOCK": ""})
+    flash("Testing is over: this copy opens with your signing key again.")
+    return redirect(url_for("accountkeys.keys_page"))
 
 
 @bp.post("/keys/<kid>/revoke")

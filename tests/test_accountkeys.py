@@ -61,3 +61,25 @@ def test_a_copy_already_in_use_gets_a_week(tmp_path, monkeypatch):
 def test_keys_off_without_a_public_key(tmp_path, monkeypatch):
     keys(tmp_path, monkeypatch, "")
     assert accountkeys.status([])["open"]
+
+
+def test_jacob_can_lock_himself_out_to_try_it(tmp_path, monkeypatch):
+    private, public = accountkeys.new_signing_key()
+    keys(tmp_path, monkeypatch, public)
+    for k in ("BOTTRACK_KEY", "BOTTRACK_KEY_GRACE", "BOTTRACK_KEY_ASKED"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("BOTTRACK_SIGNING_KEY", private)
+    monkeypatch.setenv("GMAIL_ACCOUNTS", "me@gmail.com:abcdabcdabcdabcd")
+    monkeypatch.setenv("BOTTRACK_KEY_GRACE", "2999-01-01")  # testing ignores the week too
+    monkeypatch.chdir(tmp_path)
+    c = create_app(str(tmp_path / "t.db")).test_client()
+    assert c.get("/orders").status_code == 200
+    c.post("/keys/test-lock", data={"on": "1"})
+    assert c.get("/orders").headers["Location"].endswith("/activate")
+    assert "Test mode" in c.get("/activate").get_data(as_text=True)
+    assert c.get("/keys").status_code == 200  # still open to make a key
+    key, _ = accountkeys.issue(private, "me@gmail.com")
+    c.post("/activate", data={"key": key})
+    assert c.get("/orders").status_code == 200
+    c.post("/keys/test-lock")
+    assert os.environ["BOTTRACK_TEST_LOCK"] == ""
