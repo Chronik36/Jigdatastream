@@ -23,6 +23,8 @@ rm -rf "$RES/python/lib/python3.12/test" "$RES/python/lib/python3.12/idlelib" "$
 echo "==> App code"
 git -C "$ROOT" archive HEAD jigstream run.py requirements.txt | tar -x -C "$RES/app"
 echo "${BOTTRACK_BUILD:-$(git -C "$ROOT" rev-parse HEAD)}" > "$RES/app/VERSION"  # build-N-sha on CI
+# Where Send logs and Share corrections go, from the BOTTRACK_LOGS_TO Actions secret (kept out of the public code).
+[ -n "${BOTTRACK_DEVELOPER_EMAIL:-}" ] && echo "$BOTTRACK_DEVELOPER_EMAIL" > "$RES/app/jigstream/developer.txt"
 
 echo "==> AI engine"
 mkdir -p "$RES/ollama"
@@ -63,5 +65,6 @@ du -sh "$APP" "$OUT/BotTrack.dmg"
 # The app code on its own, for in-app updates (published with each release).
 CODE="$WORK/code/bottrack"; mkdir -p "$CODE"
 cp -R "$ROOT/jigstream" "$ROOT/run.py" "$ROOT/requirements.txt" "$CODE/"
+[ -n "${BOTTRACK_DEVELOPER_EMAIL:-}" ] && echo "$BOTTRACK_DEVELOPER_EMAIL" > "$CODE/jigstream/developer.txt"
 find "$CODE" -name "__pycache__" -prune -exec rm -rf {} +
 rm -f "$OUT/bottrack-code.zip"; (cd "$WORK/code" && zip -qr "$OUT/bottrack-code.zip" bottrack)
