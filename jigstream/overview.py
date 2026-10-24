@@ -1,7 +1,7 @@
 """The Dashboard's numbers for one year: what was really spent, orders that stuck, and how checkouts went."""
 from datetime import date
 
-from . import stuck
+from . import sales, stuck
 from .ledger import CATEGORY_COLORS
 from .orderstore import NOT_SPENT
 
@@ -62,4 +62,5 @@ def summary(con, year):
         "expenses": expense_total, "categories": cats, "total_out": kept[1] + expense_total,
         "checkouts": len(wins) + len(lost), "good": good, "cancelled": cancelled, "failed": len(lost),
         "rate": _rate(good, len(wins) + len(lost)), "sites": boards["site"], "bots": boards["bot"],
+        "income": sales.year_income(con, year),
     }

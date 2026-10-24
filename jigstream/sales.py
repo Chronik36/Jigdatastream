@@ -192,9 +192,52 @@ def platform_in(con, text):
     return next((p for p in platforms(con) if len(_key(p)) >= 4 and _key(p) in squashed), None)
 
 
+def match_deposits(con):
+    """A payout deposit on your statement that is a sale already counted from its payout email (same platform,
+    same amount, landing from a day before the email to ten days after) is tied to that sale, so it's never
+    offered as a new sale. Returns how many were tied."""
+    ensure(con)
+    taken = {r[0] for r in con.execute("SELECT match_id FROM bank_transactions WHERE match_kind = 'sale'")}
+    sales = [dict(r) for r in con.execute("SELECT * FROM sales WHERE date IS NOT NULL AND counted = 1")]
+    tied = 0
+    for t in con.execute("SELECT * FROM bank_transactions WHERE amount < 0 AND match_kind IS NULL"
+                         " AND COALESCE(match_how, '') != 'ignored' ORDER BY date").fetchall():
+        p = platform_in(con, t["description"])
+        try:
+            day = date.fromisoformat(t["date"][:10])
+        except (TypeError, ValueError):
+            continue
+        if not p:
+            continue
+        for sale in sales:
+            if sale["id"] in taken or _key(sale["platform"] or "") != _key(p) or \
+                    round(money_in(sale), 2) != round(-t["amount"], 2):
+                continue
+            try:
+                gap = (day - date.fromisoformat(sale["date"][:10])).days
+            except ValueError:
+                continue
+            if -1 <= gap <= 10:
+                con.execute("UPDATE bank_transactions SET match_kind = 'sale', match_id = ?, match_how = 'auto'"
+                            " WHERE id = ?", (sale["id"], t["id"]))
+                taken.add(sale["id"])
+                tied += 1
+                break
+    con.commit()
+    return tied
+
+
+def year_income(con, year):
+    """Money in from sales in one year (payouts, else price minus fees)."""
+    ensure(con)
+    return sum(money_in(dict(r)) for r in con.execute(
+        "SELECT payout, sale_price, fees FROM sales WHERE counted = 1 AND substr(date, 1, 4) = ?", (str(year),)))
+
+
 def deposits(con, limit=20):
     """Money in on your statements from a selling platform, not yet counted as a sale."""
     ensure(con)
+    match_deposits(con)
     out = []
     for t in con.execute("SELECT t.*, a.name AS account_name FROM bank_transactions t LEFT JOIN bank_accounts a"
                          " ON a.id = t.account_id WHERE t.amount < 0 AND t.match_kind IS NULL"
