@@ -39,7 +39,7 @@ def summary(con, year):
     real = {"emailed", "no_email"}
     wins = [r for r in stuck.cross_reference(con) if (r.get("ts") or "")[:4] == year
             and r["state"] != "not_order"]
-    lost = con.execute("SELECT status, site, bot FROM checkouts WHERE status != 'success' AND substr(ts, 1, 4) = ?",
+    lost = con.execute("SELECT status, site, bot FROM checkouts WHERE status IN ('decline', 'failure') AND substr(ts, 1, 4) = ?",
                        (year,)).fetchall()
     by = {"site": {}, "bot": {}}
     for kind in by:

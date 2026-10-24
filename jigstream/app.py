@@ -11,7 +11,7 @@ from flask import Flask, Response, flash, jsonify, redirect, render_template, re
 from . import address as A
 from . import (analysis, bankpages, cardcheck, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
-               stock, stuck, tasks, training, updater, wallet)
+               stock, stuck, tasks, training, updater, wallet, webtrain)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
@@ -174,13 +174,38 @@ def create_app(db_path=None):
     @app.get("/checkouts")
     def checkouts():
         status = request.args.get("status")
-        q = "SELECT * FROM checkouts" + (" WHERE status=?" if status else "") + " ORDER BY ts DESC LIMIT 500"
+        q = "SELECT * FROM checkouts" + (" WHERE status=?" if status else " WHERE status != 'ignored'") + \
+            " ORDER BY ts DESC LIMIT 500"
         c = con()
         rows = c.execute(q, (status,) if status else ()).fetchall()
         matched = stuck.cross_reference(Store(c).db)
         emails = {r["id"]: r for r in matched}
         history = stuck.decline_history(c, matched) if status in (None, "decline") else {}
         return render_template("checkouts.html", rows=rows, emails=emails, history=history)
+
+    @app.get("/train")
+    def train_page():
+        c = con()
+        cards = webtrain.queue(c)
+        return render_template("train.html", tab="train", cards=cards[:40], more=max(0, len(cards) - 40),
+                               left=sum(g["n"] for g in cards), counts=webtrain.counts(c), bots=webtrain.KNOWN_BOTS,
+                               statuses=webtrain.STATUSES,
+                               taught=c.execute("SELECT COUNT(*) FROM webhook_rules").fetchone()[0])
+
+    @app.post("/train/<int:checkout_id>")
+    def train_save(checkout_id):
+        f = request.form
+        bot = (f.get("bot_other") or "").strip()[:40] if f.get("bot") == "__other__" else f.get("bot") or None
+        n = webtrain.teach(con(), checkout_id, bot, f.get("status") or None, just_this=bool(f.get("just_this")))
+        logger.info("taught webhook %s: bot=%s status=%s (%d changed)", checkout_id, bot, f.get("status"), n)
+        flash(f"Saved for {n} webhook{'s' if n != 1 else ''}." if n else "Pick the bot or what it is first.")
+        return redirect(url_for("train_page"))
+
+    @app.post("/train/forget")
+    def train_forget():
+        webtrain.forget(con())
+        flash("Forgot everything taught on Things to train.")
+        return redirect(url_for("train_page"))
 
     @app.get("/stuck")
     def stuck_page():

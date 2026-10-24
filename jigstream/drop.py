@@ -174,7 +174,8 @@ def rows(con, matched=None, links=None):
     homes = profile_addresses(con)
     resolve = profiles.resolver(con)
     out = []
-    for r in con.execute("SELECT * FROM checkouts ORDER BY ts"):
+    # Checkout attempts only: messages BotTrack can't place yet wait on Things to train, and "not a checkout" is out.
+    for r in con.execute("SELECT * FROM checkouts WHERE status IN ('success', 'decline', 'failure') ORDER BY ts"):
         c = matched.get(r["id"]) or dict(r, order=None, refund=None, state=None)
         c = dict(c, card=links.get(r["id"]))
         # Shown and grouped by the saved profile ("Profile 1 (Target)" when two sites share a bot's name).
