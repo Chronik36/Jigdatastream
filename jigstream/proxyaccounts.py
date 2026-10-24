@@ -58,6 +58,10 @@ PRESETS = {
                         "list_url": "https://vantageproxies.com/api/v1/endpoints",
                         "list_body": '{"tier": "apex_residential", "quantity": 100, "session": "sticky", "duration": 30, "country": "us"}',
                         "help": "API key from vantageproxies.com/dashboard/api. Data adds up every residential and mobile plan (ISP has no GB meter). Change tier in the list body to core_residential or mobile for those plans; needs a V2 plan."},
+    "IPFist Residential": {"auth": "bearer", "unit": "gb", "used_path": "", "left_path": "", "total_path": "",
+                           "usage_url": "https://ipfist.com/api/ProxyLogic/BandwidthAnalysis",
+                           "list_url": "https://ipfist.com/api/ProxyLogic/Generate?mealType=basic&num=100&country=US&state=&city=&lifeTime=0&server=&format=0",
+                           "help": "Residential API key (ak_...) from IPFist's dashboard. IPFist doesn't publish the balance's field names, so BotTrack finds the used / left / total numbers itself; if it can't, Check data shows the answer to fill the fields from. For the Premium plan, change mealType=basic to premium in the list address."},
     "IPRoyal Residential": {"auth": "bearer", "unit": "gb", "used_path": "", "left_path": "available_traffic", "total_path": "",
                             "usage_url": "https://resi-api.iproyal.com/v1/me", "list_url": "",
                             "help": "API token from IPRoyal's dashboard (Residential → API). Residential uses one gateway, so there's no list to refresh."},
@@ -138,6 +142,57 @@ def dig(data, path):
     return data
 
 
+LEFT_WORDS = ("remain", "left", "surplus", "available", "balance", "rest")
+USED_WORDS = ("used", "consum", "usage", "spent")
+TOTAL_WORDS = ("total", "limit", "quota", "purchas", "capacity", "max")
+NOT_DATA = ("price", "money", "amount", "currency", "cost", "day", "time", "count", "id", "expire", "percent", "rate")
+
+
+def _unit_of(key, value):
+    k = key.lower()
+    if "byte" in k:
+        return "bytes"
+    if k.endswith("mb") or "_mb" in k or "mb_" in k:
+        return "mb"
+    if "kb" in k:
+        return "kb"
+    if "gb" in k:
+        return "gb"
+    return "bytes" if value > 1_000_000 else "gb"
+
+
+def guess(data):
+    """(used, left, total) in GB by field names, for providers whose answer isn't documented: the first number
+    under a key like remaining / used / total. Money, counts and dates are skipped."""
+    found = {}
+
+    def walk(x):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                if isinstance(v, (dict, list)):
+                    walk(v)
+                    continue
+                try:
+                    n = float(v) if not isinstance(v, bool) else None
+                except (TypeError, ValueError):
+                    n = None
+                kl = k.lower()
+                if n is None or any(w in kl for w in NOT_DATA):
+                    continue
+                for role, words in (("left", LEFT_WORDS), ("used", USED_WORDS), ("total", TOTAL_WORDS)):
+                    if role not in found and any(w in kl for w in words):
+                        unit = _unit_of(k, n)
+                        found[role] = round(n / 1024 ** 3 if unit == "bytes" else n / 1024 ** 2 if unit == "kb"
+                                            else n / 1024 if unit == "mb" else n, 3)
+                        break
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+
+    walk(data)
+    return found.get("used"), found.get("left"), found.get("total")
+
+
 def _gb(v, unit):
     try:
         return round(float(str(v).replace(",", "")) * UNITS.get(unit, 1), 3)
@@ -149,12 +204,18 @@ def check_usage(con, acct, opener=None):
     """Ask the provider how much data is used and left; saves and returns (used, left, total) in GB."""
     try:
         data = json.loads(fetch(acct["usage_url"], acct["api_key"], acct["auth"], opener))
-        used, left, total = (_gb(dig(data, acct[p]), acct["unit"]) if acct[p] else None
-                             for p in ("used_path", "left_path", "total_path"))
+        # Some providers answer HTTP 200 with their own {"code", "message", "body"} wrapper, so a failure hides in it.
+        if isinstance(data, dict) and isinstance(data.get("code"), int) and data["code"] not in (0, 200) and "message" in data:
+            raise ValueError(f"The provider answered {data['code']}: {data['message']}")
+        if any(acct[p] for p in ("used_path", "left_path", "total_path")):
+            used, left, total = (_gb(dig(data, acct[p]), acct["unit"]) if acct[p] else None
+                                 for p in ("used_path", "left_path", "total_path"))
+        else:
+            used, left, total = guess(data)
         if left is None and used is not None and total is not None:
             left = round(total - used, 3)
         if used is None and left is None:
-            raise ValueError("The answer has no number at those fields: " + json.dumps(data)[:200])
+            raise ValueError("The answer has no number at those fields: " + json.dumps(data, ensure_ascii=False)[:400])
         con.execute("UPDATE proxy_accounts SET used_gb=?, left_gb=?, total_gb=?, usage_error=NULL, checked_at=? WHERE id=?",
                     (used, left, total, now(), acct["id"]))
         con.commit()
@@ -196,7 +257,14 @@ def refresh_pool(con, acct, opener=None):
     group = acct["grp"] or acct["name"]
     try:
         body = (acct.get("list_body") or "").strip() or None
-        lines = pool_lines(fetch(acct["list_url"], acct["api_key"], acct["auth"], opener, body))
+        text = fetch(acct["list_url"], acct["api_key"], acct["auth"], opener, body)
+        try:
+            wrapped = json.loads(text)
+        except json.JSONDecodeError:
+            wrapped = None
+        if isinstance(wrapped, dict) and isinstance(wrapped.get("code"), int) and wrapped["code"] not in (0, 200) and "message" in wrapped:
+            raise ValueError(f"The provider answered {wrapped['code']}: {wrapped['message']}")
+        lines = pool_lines(text)
         if not [line for line in lines if proxies.parse_line(line)]:
             raise ValueError("The provider's list had no proxies BotTrack could read")
     except ValueError as e:
