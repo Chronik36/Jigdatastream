@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block body %}
+<p><a href="/setup">← Setup</a></p>
+<h2 style="margin:6px 0">Storage</h2>
+<p class="muted">BotTrack takes <b>{{"%.1f"|format(total / 1073741824)}} GB</b> on this computer.</p>
+<section class="panel" style="margin:14px 0">
+{% for what, n, note in parts %}<div style="display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;padding:8px 0;{{'border-top:1px solid var(--line)' if not loop.first}}">
+<b style="min-width:150px">{{what}}</b><span style="min-width:80px">{% if n >= 1073741824 %}{{"%.1f"|format(n / 1073741824)}} GB{% else %}{{"%.0f"|format(n / 1048576)}} MB{% endif %}</span>
+<span class="muted small" style="flex:1;min-width:200px">{{note}}</span></div>{% endfor %}
+</section>
+<section class="panel" style="margin:14px 0;display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+<div style="flex:1;min-width:240px"><b>Free up space</b>
+<p class="muted small" style="margin:4px 0 0">Packs the database tight, drops change records no linked computer is waiting for, keeps only the 3 newest
+backups, and removes old logs and update leftovers. Your orders, settings and the AI model stay.</p></div>
+<form method="post" action="{{url_for('storage.tidy_page')}}" data-loader="Freeing space"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Free up space</button></form>
+</section>
+<p class="muted small">The AI model is the biggest part{% if model %} ({{model}}){% endif %}. The 8B model takes about 5 GB and the 14B about 9 GB;
+switch on <a href="/setup">Setup</a>. Unused models are removed by themselves the next time BotTrack starts.
+Old BotTrack downloads (BotTrack.dmg in Downloads) can be deleted once installed.</p>
+{% endblock %}
