@@ -4,32 +4,58 @@
 <div style="display:flex;gap:8px;flex-wrap:wrap">{% if accounts %}<form method="post" action="/proxies/accounts/usage-all" style="margin:0"><button class="ghost">Check data left on all</button></form>{% endif %}
 <button type="button" class="ghost" onclick="document.getElementById('sgdlg').showModal()">Suggest a provider</button>
 {% if login %}<button type="button" class="ghost" onclick="document.getElementById('sidlg').showModal()" title="For providers with only a dashboard (Discord sign-in, no API)">Sign in to a dashboard</button>{% endif %}
+{% if accounts|selectattr('signed_in')|list %}<button type="button" class="ghost" onclick="document.getElementById('mtdlg').showModal()" title="Share the steps you taught for session type and TTL (never sign-ins)">Shared steps</button>{% endif %}
 <button type="button" onclick="pxAcct()">Connect a provider</button></div></div>
 {% if learning %}<div class="aclearn" id="aclearn" data-id="{{learning}}"><span class="pulse"></span><span id="aclmsg">Waiting: sign in in the new window, then generate a proxy list there once.</span>
-<form method="post" action="/proxies/login/save" style="margin:0"><input type="hidden" name="id" value="{{learning}}"><button id="aclbtn" disabled>Use this</button></form></div>
+<button type="button" class="ghost" id="acltry" hidden onclick="pxTry(this)" title="Do the steps other people shared for this provider in the window">Do the shared steps</button>
+<form method="post" action="/proxies/login/save" style="margin:0"><input type="hidden" name="id" value="{{learning}}"><button id="aclbtn" disabled>Use this</button></form>
+<div class="aclsteps muted small" id="aclsteps"></div></div>
 <script>
 (function poll() {
   const box = document.getElementById('aclearn'); if (!box) return;
   fetch('/proxies/login/status?id=' + box.dataset.id, {cache: 'no-store'}).then(r => r.json()).then(s => {
     const msg = document.getElementById('aclmsg'), btn = document.getElementById('aclbtn');
+    const steps = document.getElementById('aclsteps'), tryb = document.getElementById('acltry');
+    if (s.teaching && !s.found) msg.textContent = `Teaching ${s.teaching}: in the window, set it the way the dashboard asks (switch, dropdown, buttons or typing the minutes), then generate a list.`;
+    tryb.hidden = !s.shared || !!s.found;
+    steps.textContent = s.nsteps ? `Steps seen (${s.nsteps}): ` + s.steps.join(' → ') + (s.tried ? ` · ${s.tried}` : '') : (s.tried || '');
     if (s.found) {
-      msg.textContent = `Saw ${s.found} prox${s.found === 1 ? 'y' : 'ies'} ` + (s.kind === 'request' ? `from the page's own request (${s.from}).` : `after you pressed "${s.button}".`) + ' Generate again to update, or use these.';
+      msg.textContent = (s.teaching ? `${s.teaching}: s` : 'S') + `aw ${s.found} prox${s.found === 1 ? 'y' : 'ies'} ` + (s.kind === 'request' ? `from the page's own request (${s.from}).` : `after you pressed "${s.button}".`) + ' Generate again to update, or use these.';
       btn.disabled = false;
     } else if (!s.open) { msg.textContent = 'The window was closed before a list was made. Press Sign in to a dashboard to try again.'; return; }
     if (s.watching !== false) setTimeout(poll, 2000);
   }).catch(() => setTimeout(poll, 4000));
 })();
+function pxTry(b) {
+  b.disabled = true;
+  const f = new FormData(); f.append('id', document.getElementById('aclearn').dataset.id);
+  fetch('/proxies/login/try', {method: 'POST', body: f}).then(r => r.json()).then(r => {
+    document.getElementById('aclsteps').textContent = r.error || ('Doing: ' + r.steps.join(' → ') + '. Check the window, then press Use this when the list shows.');
+    b.disabled = false;
+  });
+}
 </script>{% endif %}
 <p class="muted" style="font-size:12.5px">Data used and left on each plan, and a Refresh pool button that swaps a group for the provider's current list. Uses each provider's own API with your key; the key stays on this Mac.</p>
 {% if accounts %}<div class="acgrid">{% for a in accounts %}<div class="acard{{' low' if a.low}}">
 <div class="actop"><b>{{a.name}}</b><span class="muted small">{{a.grp or a.name}} group{% if a.pool_size is not none %} · {{a.pool_size}} proxies{% endif %}</span></div>
 {% if a.used_gb is not none or a.left_gb is not none %}<div class="acnum">{% if a.left_gb is not none %}<b>{{"%g"|format(a.left_gb)}} GB</b> left{% endif %}{% if a.used_gb is not none %} <span class="muted">· {{"%g"|format(a.used_gb)}} GB used{% if a.total_gb %} of {{"%g"|format(a.total_gb)}}{% endif %}</span>{% endif %}</div>
 {% if a.pct_used is not none %}<div class="acbar"><i style="width:{{[a.pct_used, 100]|min}}%"></i></div>{% endif %}{% if a.low %}<div class="warnt small">Running low</div>{% endif %}
-{% elif a.learned %}<div class="muted small">Signed-in dashboard: Refresh pool makes a fresh list the way you showed it.{% if a.remembered %} Sign-in kept on this Mac.{% endif %}</div>{% elif a.signed_in %}<div class="muted small">Not learned yet: press Sign in again, then generate a list once in the window.</div>{% elif a.usage_url %}<div class="muted small">Data left not checked yet.</div>{% else %}<div class="muted small">No usage address set.</div>{% endif %}
+{% elif a.learned %}<div class="muted small">Signed-in dashboard: pick rotating or sticky and a TTL, then Generate. A choice you haven't shown yet is taught once in the dashboard.{% if a.remembered %} Sign-in kept on this Mac.{% endif %}</div>{% elif a.signed_in %}<div class="muted small">Not learned yet: press Sign in again, then generate a list once in the window.</div>{% elif a.usage_url %}<div class="muted small">Data left not checked yet.</div>{% else %}<div class="muted small">No usage address set.</div>{% endif %}
 {% if a.usage_error %}<div class="small" style="color:var(--red)">{{a.usage_error}}</div>{% endif %}{% if a.pool_error %}<div class="small" style="color:var(--red)">Pool: {{a.pool_error}}</div>{% endif %}
 <div class="muted small">{% if a.checked_at %}Checked {{a.checked_at[:16]|replace("T", " ")}}{% endif %}{% if a.refreshed_at %} · pool {{a.refreshed_at[:16]|replace("T", " ")}}{% endif %}</div>
 <div class="acbtn">{% if a.usage_url %}<form method="post" action="/proxies/accounts/{{a.id}}/usage"><button class="ghost sm">Check data</button></form>{% endif %}
-{% if a.list_url or a.learned %}<form method="post" action="/proxies/accounts/{{a.id}}/pool" data-confirm="Replace the proxies in the {{a.grp or a.name}} group with {{a.name}}'s current list? Their speed tests are cleared."><button class="ghost sm">Refresh pool</button></form>{% endif %}
+{% if a.signed_in %}
+<form method="post" action="/proxies/accounts/{{a.id}}/pool" class="sessrow" data-taught='{{ a.taught|tojson }}' data-anyttl="{{1 if a.settings|selectattr('any_ttl')|list else 0}}"
+  data-confirm="Replace the proxies in the {{a.grp or a.name}} group with a fresh list from {{a.name}}? Their speed tests are cleared.">
+<select name="session" onchange="pxSess(this.form)" aria-label="Session type">{% if a.learned %}<option value="first"{{' selected' if not a.sess_kind}}>As first shown</option>{% endif %}
+<option value="rotating"{{' selected' if a.sess_kind == 'rotating'}}>Rotating</option><option value="sticky"{{' selected' if a.sess_kind == 'sticky'}}>Sticky</option></select>
+<select name="ttl" onchange="pxSess(this.form)" aria-label="Sticky TTL">{% set ttls = (ttl_choices + a.settings|selectattr('session', 'equalto', 'sticky')|map(attribute='ttl')|list + ([a.sess_ttl] if a.sess_ttl else []))|unique|sort %}
+{% for t in ttls %}<option value="{{t}}"{{' selected' if t == (a.sess_ttl or 30)}}>{{ ttl_words(t) }}</option>{% endfor %}<option value="other">Other…</option></select>
+<input name="ttl_other" type="number" min="1" max="10080" placeholder="minutes" hidden aria-label="Minutes">
+<button class="sm">Generate</button></form>
+{% if a.settings %}<div class="sesschips">{% for st in a.settings %}<form method="post" action="/proxies/sessions/forget" data-confirm="Forget how to set {{st.label}} on {{a.name}}? You can teach it again any time."><input type="hidden" name="id" value="{{st.id}}">
+<span class="chip" title="{{ st.words|join(' → ') }}">{{st.label}}{% if st.any_ttl %} <span class="muted">(any TTL)</span>{% endif %}<button class="x" aria-label="Forget {{st.label}}">×</button></span></form>{% endfor %}</div>{% endif %}
+{% elif a.list_url %}<form method="post" action="/proxies/accounts/{{a.id}}/pool" data-confirm="Replace the proxies in the {{a.grp or a.name}} group with {{a.name}}'s current list? Their speed tests are cleared."><button class="ghost sm">Refresh pool</button></form>{% endif %}
 {% if a.signed_in %}{% if login %}<form method="post" action="/proxies/login/open"><input type="hidden" name="id" value="{{a.id}}"><button class="ghost sm">Sign in again</button></form>{% endif %}
 {% else %}<button type="button" class="ghost sm" onclick='pxAcct({{a|tojson}})'>Edit</button>{% endif %}
 <form method="post" action="/proxies/accounts/{{a.id}}/delete" data-confirm="Remove the {{a.name}} account? Its proxies stay."><button class="ghost sm">Remove</button></form></div>
@@ -64,6 +90,16 @@
 <p class="muted small full">Some providers' terms don't allow automating their dashboard; use this at your own judgment for each one.</p>
 </div>
 <div class="df"><button type="button" class="ghost" onclick="this.closest('dialog').close()">Cancel</button><button>Open the site</button></div></form></dialog>
+<dialog id="mtdlg" class="md"><div class="dh"><h3>Shared steps</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
+<div class="acf">
+<p class="muted small full">The steps you taught for each session type and TTL can help everyone on the same provider: when they pick that choice, BotTrack can do your steps in their window for them. Only the motions are shared: the provider's site, which control you used (its words and place on the page) and what you picked, plus minutes you typed. Never sign-ins, cookies, tokens, list addresses, proxies or anything else you typed.</p>
+<div class="full">{% for a in accounts if a.signed_in and a.settings %}{% for st in a.settings %}<div class="small"><b>{{a.site_url|replace("https://", "")}}</b> · {{st.label}}: <span class="muted">{{ st.words|join(" → ") }}</span></div>{% endfor %}{% else %}<p class="muted small">Nothing taught yet: pick Rotating or Sticky and a TTL on a signed-in account and press Generate.</p>{% endfor %}</div>
+<form method="post" action="/proxies/sessions/share" class="full" style="margin:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+<label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" name="consent" value="1" style="width:auto">It's OK to email these steps to the developer</label><button class="sm">Share</button></form>
+<form method="post" action="/proxies/sessions/import" enctype="multipart/form-data" class="full" style="margin:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+<span class="small">Add shared steps someone sent you:</span><input type="file" name="pack" accept=".json,.txt" style="width:auto;flex:1"><button class="ghost sm">Add</button></form>
+<p class="muted small full">{{shared_steps}} shared setting{{'s' if shared_steps != 1}} on this Mac{% if shared_steps %} (from updates and imports){% endif %}.</p>
+</div></dialog>
 <dialog id="sgdlg" class="md"><form method="post" action="/proxies/suggest">
 <div class="dh"><h3>Suggest a provider</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
 <div class="acf">
@@ -83,7 +119,12 @@
 .acard{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--surface-2);min-width:0;overflow-wrap:anywhere}
 .acard.low{border-color:color-mix(in srgb,var(--orange) 60%,var(--line))}.actop{display:flex;flex-direction:column}.acnum{font-size:14px}
 .acbar{height:6px;border-radius:99px;background:var(--line);overflow:hidden}.acbar i{display:block;height:100%;background:linear-gradient(90deg,#3ddc84,#7cc8ff 60%,#ffb27a)}
-.acbtn{display:flex;gap:6px;flex-wrap:wrap}.acbtn form{margin:0}.small{font-size:12px}.warnt{color:var(--orange)}
+.acbtn{display:flex;gap:6px;flex-wrap:wrap}
+.sessrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0;flex-basis:100%}.sessrow select,.sessrow input{margin:0;width:auto;flex:1 1 90px;padding:4px 8px;font-size:12px}
+.sesschips{display:flex;gap:4px;flex-wrap:wrap;flex-basis:100%}.sesschips form{margin:0}
+.sesschips .chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;padding:2px 4px 2px 9px;border:1px solid var(--line);border-radius:99px}
+.sesschips .x{background:none;border:0;padding:0 4px;margin:0;color:var(--muted);font-size:13px;cursor:pointer}
+.aclsteps{flex-basis:100%}.acbtn form{margin:0}.small{font-size:12px}.warnt{color:var(--orange)}
 button.sm{padding:4px 10px;font-size:12px;margin:0}
 .acf{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:16px}.acf label{display:flex;flex-direction:column;gap:4px;font-size:12px;margin:0;min-width:0}.acf input,.acf select{margin:0;width:100%}
 .acf .full{grid-column:1/-1}.sec2{grid-column:1/-1;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:6px}
@@ -98,6 +139,20 @@ function pxPreset(name) {
   ['auth', 'unit', 'usage_url', 'used_path', 'left_path', 'total_path', 'list_url', 'list_body'].forEach(k => f[k].value = p[k] || '');
   if (!f.name.value) f.name.value = name;
 }
+// Generate on a signed-in account: TTL only for sticky, a minutes box for Other, and "Teach it" when that choice
+// hasn't been shown yet (the dashboard opens to learn it).
+function pxSess(f) {
+  const sess = f.session.value, ttl = f.ttl.value === 'other' ? f.ttl_other.value : f.ttl.value;
+  f.ttl.hidden = sess !== 'sticky';
+  f.ttl_other.hidden = sess !== 'sticky' || f.ttl.value !== 'other';
+  const taught = JSON.parse(f.dataset.taught || '[]');
+  const known = sess === 'first' || taught.includes(sess === 'sticky' ? `sticky-${parseInt(ttl) || 0}` : 'rotating-0')
+    || (sess === 'sticky' && f.dataset.anyttl === '1');
+  f.querySelector('button').textContent = known ? 'Generate' : 'Teach it';
+  if (known) f.setAttribute('data-confirm', f.dataset.confirmText || f.getAttribute('data-confirm'));
+  else { f.dataset.confirmText = f.dataset.confirmText || f.getAttribute('data-confirm'); f.removeAttribute('data-confirm'); }
+}
+document.querySelectorAll('form.sessrow').forEach(pxSess);
 function pxAcct(a) {
   const f = document.getElementById('acform'); f.reset();
   a = a || {};

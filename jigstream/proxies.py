@@ -273,12 +273,13 @@ def _con():
 @bp.get("/proxies")
 def page():
     con = _con()
-    from . import proxyaccounts, proxylogin
+    from . import proxyaccounts, proxylogin, proxysessions
     proxyaccounts.ensure(con)
     return render_template("proxies.html", groups=groups(con), sites=list(SITES), state=_state,
                            site=request.args.get("site", ""), accounts=proxyaccounts.accounts(con), auths=proxyaccounts.AUTHS,
                            presets=proxyaccounts.PRESETS, login=proxylogin.available(),
-                           learning=request.args.get("learning", type=int))
+                           learning=request.args.get("learning", type=int), ttl_choices=proxysessions.TTLS,
+                           ttl_words=proxysessions.ttl_words, shared_steps=len(proxysessions.shared(con)))
 
 
 @bp.post("/proxies/add")
