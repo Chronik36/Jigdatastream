@@ -72,7 +72,7 @@ def _setup(con):
     con.executescript(SCHEMA)
     have = {r[1] for r in con.execute("PRAGMA table_info(proxy_accounts)")}
     # list_body: JSON POSTed to the list address. site_url / recipe / site_cookie: dashboards you sign in to (proxylogin.py).
-    for col in ("list_body", "site_url", "recipe", "site_cookie"):
+    for col in ("list_body", "site_url", "recipe", "site_cookie", "site_session"):
         if col not in have:
             con.execute(f"ALTER TABLE proxy_accounts ADD COLUMN {col} TEXT")
 
@@ -271,7 +271,7 @@ def refresh_pool(con, acct, opener=None):
     try:
         if acct.get("recipe") or acct.get("auth") == "site":
             from . import proxylogin
-            lines = proxylogin.fresh_lines(acct, opener)
+            lines = proxylogin.fresh_lines(acct, opener, con)
         else:
             body = (acct.get("list_body") or "").strip() or None
             text = fetch(acct["list_url"], acct["api_key"], acct["auth"], opener, body)
@@ -313,6 +313,7 @@ def accounts(con):
         a["learned"] = bool(a.pop("recipe", None))  # set up by signing in (proxylogin.py)
         a["signed_in"] = a["learned"] or a["auth"] == "site"
         a.pop("site_cookie", None)
+        a["remembered"] = bool(a.pop("site_session", None))
         a["pct_used"] = round(100 * a["used_gb"] / a["total_gb"]) if a["used_gb"] is not None and a["total_gb"] else None
         a["low"] = a["left_gb"] is not None and a["left_gb"] < LOW_GB
         out.append(a)

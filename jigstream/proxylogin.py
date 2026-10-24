@@ -9,8 +9,10 @@ proxy lines, that's the provider's recipe:
   inside the signed-in window;
 - "click": the list is made in the page itself. Refresh pool opens the same page in the window, presses the
   same button and copies the lines it shows.
-The window stays signed in until BotTrack closes (it's private, so nothing is kept on disk by it). When a site
-needs you again, Refresh pool says so and Sign in again opens it. Only the Mac app has these windows.
+Staying signed in: when you press Use this, BotTrack keeps the site's sign-in (its cookies, the HttpOnly ones
+included, and what the page keeps in its storage) encrypted with the same Keychain key as your cards. Refresh pool
+sends them with the request, or puts them back into a window before using it, so you sign in again only when the
+site itself ends the sign-in. Cookies the site renews are kept as they change. Only the Mac app has these windows.
 
 Also here: Suggest a provider, which emails the developer a provider's site and docs so a later build can set it up.
 """
@@ -100,6 +102,94 @@ return '1';
 DROP_HEADERS = {"host", "content-length", "cookie", "connection", "accept-encoding", "origin", "referer", "user-agent"}
 
 
+STORAGE_JS = "JSON.stringify({origin: location.origin, storage: Object.fromEntries(Object.entries(localStorage))})"
+RESTORE_JS = r"""((s) => { let missing = 0;
+for (const [k, v] of Object.entries(s || {})) { if (localStorage.getItem(k) !== v) { localStorage.setItem(k, v); missing++; } }
+return String(missing); })"""
+
+
+def seal(saved):
+    """A sign-in, encrypted with the card key (Keychain on a Mac)."""
+    from . import wallet
+    return wallet._fernet().encrypt(json.dumps(saved).encode()).decode()
+
+
+def unseal(text):
+    if not text:
+        return {}
+    from . import wallet
+    try:
+        return json.loads(wallet._fernet().decrypt(text.encode()))
+    except Exception:  # a different key (restored backup) or a damaged value: sign in again
+        logger.warning("couldn't read a saved provider sign-in")
+        return {}
+
+
+def cookie_header(saved, url):
+    """Cookie: header for url from a saved sign-in: every cookie whose domain covers the host."""
+    host = (urlparse(url).hostname or "").lower()
+    out = []
+    for c in saved.get("cookies") or []:
+        d = (c.get("domain") or "").lstrip(".").lower()
+        if d and (host == d or host.endswith("." + d)):
+            out.append(f"{c['name']}={c['value']}")
+    return "; ".join(out)
+
+
+def renew(saved, set_cookies, url):
+    """Keep cookies the site renewed in its answer (Set-Cookie). Returns True when anything changed."""
+    from http.cookies import SimpleCookie
+    host = (urlparse(url).hostname or "").lower()
+    cookies = saved.setdefault("cookies", [])
+    changed = False
+    for line in set_cookies or []:
+        jar = SimpleCookie()
+        try:
+            jar.load(line)
+        except Exception:
+            continue
+        for name, m in jar.items():
+            domain = (m["domain"] or host).lstrip(".").lower()
+            old = next((c for c in cookies if c["name"] == name and c.get("domain", "").lstrip(".").lower() == domain), None)
+            if old is None:
+                cookies.append({"name": name, "value": m.value, "domain": domain, "path": m["path"] or "/"})
+                changed = True
+            elif old["value"] != m.value:
+                old["value"] = m.value
+                changed = True
+    return changed
+
+
+def _cookie_dicts(simple_cookies):
+    """pywebview's get_cookies() (SimpleCookie objects, HttpOnly ones too) as plain dicts."""
+    out = []
+    for jar in simple_cookies or []:
+        for name, m in jar.items():
+            out.append({"name": name, "value": m.value, "domain": m["domain"], "path": m["path"] or "/",
+                        "secure": bool(m["secure"]), "expires": str(m["expires"] or "")})
+    return out
+
+
+def _set_cookies(window, cookies):
+    """Put saved cookies into the window's WebKit cookie store (pywebview has no call for it)."""
+    try:
+        import Foundation
+        from PyObjCTools import AppHelper
+        from webview.platforms.cocoa import BrowserView
+        store = BrowserView.instances[window.uid].webview.configuration().websiteDataStore().httpCookieStore()
+    except Exception:
+        logger.debug("no cookie store to restore into", exc_info=True)
+        return False
+    for c in cookies:
+        props = {"Name": c["name"], "Value": c["value"], "Domain": c.get("domain") or "", "Path": c.get("path") or "/"}
+        if c.get("secure"):
+            props["Secure"] = "TRUE"
+        cookie = Foundation.NSHTTPCookie.cookieWithProperties_(props)
+        if cookie is not None:
+            AppHelper.callAfter(store.setCookie_completionHandler_, cookie, None)
+    return True
+
+
 class SignIn(ValueError):
     """The provider wants you to sign in again (or the Mac window isn't there)."""
 
@@ -166,27 +256,78 @@ class Session:
         self.windows, self.seen = {}, {}  # account id -> window / {"lines", "recipe", "before", "cookie"}
         self.lock = threading.Lock()
 
-    def open(self, aid, url, name):
+    def open(self, aid, url, name, saved=None):
         self.seen[aid] = {"lines": [], "recipe": None, "before": None, "cookie": "", "watching": True}
         w = self.windows.get(aid)
         if w is not None:
             try:
                 w.show()
-                w.load_url(url)
+                self.restore(aid, saved, url)
                 return self._watch(aid)
             except Exception:
                 self.windows.pop(aid, None)
+        self._window(aid, f"{name}: sign in, then generate a list once", url, saved)
+        self._watch(aid)
+
+    def _window(self, aid, title, url, saved, hidden=False):
         try:  # a Discord sign-in that opens in a new window has to stay in BotTrack, not jump to Safari
             self.webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = False
         except Exception:
             pass
-        w = self.webview.create_window(f"{name}: sign in, then generate a list once", url, width=1200, height=860)
+        # Opened blank first: a new window clears the sign-ins WebKit holds (BotTrack's windows are private), so
+        # the saved one goes back in after that, before the site loads.
+        w = self.webview.create_window(title, "about:blank" if saved else url, width=1200, height=860, hidden=hidden)
         self.windows[aid] = w
         try:
             w.events.closed += lambda *a: self._closed(aid)
         except Exception:
             pass
-        self._watch(aid)
+        if saved:
+            time.sleep(2.5)
+            self.restore(aid, saved, url)
+        return w
+
+    def restore(self, aid, saved, url):
+        """Load url in the account's window with the saved sign-in put back (cookies, then the page's storage)."""
+        w = self.windows[aid]
+        if saved and saved.get("cookies"):
+            _set_cookies(w, saved["cookies"])
+            time.sleep(0.8)
+        w.load_url(url)
+        if saved and saved.get("storage"):
+            time.sleep(3)
+            try:
+                if int(self.js(aid, f"{RESTORE_JS}({json.dumps(saved['storage'])})") or 0):
+                    w.load_url(url)  # the page reads its storage as it starts, so start it again
+                    time.sleep(3)
+            except (SignIn, ValueError):
+                pass
+
+    def capture(self, aid):
+        """The window's sign-in as it is now: the site's cookies (HttpOnly too) and the page's storage."""
+        w = self.windows.get(aid)
+        if w is None:
+            return None
+        try:
+            cookies = _cookie_dicts(w.get_cookies())
+        except Exception:
+            logger.debug("couldn't read the provider window's cookies", exc_info=True)
+            cookies = []
+        try:
+            st = json.loads(self.js(aid, STORAGE_JS) or "{}")
+        except (SignIn, ValueError):
+            st = {}
+        return {"cookies": cookies, "storage": st.get("storage") or {}, "origin": st.get("origin") or ""}
+
+    def ensure(self, aid, acct, saved, page):
+        """A window for this account, opening a hidden one with the saved sign-in when there's none."""
+        if aid in self.windows:
+            if saved:  # another BotTrack window may have opened since and cleared WebKit's sign-ins
+                _set_cookies(self.windows[aid], saved.get("cookies") or [])
+            return
+        if not saved:
+            raise SignIn("The provider wants you to sign in again. Press Sign in again on this account.")
+        self._window(aid, f"{acct['name']}", page, saved, hidden=True)
 
     def _closed(self, aid):
         self.windows.pop(aid, None)
@@ -309,23 +450,37 @@ def session():
 
 
 def _direct(recipe, cookie, opener=None):
-    """Repeat the dashboard's request from BotTrack itself; the answer's text, or None when it wants the window."""
-    from .proxyaccounts import fetch_raw
-    headers = dict(recipe.get("headers") or {})
+    """Repeat the dashboard's request from BotTrack itself: (answer text, Set-Cookie lines), or (None, []) when the
+    site wants a fresh sign-in."""
+    headers = {"User-Agent": "BotTrack", "Accept": "application/json, text/plain, */*", **(recipe.get("headers") or {})}
     if cookie:
         headers["Cookie"] = cookie
+    url, method, body = recipe["url"], recipe.get("method") or "GET", recipe.get("body")
+    if not url.startswith("https://"):
+        raise ValueError("The address must start with https://")
+    req = urllib.request.Request(url, headers=headers, method=method,
+                                 data=body.encode() if body and method not in ("GET", "HEAD") else None)
     try:
-        return fetch_raw(recipe["url"], recipe.get("method") or "GET", headers, recipe.get("body"), opener)
+        with (opener or urllib.request.urlopen)(req, timeout=30) as r:
+            got = getattr(r, "headers", None)
+            renewed = got.get_all("Set-Cookie") or [] if got is not None and hasattr(got, "get_all") else []
+            return r.read(2_000_000).decode("utf-8", "replace"), renewed
     except urllib.error.HTTPError as e:
         if e.code in (401, 403, 419):
-            return None
+            return None, []
         raise ValueError(f"The provider answered {e.code} {e.reason}") from None
     except urllib.error.URLError as e:
         raise ValueError(f"Couldn't reach the provider: {e.reason}") from None
 
 
-def fresh_lines(acct, opener=None):
-    """A fresh list for an account set up by signing in. Raises ValueError (SignIn included) with what to do."""
+def keep_signin(con, aid, saved):
+    con.execute("UPDATE proxy_accounts SET site_session=? WHERE id=?", (seal(saved), aid))
+    con.commit()
+
+
+def fresh_lines(acct, opener=None, con=None):
+    """A fresh list for an account set up by signing in. Raises ValueError (SignIn included) with what to do.
+    With con, a sign-in the site renewed along the way is saved."""
     try:
         recipe = json.loads(acct.get("recipe") or "{}")
     except json.JSONDecodeError:
@@ -333,19 +488,32 @@ def fresh_lines(acct, opener=None):
     if not recipe:
         raise ValueError("Sign in to the provider's site and generate a list once first.")
     aid = acct["id"]
+    saved = unseal(acct.get("site_session"))
+    used_window = False
     if recipe["kind"] == "request":
-        text = _direct(recipe, acct.get("site_cookie") or "", opener)
+        cookie = cookie_header(saved, recipe["url"]) if saved else acct.get("site_cookie") or ""
+        text, renewed = _direct(recipe, cookie, opener)
+        if saved and renew(saved, renewed, recipe["url"]) and con is not None:
+            keep_signin(con, aid, saved)
         lines = lines_in(text) if text is not None else []
         if not lines:
-            if not available() or aid not in session().windows:
+            if not available():
                 raise SignIn("The provider wants you to sign in again. Press Sign in again on this account.")
+            session().ensure(aid, acct, saved, recipe.get("page") or acct.get("site_url"))
             lines = lines_in(session().replay_request(aid, recipe))
+            used_window = True
     else:
         if not available():
             raise SignIn("This provider's list is made in its page, which needs the BotTrack Mac app.")
+        session().ensure(aid, acct, saved, recipe["page"])
         lines = session().replay_click(aid, recipe)
+        used_window = True
     if not lines:
         raise ValueError("The provider's answer had no proxies BotTrack could read.")
+    if used_window and con is not None:
+        now = session().capture(aid)
+        if now and now["cookies"]:
+            keep_signin(con, aid, now)
     return lines
 
 
@@ -367,6 +535,7 @@ def open_site():
         if not row:
             return _back()
         name, url = row["name"], row["site_url"]
+        saved = unseal(con.execute("SELECT site_session FROM proxy_accounts WHERE id=?", (aid,)).fetchone()[0])
     else:
         name, url = (request.form.get("name") or "").strip(), (request.form.get("site_url") or "").strip()
         if url and "://" not in url:
@@ -377,8 +546,9 @@ def open_site():
         aid = con.execute("INSERT INTO proxy_accounts (name, auth, unit, site_url) VALUES (?, 'site', 'gb', ?)",
                           (name, url)).lastrowid
         con.commit()
+        saved = None
     try:
-        session().open(aid, url, name)
+        session().open(aid, url, name, saved)
         flash(f"Sign in to {name} in the new window, then generate a proxy list there once. BotTrack learns how, "
               "and Refresh pool does it for you after that.")
     except SignIn as e:
@@ -401,18 +571,19 @@ def save():
     aid = request.form.get("id", type=int)
     if not available() or not aid:
         return _back()
+    signin = session().capture(aid)
     s = session().keep(aid)
     if not s.get("recipe"):
         flash("BotTrack hasn't seen a proxy list in that window yet. Generate one there, then press Use this again.")
         return _back()
-    con.execute("UPDATE proxy_accounts SET recipe=?, site_cookie=? WHERE id=?",
-                (json.dumps(s["recipe"]), s.get("cookie") or "", aid))
+    con.execute("UPDATE proxy_accounts SET recipe=?, site_cookie=?, site_session=? WHERE id=?",
+                (json.dumps(s["recipe"]), s.get("cookie") or "", seal(signin) if signin and (signin["cookies"] or signin["storage"]) else None, aid))
     con.commit()
     from . import proxyaccounts
     acct = proxyaccounts._acct(con, aid)
     n = proxyaccounts.replace_group(con, acct, s["lines"])
-    flash(f"Learned {acct['name']}. Its group has the {n} proxies you just made; Refresh pool makes a fresh list any time "
-          "while BotTrack is open.")
+    flash(f"Learned {acct['name']}. Its group has the {n} proxies you just made. Refresh pool makes a fresh list any time; "
+          "the sign-in is kept (encrypted) until the site ends it.")
     return _back()
 
 
