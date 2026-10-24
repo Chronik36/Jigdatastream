@@ -20,8 +20,9 @@ from pathlib import Path
 from .config import parse_accounts
 
 LOG_DIR = Path(os.environ.get("JIGSTREAM_LOGS", "logs"))
-# Where "Send logs to developer" emails the zip. BOTTRACK_LOGS_TO in .env overrides it.
-DEVELOPER_EMAIL = "jacobbourg13@gmail.com"
+# Where "Send logs to developer" emails the zip: BOTTRACK_LOGS_TO in .env, else the first connected inbox (the
+# developer's own Mac). No address is written in the code, which is public.
+DEVELOPER_EMAIL = ""
 SMTP_HOST = "smtp.gmail.com"
 NOTE_MIN_CHARS = 20  # "Send logs" needs a short description of the problem
 FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
@@ -182,7 +183,11 @@ def email_body(note, info, log_dir=None):
 
 
 def developer_email():
-    return (os.environ.get("BOTTRACK_LOGS_TO") or DEVELOPER_EMAIL).strip()
+    to = (os.environ.get("BOTTRACK_LOGS_TO") or DEVELOPER_EMAIL).strip()
+    if not to:
+        accounts = parse_accounts(os.environ.get("GMAIL_ACCOUNTS", ""))
+        to = accounts[0][0] if accounts else ""
+    return to
 
 
 def about(version="", engine="", model=""):
