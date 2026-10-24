@@ -144,3 +144,28 @@ def test_expenses_page_with_blank_amounts(tmp_path):
                   (vendor, category, amount, date.today().isoformat()))
     c.commit()
     assert client.get("/expenses").status_code == 200
+
+
+def test_a_receipt_with_no_amount_takes_it_from_its_card_charge(tmp_path):
+    c = ledger.ensure(db.connect(str(tmp_path / "f.db")))
+    expense(c, "m5", "CapSolver", None, "2026-10-08", "captcha")  # the email had no total BotTrack could read
+    expense(c, "m6", "Kodai", None, "2026-10-12", "bot")  # no Kodai charge: stays blank
+    c.commit()
+    bank.import_file(c, "amex.csv", STATEMENT.encode(), "Amex Gold", "positive")
+    amounts = {r["vendor"]: r["amount"] for r in c.execute("SELECT vendor, amount FROM expenses")}
+    assert amounts == {"CapSolver": 25.0, "Kodai": None}
+    assert states(c)[("expense", "CapSolver")] == "matched"
+
+
+def test_mark_as_expense_or_not_from_the_ledger(con, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    client = create_app(str(tmp_path / "l.db")).test_client()
+    page = client.get("/expenses/ledger").get_data(as_text=True)
+    assert "Mark as expense…" in page and "/not-expense" in page
+    tx = con.execute("SELECT id FROM bank_transactions WHERE description = 'SQ *CAPSOLVER'").fetchone()[0]
+    client.post(f"/bank/{tx}/match", data={"action": "expense", "vendor": "SQ *CAPSOLVER", "category": "captcha"})
+    assert states(con)[("expense", "SQ *CAPSOLVER")] == "matched"
+    eid = con.execute("SELECT id FROM expenses WHERE vendor = 'IPRoyal'").fetchone()[0]
+    client.post(f"/expenses/{eid}/not-expense")
+    s = states(con)
+    assert ("expense", "IPRoyal") not in s and s[("charge", "IPROYAL PROXIES")] == "charge_only"
