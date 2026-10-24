@@ -1,0 +1,38 @@
+{% extends "base.html" %}{% block body %}
+{% include "_expense_tabs.html" %}
+<style>.ipgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:16px}
+.ipf{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.ipf label{display:flex;flex-direction:column;gap:4px;font-size:12px;min-width:0}
+.ipf input,.ipf select{width:100%;margin:0}.ipf .wide{grid-column:1/-1}</style>
+<p class="muted">Buys and sales no email shows: a Sam's Club run, cards sold at Tradepost or a show. A buy counts as an order (and as the cost when you sell it); a sale counts toward Profit. If a statement has the card charge, it's matched to the buy.</p>
+<div class="ipgrid">
+<section class="panel"><h3 style="margin-top:0">Add an in-person buy</h3>
+<form method="post" action="/expenses/in-person/buy" class="ipf">
+<label>Store<input name="store" list="ipstores" required placeholder="Sam's Club"></label>
+<label>Date<input type="date" name="date" value="{{today}}"></label>
+<label class="wide">What you bought<input name="item" placeholder="e.g. Prismatic Evolutions ETB"></label>
+<label>How many<input name="quantity" inputmode="numeric" value="1"></label>
+<label>Total paid<input name="total" inputmode="decimal" required placeholder="0.00"></label>
+<div class="wide"><button>Add buy</button></div></form></section>
+<section class="panel"><h3 style="margin-top:0">Add an in-person sale</h3>
+<form method="post" action="/expenses/in-person/sale" class="ipf" id="ipsale">
+<label>Where<input name="place" list="ipplaces" required placeholder="Tradepost"></label>
+<label>Date<input type="date" name="date" value="{{today}}"></label>
+<label class="wide">What you sold<input name="item" placeholder="e.g. Focused Fighters booster box"></label>
+<label>Sold for<input name="sale_price" inputmode="decimal" placeholder="0.00"></label>
+<label>Fees<input name="fees" inputmode="decimal" placeholder="0.00"></label>
+<label class="wide">Bought with<select name="order_id" id="iporder"><option value="">No order (type the cost)</option>{% for b in buys %}<option value="{{b.id}}">{{b.order_date}} · {{b.retailer}} · {{(b["items"][0].name if b["items"] else "")[:50]}} · {{b.total|money}}</option>{% endfor %}{% for o in orders %}<option value="{{o.id}}">{{o.label}}</option>{% endfor %}</select></label>
+<label>Cost <span class="muted">(blank = the buy's total)</span><input name="cost" inputmode="decimal"></label>
+<div class="wide"><button>Add sale</button></div></form></section>
+</div>
+<datalist id="ipstores">{% for s in stores %}<option value="{{s}}">{% endfor %}</datalist>
+<datalist id="ipplaces">{% for p in places %}<option value="{{p}}">{% endfor %}</datalist>
+<section class="panel" style="margin-top:16px"><h3 style="margin-top:0">In-person buys</h3><table><thead><tr><th>Date</th><th>Store</th><th>Items</th><th class="num">Paid</th><th></th></tr></thead><tbody>
+{% for b in buys %}<tr><td>{{b.order_date}}</td><td><a href="/orders#order-{{b.id}}"><b>{{b.retailer}}</b></a></td><td>{% for i in b["items"] %}{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}{% endfor %}</td><td class="num">{{b.total|money}}</td>
+<td>{% if b.sold %}<span class="pill s-delivered">Sold</span>{% else %}<button type="button" class="ghost" onclick="document.getElementById('iporder').value='{{b.id}}';document.querySelector('#ipsale [name=item]').value={{((b['items'][0].name if b['items'] else '') or '')|tojson}};document.querySelector('#ipsale [name=place]').focus()">Sold it…</button>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">No in-person buys yet.</td></tr>{% endfor %}</tbody></table></section>
+<section class="panel" style="margin-top:16px"><h3 style="margin-top:0">In-person sales</h3><table><thead><tr><th>Date</th><th>Where</th><th>Item</th><th class="num">Got</th><th class="num">Cost</th><th class="num">Profit</th></tr></thead><tbody>
+{% for s in sold %}<tr><td>{{s.date}}</td><td><b>{{s.platform}}</b></td><td>{{s.item or "-"}}</td><td class="num">{{s.money_in|money}}</td><td class="num">{{(s.cost|money) if s.cost is not none else "-"}}</td>
+<td class="num {{'ok' if s.profit and s.profit > 0 else ('bad' if s.profit and s.profit < 0)}}">{{(s.profit|money) if s.profit is not none else "-"}}</td></tr>
+{% else %}<tr><td colspan="6" class="muted">No in-person sales yet.</td></tr>{% endfor %}</tbody></table></section>
+{% include "_expense_dialog.html" %}
+{% endblock %}

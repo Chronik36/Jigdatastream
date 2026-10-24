@@ -15,5 +15,6 @@ body .xtabs .side-link{margin-left:auto;font-size:13px}
 <a href="/expenses/recurring" class="{{'on' if tab == 'recurring'}}">Recurring{% set ra = (totals.alerts if totals is defined else (rec.alerts if rec is defined else 0)) %}{% if ra %}<span class="n" title="Missed renewals and price changes">{{ra}}</span>{% endif %}</a>
 <a href="/expenses/budget" class="{{'on' if tab == 'budget'}}">Budget</a>
 <a href="/expenses/profit" class="{{'on' if tab == 'profit'}}">Profit goal</a>
+<a href="/expenses/in-person" class="{{'on' if tab == 'in_person'}}">In person</a>
 <a href="/bank" class="side-link muted">Bank &amp; card imports →</a>
 </nav>
