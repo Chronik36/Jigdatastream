@@ -9,7 +9,7 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import jigexpr, ordersheet, peersync, pricecheck, proxylogin, proxysessions, undo
+from . import accountkeys, backup, jigexpr, ordersheet, peersync, pricecheck, proxylogin, proxysessions, undo
 from . import (analysis, bankpages, cardcheck, cardlocks, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
                packs, proxies, proxyaccounts, review, stock, stuck, tasks, tracking, training, updater, wallet, webtrain)
@@ -46,7 +46,10 @@ def create_app(db_path=None):
     app = Flask(__name__)
     app.secret_key = "local-only"
     app.config["DB_PATH"] = db_path
+    path = db_path or db.DB_PATH
+    had_data = os.path.exists(path) and os.path.getsize(path) > 0  # before this run makes the database
     mobile.init_app(app)
+    accountkeys.init_app(app, had_data)
     undo.init_app(app)
     app.register_blueprint(stock.bp)
     app.register_blueprint(manual.bp)
@@ -62,6 +65,7 @@ def create_app(db_path=None):
     app.register_blueprint(pricecheck.bp)
     app.register_blueprint(peersync.bp)
     app.register_blueprint(ordersheet.bp)
+    app.register_blueprint(backup.bp)
     app.register_blueprint(packs.bp)
 
     @app.context_processor

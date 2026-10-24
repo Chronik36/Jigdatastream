@@ -94,6 +94,28 @@ def key():
     return _key
 
 
+def set_key(new):
+    """Use this card key from now on (a restored backup's), in the Keychain on a Mac, else the key file."""
+    global _key
+    new = new.strip() if isinstance(new, bytes) else new.strip().encode()
+    from cryptography.fernet import Fernet
+    Fernet(new)  # a real key, or ValueError
+    key_file = Path(os.environ.get("BOTTRACK_CARD_KEY_FILE", ".card-key"))
+    if sys.platform == "darwin" and "BOTTRACK_CARD_KEY_FILE" not in os.environ:
+        if _keychain("add-generic-password", "-U", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT,
+                     "-w", new.decode()).returncode == 0:
+            _key = new
+            return
+    windows = sys.platform == "win32" and "BOTTRACK_CARD_KEY_FILE" not in os.environ
+    key_file.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        key_file.write_bytes(_dpapi(new, True) if windows else new)
+    except OSError:
+        key_file.write_bytes(b"plain:" + new)
+    os.chmod(key_file, 0o600)
+    _key = new
+
+
 def _fernet():
     from cryptography.fernet import Fernet
     return Fernet(key())
