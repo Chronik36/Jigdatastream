@@ -155,3 +155,16 @@ def test_profit_page_and_forms(tmp_path, con):
     assert sales.rows(c) == []
     assert "Profit in" in client.get("/expenses").get_data(as_text=True)
     assert budget.month_of(TODAY) == "2026-10"
+
+
+def test_a_deposit_for_a_payout_email_is_tied_to_it_and_the_dashboard_shows_money_in(con, tmp_path):
+    sales.add(con, {"platform": "eBay", "item": "ETB", "payout": 88.5, "date": "2026-10-12"}, "email")
+    rows = ("Date,Description,Amount\n10/15/2026,EBAY COM PAYOUT X1,88.50\n10/16/2026,MERCARI INC PAYOUT,60.00\n"
+            "10/17/2026,EBAY COM PAYOUT X2,40.00\n")
+    bank.import_file(con, "chk.csv", rows.encode(), "Checking", "negative")
+    assert sorted((d["platform"], d["amount"]) for d in sales.deposits(con)) == [("Mercari", -60.0), ("eBay", -40.0)]
+    assert len(sales.rows(con)) == 1  # the eBay payout isn't counted twice
+    from jigstream import overview
+    assert overview.summary(con, "2026")["income"] == 88.5
+    page = create_app(str(tmp_path / "s.db")).test_client().get("/?year=2026").get_data(as_text=True)
+    assert "Sold in 2026" in page and "$88.50" in page
