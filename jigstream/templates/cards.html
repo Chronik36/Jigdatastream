@@ -7,7 +7,7 @@
 td{vertical-align:middle}
 .num{font-family:ui-monospace,Menlo,monospace;font-size:13px;white-space:nowrap}
 .status-active{color:var(--green);background:var(--green-soft);border-color:rgba(61,220,132,.3)}
-.status-inactive{color:var(--muted)}
+.status-inactive{color:var(--muted)}.status-locked{color:var(--orange);background:rgba(255,138,61,.1);border-color:rgba(255,138,61,.3)}
 .acts{display:flex;gap:2px}.acts svg{width:16px;height:16px}
 .linkform{display:flex;gap:6px;margin:0}.linkform select{margin:0;padding:4px 8px;font-size:12px;max-width:170px}
 dialog{width:min(600px,94vw)}
@@ -19,7 +19,7 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
 @media (max-width:900px){.playout{grid-template-columns:1fr}}
 </style>
 <div class="phead"><h2>{{"All cards" if group is none else (group or "No group")}} <span class="muted" style="font-size:15px;font-weight:500">{{cards|length}} card{{"" if cards|length == 1 else "s"}}</span></h2>
-<button type="button" onclick="document.getElementById('adddlg').showModal()">+ Add cards</button></div>
+<span style="display:flex;gap:8px"><a class="btn ghost" href="/cards/locks">Lock / unlock in bank</a><button type="button" onclick="document.getElementById('adddlg').showModal()">+ Add cards</button></span></div>
 <div class="playout">
 <aside class="gside">
   <a href="/cards" class="{{'on' if group is none}}">All cards <span>{{total}}</span></a>
@@ -50,7 +50,7 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
 <td>{{k.exp}}</td><td><span class="pill">{{k.card_type or "Standard"}}</span></td>
 <td>{{k.spend_limit|money if k.spend_limit else "—"}}</td>
 <td><span class="pill status-{{k.status}}">● {{k.status|title}}</span></td>
-<td><div class="acts"><button type="button" title="Show the full number for 20 seconds" onclick="reveal(this, {{k.id}})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+<td><div class="acts">{% if k.secret %}<button type="button" title="Show the full number for 20 seconds" onclick="reveal(this, {{k.id}})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>{% endif %}
 <form method="post" action="/cards/bulk" onsubmit="return confirm('Delete this card?')" style="margin:0"><input type="hidden" name="ids" value="{{k.id}}"><button name="action" value="delete" title="Delete" style="color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></form></div></td>
 </tr>{% else %}<tr><td colspan="10" class="muted">No cards yet. Press "+ Add cards".</td></tr>{% endfor %}
 </tbody></table>
