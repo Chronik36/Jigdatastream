@@ -70,8 +70,11 @@ PRESETS = {
 
 def _setup(con):
     con.executescript(SCHEMA)
-    if "list_body" not in {r[1] for r in con.execute("PRAGMA table_info(proxy_accounts)")}:
-        con.execute("ALTER TABLE proxy_accounts ADD COLUMN list_body TEXT")
+    have = {r[1] for r in con.execute("PRAGMA table_info(proxy_accounts)")}
+    # list_body: JSON POSTed to the list address. site_url / recipe / site_cookie: dashboards you sign in to (proxylogin.py).
+    for col in ("list_body", "site_url", "recipe", "site_cookie"):
+        if col not in have:
+            con.execute(f"ALTER TABLE proxy_accounts ADD COLUMN {col} TEXT")
 
 
 def ensure(con):
@@ -107,6 +110,17 @@ def _request(url, key, auth, body=None):
         headers["X-API-Key"] = key
     return urllib.request.Request(url.replace("{key}", urllib.request.quote(key or "", safe="")), headers=headers,
                                   data=body.encode() if body else None, method="POST" if body else "GET")
+
+
+def fetch_raw(url, method, headers, body=None, opener=None):
+    """A request exactly as a dashboard made it (proxylogin.py); urllib's errors are left to the caller."""
+    if not (url or "").startswith("https://"):
+        raise ValueError("The address must start with https://")
+    headers = {"User-Agent": "BotTrack", "Accept": "application/json, text/plain, */*", **(headers or {})}
+    req = urllib.request.Request(url, headers=headers, method=method,
+                                 data=body.encode() if body and method not in ("GET", "HEAD") else None)
+    with (opener or urllib.request.urlopen)(req, timeout=30) as r:
+        return r.read(2_000_000).decode("utf-8", "replace")
 
 
 def fetch(url, key, auth, opener=None, body=None):
@@ -254,23 +268,32 @@ def pool_lines(text):
 
 def refresh_pool(con, acct, opener=None):
     """Replace the account's group with the provider's current list. Returns how many proxies it has now."""
-    group = acct["grp"] or acct["name"]
     try:
-        body = (acct.get("list_body") or "").strip() or None
-        text = fetch(acct["list_url"], acct["api_key"], acct["auth"], opener, body)
-        try:
-            wrapped = json.loads(text)
-        except json.JSONDecodeError:
-            wrapped = None
-        if isinstance(wrapped, dict) and isinstance(wrapped.get("code"), int) and wrapped["code"] not in (0, 200) and "message" in wrapped:
-            raise ValueError(f"The provider answered {wrapped['code']}: {wrapped['message']}")
-        lines = pool_lines(text)
+        if acct.get("recipe") or acct.get("auth") == "site":
+            from . import proxylogin
+            lines = proxylogin.fresh_lines(acct, opener)
+        else:
+            body = (acct.get("list_body") or "").strip() or None
+            text = fetch(acct["list_url"], acct["api_key"], acct["auth"], opener, body)
+            try:
+                wrapped = json.loads(text)
+            except json.JSONDecodeError:
+                wrapped = None
+            if isinstance(wrapped, dict) and isinstance(wrapped.get("code"), int) and wrapped["code"] not in (0, 200) and "message" in wrapped:
+                raise ValueError(f"The provider answered {wrapped['code']}: {wrapped['message']}")
+            lines = pool_lines(text)
         if not [line for line in lines if proxies.parse_line(line)]:
             raise ValueError("The provider's list had no proxies BotTrack could read")
     except ValueError as e:
         con.execute("UPDATE proxy_accounts SET pool_error=?, refreshed_at=? WHERE id=?", (str(e)[:300], now(), acct["id"]))
         con.commit()
         raise
+    return replace_group(con, acct, lines)
+
+
+def replace_group(con, acct, lines):
+    """The account's group becomes exactly these proxies (their old speed tests go with the old ones)."""
+    group = acct["grp"] or acct["name"]
     old = [r[0] for r in con.execute("SELECT id FROM proxies WHERE grp = ? AND provider = ?", (group, acct["name"]))]
     con.executemany("DELETE FROM proxy_tests WHERE proxy_id = ?", [(i,) for i in old])
     con.execute("DELETE FROM proxies WHERE grp = ? AND provider = ?", (group, acct["name"]))
@@ -287,6 +310,9 @@ def accounts(con):
         a = dict(r)
         a["key_hint"] = ("••••" + a["api_key"][-4:]) if a["api_key"] and len(a["api_key"]) > 6 else ("set" if a["api_key"] else "")
         a.pop("api_key")
+        a["learned"] = bool(a.pop("recipe", None))  # set up by signing in (proxylogin.py)
+        a["signed_in"] = a["learned"] or a["auth"] == "site"
+        a.pop("site_cookie", None)
         a["pct_used"] = round(100 * a["used_gb"] / a["total_gb"]) if a["used_gb"] is not None and a["total_gb"] else None
         a["low"] = a["left_gb"] is not None and a["left_gb"] < LOW_GB
         out.append(a)

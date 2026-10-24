@@ -2,18 +2,36 @@
 <section class="panel" id="accounts" style="margin-bottom:16px">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Provider accounts</h3>
 <div style="display:flex;gap:8px;flex-wrap:wrap">{% if accounts %}<form method="post" action="/proxies/accounts/usage-all" style="margin:0"><button class="ghost">Check data left on all</button></form>{% endif %}
+<button type="button" class="ghost" onclick="document.getElementById('sgdlg').showModal()">Suggest a provider</button>
+{% if login %}<button type="button" class="ghost" onclick="document.getElementById('sidlg').showModal()" title="For providers with only a dashboard (Discord sign-in, no API)">Sign in to a dashboard</button>{% endif %}
 <button type="button" onclick="pxAcct()">Connect a provider</button></div></div>
+{% if learning %}<div class="aclearn" id="aclearn" data-id="{{learning}}"><span class="pulse"></span><span id="aclmsg">Waiting: sign in in the new window, then generate a proxy list there once.</span>
+<form method="post" action="/proxies/login/save" style="margin:0"><input type="hidden" name="id" value="{{learning}}"><button id="aclbtn" disabled>Use this</button></form></div>
+<script>
+(function poll() {
+  const box = document.getElementById('aclearn'); if (!box) return;
+  fetch('/proxies/login/status?id=' + box.dataset.id, {cache: 'no-store'}).then(r => r.json()).then(s => {
+    const msg = document.getElementById('aclmsg'), btn = document.getElementById('aclbtn');
+    if (s.found) {
+      msg.textContent = `Saw ${s.found} prox${s.found === 1 ? 'y' : 'ies'} ` + (s.kind === 'request' ? `from the page's own request (${s.from}).` : `after you pressed "${s.button}".`) + ' Generate again to update, or use these.';
+      btn.disabled = false;
+    } else if (!s.open) { msg.textContent = 'The window was closed before a list was made. Press Sign in to a dashboard to try again.'; return; }
+    if (s.watching !== false) setTimeout(poll, 2000);
+  }).catch(() => setTimeout(poll, 4000));
+})();
+</script>{% endif %}
 <p class="muted" style="font-size:12.5px">Data used and left on each plan, and a Refresh pool button that swaps a group for the provider's current list. Uses each provider's own API with your key; the key stays on this Mac.</p>
 {% if accounts %}<div class="acgrid">{% for a in accounts %}<div class="acard{{' low' if a.low}}">
 <div class="actop"><b>{{a.name}}</b><span class="muted small">{{a.grp or a.name}} group{% if a.pool_size is not none %} · {{a.pool_size}} proxies{% endif %}</span></div>
 {% if a.used_gb is not none or a.left_gb is not none %}<div class="acnum">{% if a.left_gb is not none %}<b>{{"%g"|format(a.left_gb)}} GB</b> left{% endif %}{% if a.used_gb is not none %} <span class="muted">· {{"%g"|format(a.used_gb)}} GB used{% if a.total_gb %} of {{"%g"|format(a.total_gb)}}{% endif %}</span>{% endif %}</div>
 {% if a.pct_used is not none %}<div class="acbar"><i style="width:{{[a.pct_used, 100]|min}}%"></i></div>{% endif %}{% if a.low %}<div class="warnt small">Running low</div>{% endif %}
-{% elif a.usage_url %}<div class="muted small">Data left not checked yet.</div>{% else %}<div class="muted small">No usage address set.</div>{% endif %}
+{% elif a.learned %}<div class="muted small">Signed-in dashboard: Refresh pool makes a fresh list the way you showed it.</div>{% elif a.signed_in %}<div class="muted small">Not learned yet: press Sign in again, then generate a list once in the window.</div>{% elif a.usage_url %}<div class="muted small">Data left not checked yet.</div>{% else %}<div class="muted small">No usage address set.</div>{% endif %}
 {% if a.usage_error %}<div class="small" style="color:var(--red)">{{a.usage_error}}</div>{% endif %}{% if a.pool_error %}<div class="small" style="color:var(--red)">Pool: {{a.pool_error}}</div>{% endif %}
 <div class="muted small">{% if a.checked_at %}Checked {{a.checked_at[:16]|replace("T", " ")}}{% endif %}{% if a.refreshed_at %} · pool {{a.refreshed_at[:16]|replace("T", " ")}}{% endif %}</div>
 <div class="acbtn">{% if a.usage_url %}<form method="post" action="/proxies/accounts/{{a.id}}/usage"><button class="ghost sm">Check data</button></form>{% endif %}
-{% if a.list_url %}<form method="post" action="/proxies/accounts/{{a.id}}/pool" data-confirm="Replace the proxies in the {{a.grp or a.name}} group with {{a.name}}'s current list? Their speed tests are cleared."><button class="ghost sm">Refresh pool</button></form>{% endif %}
-<button type="button" class="ghost sm" onclick='pxAcct({{a|tojson}})'>Edit</button>
+{% if a.list_url or a.learned %}<form method="post" action="/proxies/accounts/{{a.id}}/pool" data-confirm="Replace the proxies in the {{a.grp or a.name}} group with {{a.name}}'s current list? Their speed tests are cleared."><button class="ghost sm">Refresh pool</button></form>{% endif %}
+{% if a.signed_in %}{% if login %}<form method="post" action="/proxies/login/open"><input type="hidden" name="id" value="{{a.id}}"><button class="ghost sm">Sign in again</button></form>{% endif %}
+{% else %}<button type="button" class="ghost sm" onclick='pxAcct({{a|tojson}})'>Edit</button>{% endif %}
 <form method="post" action="/proxies/accounts/{{a.id}}/delete" data-confirm="Remove the {{a.name}} account? Its proxies stay."><button class="ghost sm">Remove</button></form></div>
 </div>{% endfor %}</div>{% endif %}
 </section>
@@ -37,7 +55,30 @@
 <p class="muted small full">Both addresses come from the provider's API docs or dashboard ("API", "generate list", "usage"). Paste one in with your key replaced by {key}; {month_start} and {now} become this month's start and the current time. Fields are dotted paths into the JSON answer, e.g. <code>data.traffic.left</code>; Check data shows the answer when a field isn't found.</p>
 </div>
 <div class="df"><button type="button" class="ghost" onclick="this.closest('dialog').close()">Cancel</button><button>Save</button></div></form></dialog>
+<dialog id="sidlg" class="md"><form method="post" action="/proxies/login/open">
+<div class="dh"><h3>Sign in to a provider's dashboard</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
+<div class="acf">
+<p class="muted small full">For providers with no API. BotTrack opens their site in a window; sign in there yourself (Discord works), then generate a proxy list once the way you normally do. BotTrack watches how the page makes it, and Refresh pool repeats that for you. The window stays signed in until BotTrack closes; after a restart, press Sign in again on the account.</p>
+<label>Name<input name="name" required placeholder="e.g. Hype Proxies"></label>
+<label>Dashboard address<input name="site_url" required placeholder="https://dash.provider.com"></label>
+<p class="muted small full">Some providers' terms don't allow automating their dashboard; use this at your own judgment for each one.</p>
+</div>
+<div class="df"><button type="button" class="ghost" onclick="this.closest('dialog').close()">Cancel</button><button>Open the site</button></div></form></dialog>
+<dialog id="sgdlg" class="md"><form method="post" action="/proxies/suggest">
+<div class="dh"><h3>Suggest a provider</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
+<div class="acf">
+<p class="muted small full">Tell the developer about a provider to set up in a coming build. It's emailed from your connected Gmail with just what you type here.</p>
+<label>Provider<input name="name" placeholder="e.g. Hype Proxies"></label>
+<label>Site<input name="site" placeholder="hypeproxies.com"></label>
+<label class="full">API docs, if you've found them<input name="docs" placeholder="https://... (or paste the endpoints in the notes)"></label>
+<label>How you sign in<select name="login"><option value="">Not sure</option><option>Discord</option><option>Email and password</option><option>API key</option><option>Whop</option></select></label>
+<label class="full">Notes<textarea name="notes" rows="4" placeholder="What you use from them (residential, ISP...), where the API page is, anything else"></textarea></label>
+</div>
+<div class="df"><button type="button" class="ghost" onclick="this.closest('dialog').close()">Cancel</button><button>Send suggestion</button></div></form></dialog>
 <style>
+.aclearn{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;padding:10px 12px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface-2);font-size:13px}
+.aclearn #aclmsg{flex:1;min-width:200px}.aclearn .pulse{width:8px;height:8px;border-radius:50%;background:var(--orange);box-shadow:0 0 8px var(--orange)}
+.acf textarea{margin:0;width:100%}
 .acgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:12px;margin-top:10px}
 .acard{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--surface-2);min-width:0;overflow-wrap:anywhere}
 .acard.low{border-color:color-mix(in srgb,var(--orange) 60%,var(--line))}.actop{display:flex;flex-direction:column}.acnum{font-size:14px}
