@@ -399,7 +399,7 @@ class Store:
             (key, fields.get("retailer"), number, fields.get("order_date"), json.dumps(fields.get("items") or []),
              fields.get("total"), fields.get("currency") or "USD", fields.get("shipping_address"),
              fields.get("tracking_number"), fields.get("carrier"), fields.get("shipping_status") or "ordered",
-             fields.get("estimated_delivery"), "[]", "added by hand"))
+             fields.get("estimated_delivery"), "[]", fields.get("account") or "added by hand"))
         self.db.commit()
         return cur.lastrowid
 
