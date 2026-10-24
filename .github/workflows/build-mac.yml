@@ -63,6 +63,7 @@ jobs:
     timeout-minutes: 30
     env:
       RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.BOTTRACK }}
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASES_WEBHOOK }}
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
@@ -109,3 +110,14 @@ jobs:
           gh release create "$tag" dist/BotTrack.dmg dist/bottrack-code.zip apk/*.apk win/*.exe \
             -R "$repo" \
             --title "BotTrack build ${{ github.run_number }}" --notes-file notes.txt
+      # Each release with its patch notes in your Discord channel, when the DISCORD_RELEASES_WEBHOOK secret is set
+      # (Discord channel > Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL).
+      - name: Post the release to Discord
+        if: github.ref == 'refs/heads/main' && env.RELEASES_TOKEN != '' && env.DISCORD_WEBHOOK != ''
+        continue-on-error: true  # Discord being down never fails a release
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASES_WEBHOOK }}
+        run: |
+          shopt -s nullglob
+          python3 packaging/discord_post.py "${{ github.run_number }}" "${{ vars.RELEASES_REPO || 'Chronik36/BotTrack-releases' }}" notes.txt \
+            "$( [ -n "$(echo win/*.exe)" ] && echo windows )" "$( [ -n "$(echo apk/*.apk)" ] && echo android )"
