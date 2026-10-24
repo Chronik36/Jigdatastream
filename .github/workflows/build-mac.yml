@@ -1,4 +1,4 @@
-name: Build BotTrack for Mac
+name: Build BotTrack for Mac and Windows
 on:
   push:
     branches: [main, claude/order-tracker-llm]
@@ -39,9 +39,26 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+  # The Windows installer ships in the same release too.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - run: powershell -ExecutionPolicy Bypass -File packaging/windows/build_windows.ps1 -Out dist
+        env:
+          BOTTRACK_BUILD: build-${{ github.run_number }}-${{ github.sha }}
+          BOTTRACK_DEVELOPER_EMAIL: ${{ secrets.BOTTRACK_LOGS_TO }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BotTrack-windows
+          path: dist/BotTrack-Setup.exe
+          retention-days: 30
+
   build:
-    needs: android
-    if: ${{ !cancelled() }}  # a broken Android build never holds back the Mac app
+    needs: [android, windows]
+    if: ${{ !cancelled() }}  # a broken Android or Windows build never holds back the Mac app
     runs-on: macos-latest  # Apple Silicon
     timeout-minutes: 30
     env:
@@ -71,6 +88,10 @@ jobs:
         if: github.ref == 'refs/heads/main' && env.RELEASES_TOKEN != ''
         continue-on-error: true  # no Android app when the signing key isn't set up
         with: {name: BotTrack-android, path: apk}
+      - uses: actions/download-artifact@v4
+        if: github.ref == 'refs/heads/main' && env.RELEASES_TOKEN != ''
+        continue-on-error: true  # a failed Windows build leaves the installer out of this release
+        with: {name: BotTrack-windows, path: win}
       - name: Publish release
         if: github.ref == 'refs/heads/main' && env.RELEASES_TOKEN != ''
         env:
@@ -85,6 +106,6 @@ jobs:
           git log $range --no-merges --pretty='- %s' | sed -E 's/ \(#[0-9]+\)$//' | head -40 > notes.txt
           [ -s notes.txt ] || git log -1 --pretty='- %s' > notes.txt
           shopt -s nullglob
-          gh release create "$tag" dist/BotTrack.dmg dist/bottrack-code.zip apk/*.apk \
+          gh release create "$tag" dist/BotTrack.dmg dist/bottrack-code.zip apk/*.apk win/*.exe \
             -R "$repo" \
             --title "BotTrack build ${{ github.run_number }}" --notes-file notes.txt

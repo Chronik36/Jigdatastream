@@ -1,8 +1,8 @@
-"""BotTrack.app's entry point: everything runs inside the app and one data folder.
+"""BotTrack's entry point on a Mac (BotTrack.app) and on Windows: everything runs inside the app and one data folder.
 
-The app bundle carries its own Python, this code, and an Ollama engine. Nothing is installed
-elsewhere: settings, the database, logs, code updates and AI models live in
-~/Library/Application Support/BotTrack. Deleting the app (and that folder) removes everything.
+The app carries its own Python, this code, and an Ollama engine. Nothing is installed elsewhere: settings, the
+database, logs, code updates and AI models live in ~/Library/Application Support/BotTrack on a Mac and in
+%LOCALAPPDATA%\BotTrack on Windows. Deleting the app (and that folder) removes everything.
 
 While the window is open BotTrack serves the dashboard, runs its own AI engine on a private
 port, syncs on a timer and checks for updates. Closing the window stops all of it.
@@ -20,7 +20,16 @@ import urllib.request
 from pathlib import Path
 
 HOME = Path.home()
-DATA = Path(os.environ.get("BOTTRACK_HOME", HOME / "Library/Application Support/BotTrack"))
+WINDOWS = sys.platform == "win32"
+
+
+def default_data():
+    if WINDOWS:
+        return Path(os.environ.get("LOCALAPPDATA") or HOME / "AppData/Local") / "BotTrack"
+    return HOME / "Library/Application Support/BotTrack"
+
+
+DATA = Path(os.environ.get("BOTTRACK_HOME") or default_data())
 RESTART_MARK = DATA / ".restarting"  # left by an update or model switch for the next launch
 OLD_HOME = HOME / "Library/Application Support/OrderTracker"
 OLD_AGENT = "com.jigdatastream.ordertracker"
@@ -43,7 +52,7 @@ def free_port(preferred):
 
 def migrate_old_install(data=DATA, old=OLD_HOME, run=subprocess.run):
     """Bring settings and data over from the earlier installer version, then remove its pieces."""
-    if not old.exists() or (data / ".migrated").exists():
+    if WINDOWS or not old.exists() or (data / ".migrated").exists():
         return False
     logger.info("moving data from the old Order Tracker install at %s", old)
     data.mkdir(parents=True, exist_ok=True)
@@ -177,9 +186,19 @@ def pull(model):
                 return
 
 
+def resources(bundle):
+    """Where the app keeps its Python, code and engines: inside BotTrack.app, or the Windows install folder."""
+    return bundle if WINDOWS else bundle / "Contents/Resources"
+
+
+def no_window():
+    """Popen flags that keep a Windows console from flashing up for a background program."""
+    return {"creationflags": subprocess.CREATE_NO_WINDOW} if WINDOWS else {}
+
+
 def start_ai(bundle, models_dir, model):
     """Run the bundled Ollama on a private port with its models in BotTrack's folder."""
-    engine = bundle / "Contents/Resources/ollama/ollama"
+    engine = resources(bundle) / "ollama" / ("ollama.exe" if WINDOWS else "ollama")
     # Tuned for one 14B model on a 16 GB Mac. 8K context fits the prompt, a long email and two examples
     # (the 4K default cut prompts short); flash attention and an 8-bit cache keep that context small and fast;
     # one model and one request at a time, so a second copy never pushes the Mac into swap.
@@ -188,7 +207,7 @@ def start_ai(bundle, models_dir, model):
                OLLAMA_FLASH_ATTENTION="1", OLLAMA_KV_CACHE_TYPE="q8_0", OLLAMA_NUM_PARALLEL="1",
                OLLAMA_MAX_LOADED_MODELS="1")
     log = open(DATA / "logs" / "ai-engine.log", "ab")
-    proc = subprocess.Popen([str(engine), "serve"], env=env, stdout=log, stderr=log)
+    proc = subprocess.Popen([str(engine), "serve"], env=env, stdout=log, stderr=log, **no_window())
 
     def prepare():
         try:
@@ -238,7 +257,7 @@ def start_mlx_engine(models_dir, model):
 
 
 def main():
-    bundle = Path(os.environ.get("BOTTRACK_BUNDLE") or Path(sys.executable).resolve().parents[4])
+    bundle = Path(os.environ.get("BOTTRACK_BUNDLE") or Path(sys.executable).resolve().parents[1 if WINDOWS else 4])
     DATA.mkdir(parents=True, exist_ok=True)
     os.chdir(DATA)
     (DATA / "logs").mkdir(exist_ok=True)
@@ -280,7 +299,12 @@ def main():
         RESTART_MARK.touch()  # the next launch opens on the loading screen, then Setup
         ai.terminate()
         engines.stop_mlx()
-        subprocess.Popen(["/bin/sh", "-c", f"sleep 2; open -n '{bundle}'"], start_new_session=True)
+        if WINDOWS:  # the launcher next to the app's Python picks the new code, like BotTrack.app's does
+            subprocess.Popen([str(bundle / "python" / "pythonw.exe"), str(bundle / "BotTrack.pyw")],
+                             env=dict(os.environ, BOTTRACK_RELAUNCH="1"),  # it waits for this copy to close
+                             creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS)
+        else:
+            subprocess.Popen(["/bin/sh", "-c", f"sleep 2; open -n '{bundle}'"], start_new_session=True)
     updater.relaunch = relaunch
     app = create_app()
     app.config["AI_STATE"] = ai_state
@@ -327,7 +351,8 @@ def main():
     restarted = RESTART_MARK.exists()
     RESTART_MARK.unlink(missing_ok=True)
     try:
-        open_window(f"http://127.0.0.1:{port}", bundle / "Contents/Resources/AppIcon.icns", restarted=restarted)
+        open_window(f"http://127.0.0.1:{port}", resources(bundle) / ("BotTrack.ico" if WINDOWS else "AppIcon.icns"),
+                    restarted=restarted)
     finally:
         # The phone link keeps running after BotTrack closes, so it keeps the same address and paired
         # phones (iPhones too) reconnect by themselves when BotTrack opens again. Turning phone access

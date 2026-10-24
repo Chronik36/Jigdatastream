@@ -238,8 +238,32 @@ def _cookie_dicts(simple_cookies):
     return out
 
 
+def _set_cookies_windows(window, cookies):
+    """Windows: the same through WebView2's cookie manager, on the window's own thread."""
+    try:
+        from System import Action
+        from webview.platforms.winforms import BrowserView
+        form = BrowserView.instances[window.uid]
+        web = form.browser.webview
+
+        def put():
+            manager = web.CoreWebView2.CookieManager
+            for c in cookies:
+                cookie = manager.CreateCookie(c["name"], c["value"], c.get("domain") or "", c.get("path") or "/")
+                cookie.IsSecure = bool(c.get("secure"))
+                manager.AddOrUpdateCookie(cookie)
+        form.Invoke(Action(put))
+        return True
+    except Exception:
+        logger.debug("no WebView2 cookie store to restore into", exc_info=True)
+        return False
+
+
 def _set_cookies(window, cookies):
     """Put saved cookies into the window's WebKit cookie store (pywebview has no call for it)."""
+    import sys
+    if sys.platform == "win32":
+        return _set_cookies_windows(window, cookies)
     try:
         import Foundation
         from PyObjCTools import AppHelper
