@@ -14,7 +14,7 @@ from collections import Counter
 from datetime import datetime, timezone
 
 from . import address as A
-from . import cardcheck, parsers, profilematch, stuck
+from . import cardcheck, parsers, profilematch, profiles, stuck
 
 GROUP_FIELDS = ["proxy group", "proxy list", "proxylist", "proxy profile", "proxy set"]
 PROXY_FIELDS = ["proxy", "proxies", "proxy used", "ip"]
@@ -172,10 +172,13 @@ def rows(con, matched=None, links=None):
     matched = {c["id"]: c for c in (matched if matched is not None else stuck.cross_reference(con))}
     links = links if links is not None else cardcheck.report(con, list(matched.values()))["links"]
     homes = profile_addresses(con)
+    resolve = profiles.resolver(con)
     out = []
     for r in con.execute("SELECT * FROM checkouts ORDER BY ts"):
         c = matched.get(r["id"]) or dict(r, order=None, refund=None, state=None)
         c = dict(c, card=links.get(r["id"]))
+        # Shown and grouped by the saved profile ("Profile 1 (Target)" when two sites share a bot's name).
+        c["profile"] = c.get("profile_key") or (resolve(r["profile"], r["site"]) if r["profile"] else r["profile"])
         c["proxy_group"], c["proxy"] = proxy_of(r["raw"])
         c.pop("raw", None)
         c["day"], c["outcome"] = day_of(c["ts"]), outcome(c)

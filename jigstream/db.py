@@ -57,7 +57,10 @@ CREATE TABLE IF NOT EXISTS saved_addresses (
 # Columns added after the first release; created on older databases at startup.
 MIGRATIONS = [("profiles", "card_brand", "TEXT"), ("profiles", "card_exp", "TEXT"), ("profiles", "fmt", "TEXT"),
               ("profiles", "group_name", "TEXT"), ("profiles", "card_holder", "TEXT"),
-              ("profiles", "card_id", "INTEGER"), ("profiles", "site", "TEXT")]
+              ("profiles", "card_id", "INTEGER"), ("profiles", "site", "TEXT"),
+              # The name the bot knows the profile by. `name` is BotTrack's own, unique key: the same as the bot's
+              # name, or tagged with its retail site ("Profile 1 (Target)") when two sites share a name.
+              ("profiles", "bot_name", "TEXT")]
 
 
 _ready = set()  # (database file, part) pairs already set up by this process
