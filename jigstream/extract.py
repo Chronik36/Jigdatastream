@@ -400,10 +400,18 @@ def compact(body):
     return text
 
 
+def trim(text, limit):
+    """At most `limit` characters: the start (items, order number) and the end (totals, address) of a long email."""
+    if len(text) <= limit:
+        return text
+    head = int(limit * 0.7)
+    return text[:head].rstrip() + "\n[...]\n" + text[-(limit - head - 7):].lstrip()
+
+
 def email_prompt(email, max_body_chars=12000, platforms=()):
     user = (
         f"From: {email.sender}\nSubject: {email.subject}\nDate: {email.date}\n\n"
-        f"{compact(email.body)[:max_body_chars]}"
+        f"{trim(compact(email.body), max_body_chars)}"
     )
     signals = botting_signals(email)
     if signals:
