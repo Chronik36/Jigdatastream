@@ -32,6 +32,8 @@ def inline(html):
 
 
 def main(out):
+    out = Path(out).resolve()  # before moving into the temp folder
+    cwd = os.getcwd()
     with tempfile.TemporaryDirectory() as tmp:
         os.chdir(tmp)
         os.environ.update(BOTTRACK_HOME=tmp, UI_THEME="light")
@@ -41,11 +43,12 @@ def main(out):
         accountkeys.PUBLIC_FILE = empty  # the manual opens without a key
         from jigstream.app import create_app
         html = create_app(str(Path(tmp) / "m.db")).test_client().get("/manual").get_data(as_text=True)
+        os.chdir(cwd)
     html = html.replace("</head>", PRINT + "</head>", 1)
     html = re.sub(r"<title>.*?</title>", "<title>BotTrack Manual</title>", html, count=1, flags=re.S)
-    Path(out).parent.mkdir(parents=True, exist_ok=True)
-    Path(out).write_text(inline(html))
-    print(f"wrote {out} ({Path(out).stat().st_size // 1024} KB)")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(inline(html))
+    print(f"wrote {out} ({out.stat().st_size // 1024} KB)")
 
 
 if __name__ == "__main__":
