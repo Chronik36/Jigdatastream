@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block body %}
+<div style="max-width:560px;margin:4vh auto 0">
+<h2>Enter your BotTrack key</h2>
+<p class="muted">BotTrack needs a key made for your Gmail address. Ask the person who sent you BotTrack for one, then paste it here.
+The key works on every computer (Mac or Windows) where that Gmail is connected.</p>
+{% if s.why and s.grace_until %}<div class="flash">You can keep using BotTrack until {{s.grace_until}}. {{s.why}}</div>{% endif %}
+<form method="post" class="panel" style="display:flex;flex-direction:column;gap:10px">
+<label>Your key<br><textarea name="key" rows="3" required placeholder="BT1K-…" style="width:100%;font-family:ui-monospace,Menlo,monospace" autocomplete="off"></textarea></label>
+{% if accounts %}<p class="muted small" style="margin:0">Gmail connected here: {{accounts|join(", ")}}</p>{% endif %}
+<details{% if email or not accounts %} open{% endif %}><summary class="muted">The key is for a Gmail that isn't connected here yet</summary>
+<p class="muted small">Gmail needs an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">app password</a>
+(a 16-letter code; 2-Step Verification has to be on). BotTrack only reads your mail, and it stays on this computer.</p>
+<input type="email" name="address" value="{{email}}" placeholder="you@gmail.com" style="width:100%">
+<input type="password" name="password" placeholder="App password" autocomplete="off" style="width:100%;margin-top:8px"></details>
+<button>Unlock BotTrack</button></form>
+</div>
+{% endblock %}
