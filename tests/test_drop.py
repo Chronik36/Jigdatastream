@@ -313,3 +313,23 @@ def test_click_through_checkout_profile_address(tmp_path, monkeypatch):
     assert "Everything at this address" in client.get("/profiles").get_data(as_text=True)
     assert "Open profile" in client.get("/drop?day=2026-10-20&site=Target&by=profile&name=Ana").get_data(as_text=True)
     assert client.get("/address").status_code == 200
+
+
+def test_things_to_train_teaches_a_sender_and_a_kind_of_message(tmp_path):
+    from jigstream import db, webtrain
+    c = Store(db.connect(str(tmp_path / "w.db"))).db
+    task = lambda i: {"username": "My Bot Hooks", "embeds": [{"title": f"Task {i} started", "timestamp": f"2026-10-0{i}T00:00:00Z"}]}
+    win = {"username": "My Bot Hooks", "embeds": [{"title": "Checked out!", "color": 0x3DDC84, "timestamp": "2026-10-05T00:00:00Z",
+                                                   "fields": [{"name": "Site", "value": "Target"}, {"name": "Profile", "value": "A"}]}]}
+    parsers.ingest(c, json.dumps([task(1), task(2), task(3), win]))
+    cards = webtrain.queue(c)
+    assert [g["n"] for g in cards] == [3, 1]  # three task logs are one card
+    client = create_app(str(tmp_path / "w.db")).test_client()
+    assert "3 like this" in client.get("/train").get_data(as_text=True)
+    client.post(f"/train/{cards[0]['id']}", data={"bot": "__other__", "bot_other": "Cyber", "status": "ignored"})
+    client.post(f"/train/{cards[1]['id']}", data={"status": "success"})
+    rows = {r["status"]: r["bot"] for r in c.execute("SELECT bot, status FROM checkouts")}
+    assert rows == {"ignored": "Cyber", "success": "Cyber"} and webtrain.queue(c) == []
+    assert len(drop.rows(c)) == 1  # task logs aren't checkout attempts
+    parsers.ingest(c, json.dumps([task(4)]))  # a new one is placed by what was taught
+    assert c.execute("SELECT bot, status FROM checkouts WHERE ts LIKE '2026-10-04%'").fetchone()[:] == ("Cyber", "ignored")

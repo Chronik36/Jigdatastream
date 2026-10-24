@@ -203,8 +203,8 @@ def reclassify(con, bot="Hayha"):
     """Re-read stored checkouts of one bot from their raw embed, after a parsing rule changed. Returns how many
     changed status. The fingerprint follows, so importing the same webhook again doesn't add it twice."""
     changed = 0
-    for row in con.execute("SELECT id, status, product, price, fingerprint, raw FROM checkouts WHERE bot = ?",
-                           (bot,)).fetchall():
+    for row in con.execute("SELECT id, status, product, price, fingerprint, raw FROM checkouts WHERE bot = ?"
+                           " AND COALESCE(labeled, 0) = 0", (bot,)).fetchall():
         try:
             raw = json.loads(row["raw"] or "{}")
         except ValueError:
@@ -245,15 +245,18 @@ def move_updates(con):
 
 
 def ingest(con, text):
-    n = 0
+    from . import webtrain
+    n, teach = 0, webtrain.Rules(con)
     for r in parse_text(text):
         if r["update"]:  # not a checkout: how an earlier one turned out
             n += con.execute(UPDATE_SQL, r).rowcount
             continue
+        r["labeled"] = 1 if teach.apply(r) else None  # taught on Things to train; the fingerprint stays as parsed
         cur = con.execute(
             """INSERT OR IGNORE INTO checkouts
-            (fingerprint,bot,status,reason,site,product,size,price,profile,order_number,email,ts,raw)
-            VALUES (:fingerprint,:bot,:status,:reason,:site,:product,:size,:price,:profile,:order_number,:email,:ts,:raw)""",
+            (fingerprint,bot,status,reason,site,product,size,price,profile,order_number,email,ts,raw,labeled)
+            VALUES (:fingerprint,:bot,:status,:reason,:site,:product,:size,:price,:profile,:order_number,:email,:ts,:raw,
+                    :labeled)""",
             r,
         )
         n += cur.rowcount

@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS checkouts (
     profile TEXT, order_number TEXT, email TEXT,
     ts TEXT, raw TEXT
 );
+-- What you taught on Things to train (webtrain.py): which bot a webhook sender is, and what a kind of message is.
+CREATE TABLE IF NOT EXISTS webhook_rules (kind TEXT, key TEXT, value TEXT, PRIMARY KEY (kind, key));
 CREATE TABLE IF NOT EXISTS profiles (
     name TEXT PRIMARY KEY,
     bot TEXT, first_name TEXT, last_name TEXT, phone TEXT, email TEXT,
@@ -60,7 +62,8 @@ MIGRATIONS = [("profiles", "card_brand", "TEXT"), ("profiles", "card_exp", "TEXT
               ("profiles", "card_id", "INTEGER"), ("profiles", "site", "TEXT"),
               # The name the bot knows the profile by. `name` is BotTrack's own, unique key: the same as the bot's
               # name, or tagged with its retail site ("Profile 1 (Target)") when two sites share a name.
-              ("profiles", "bot_name", "TEXT")]
+              ("profiles", "bot_name", "TEXT"),
+              ("checkouts", "labeled", "INTEGER")]
 
 
 _ready = set()  # (database file, part) pairs already set up by this process
