@@ -39,7 +39,7 @@
 <div class="xgrid">
 <div class="panel"><h4>Spend by month<span class="sp"></span><span class="muted" style="font-weight:400">last 12 months</span></h4>
 {% if chart.legend %}
-<div style="overflow-x:auto"><svg class="chart" viewBox="0 0 {{chart.width}} {{chart.height}}" width="100%" style="min-width:520px" role="img" aria-label="Botting spend per month by category">
+<div><svg class="chart" viewBox="0 0 {{chart.width}} {{chart.height}}" width="100%" role="img" aria-label="Botting spend per month by category">
 {% for g in chart.grid %}<line x1="{{chart.left}}" x2="{{chart.width - chart.right}}" y1="{{g.y}}" y2="{{g.y}}" stroke="{{'#2c3d7c' if loop.first else '#1f2d63'}}"/>
 <text x="{{chart.left - 8}}" y="{{g.y + 4}}" text-anchor="end">${{"{:,.0f}".format(g.v)}}</text>{% endfor %}
 {% for b in chart.bars %}<g class="bar"><title>{{b.label}} {{b.month[:4]}}: {{b.total|money}}{% for s in b.segs %}&#10;{{s.cat|replace("_", " ")|capitalize}} {{s.amount|money}}{% endfor %}</title>

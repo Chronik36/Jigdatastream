@@ -1,13 +1,17 @@
 <style>
-/* Every page fits its window, however narrow: grid columns may shrink, wide tables scroll inside their own box
-   instead of widening the page, and under 700px tables with several columns turn into cards. */
+/* Every page fits its window, however narrow, with no scroll bars inside it: grid columns shrink, tables
+   that can't fit across turn into cards, and narrow tables wrap their text instead of scrolling sideways. */
 .shell,main{min-width:0}
-main .playout>*,main .cols>*,main .grid>*,main .xgrid>*,main .dgrid>*,main .igrid>*{min-width:0}
+main{overflow-x:clip}
+main .playout>*,main .cols>*,main .grid>*,main .xgrid>*,main .dgrid>*,main .igrid>*,main .panel{min-width:0}
 main textarea,main input,main select{max-width:100%;box-sizing:border-box}
 main svg:not(.i),main img{max-width:100%}
 main img{height:auto}
-.pwide{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
-.pwide>table{margin-bottom:0}
+main table:not(.cardy) td,main table.wrapt th{overflow-wrap:anywhere}
+main table.wrapt td,main table.wrapt th{white-space:normal}
+/* Boxes that still have to scroll up and down (side panes, dialogs, long previews) scroll without a bar. */
+main *,dialog,dialog *,.snav{scrollbar-width:none}
+main *::-webkit-scrollbar,dialog::-webkit-scrollbar,dialog *::-webkit-scrollbar,.snav::-webkit-scrollbar{display:none;width:0;height:0}
 @media (max-width:900px){
   body .playout{grid-template-columns:minmax(0,1fr)}
   main svg:not(.i){height:auto}
@@ -18,7 +22,8 @@ main img{height:auto}
   table.cardy thead{display:none}
   table.cardy tr{display:block;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px}
   table.cardy td{display:flex;flex-wrap:wrap;gap:6px 12px;justify-content:space-between;align-items:baseline;border:0;padding:5px 0;text-align:right;white-space:normal}
-  table.cardy td>*{min-width:0;max-width:100%;overflow-wrap:anywhere}
+  table.cardy td>*{min-width:0;max-width:100%;overflow-wrap:anywhere;flex-wrap:wrap}
+  table.cardy td>details,table.cardy td>table{flex:1 1 100%}
   table.cardy td>form,table.cardy td>select{margin-left:auto}
   table.cardy td:first-child{white-space:normal}
   table.cardy td:before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:600;text-align:left;flex:none;max-width:40%}
@@ -33,7 +38,8 @@ main img{height:auto}
   table.cardy.stack thead{display:none}
   table.cardy.stack tr{display:block;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px}
   table.cardy.stack td{display:flex;flex-wrap:wrap;gap:6px 12px;justify-content:space-between;align-items:baseline;border:0;padding:5px 0;text-align:right;white-space:normal}
-  table.cardy.stack td>*{min-width:0;max-width:100%;overflow-wrap:anywhere}
+  table.cardy.stack td>*{min-width:0;max-width:100%;overflow-wrap:anywhere;flex-wrap:wrap}
+  table.cardy.stack td>details,table.cardy.stack td>table{flex:1 1 100%}
   table.cardy.stack td>form,table.cardy.stack td>select{margin-left:auto}
   table.cardy.stack td:first-child{white-space:normal}
   table.cardy.stack td:before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:600;text-align:left;flex:none;max-width:40%}
@@ -42,43 +48,40 @@ main img{height:auto}
 </style>
 <script>
 (function () {
-  function scrolls(el) {
-    for (var p = el.parentElement; p && p.tagName !== 'MAIN'; p = p.parentElement) {
-      var o = getComputedStyle(p).overflowX;
-      if (o === 'auto' || o === 'scroll') return true;
-    }
-    return false;
+  // Cards when a table can't fit across its box, back to a table when there's room again.
+  // A table too narrow to card (fewer than 3 columns) wraps its text instead.
+  function room(box) {
+    var s = getComputedStyle(box);
+    return box.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
   }
-  // Cards when the table can't fit across its box; back to a table when the window is widened again.
   function fit(t) {
-    t.classList.remove('stack');
     var box = t.parentElement;
-    if (box && box.classList.contains('pwide')) box = box.parentElement;
-    if (box && t.scrollWidth > box.clientWidth) t.classList.add('stack');
+    if (!box) return;
+    var kind = t.classList.contains('cardy') ? 'stack' : 'wrapt';
+    t.classList.remove(kind);
+    if (t.scrollWidth > room(box) + 1) t.classList.add(kind);
   }
+  function fitAll() { document.querySelectorAll('main table').forEach(fit); }
   var resizing;
-  addEventListener('resize', function () {
-    clearTimeout(resizing);
-    resizing = setTimeout(function () { document.querySelectorAll('main table.cardy').forEach(fit); }, 150);
-  });
+  function later() { clearTimeout(resizing); resizing = setTimeout(fitAll, 120); }
+  addEventListener('resize', later);
+  document.addEventListener('toggle', later, true);  // an opened <details> can make its table wider
+  var main = document.querySelector('main');
+  if (main && window.ResizeObserver) new ResizeObserver(later).observe(main);  // sidebar folding changes the width too
   document.querySelectorAll('main table').forEach(function (t) {
     // Label each cell with its column, so a narrow window can show the rows as cards.
-    var first = t.querySelector('tbody tr');
+    var first = t.querySelector(':scope>tbody>tr');
     if (!t.tHead && first && first.children.length && Array.prototype.every.call(first.children, function (c) { return c.tagName === 'TH'; })) {
       t.createTHead().appendChild(first);  // a header row written inside the body still names the columns
     }
-    var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) { return th.textContent.trim(); });
+    var heads = Array.prototype.map.call(t.querySelectorAll(':scope>thead th'), function (th) { return th.textContent.trim(); });
     if (heads.length >= 3 && !t.classList.contains('nocard')) {
-      t.querySelectorAll('tbody tr').forEach(function (tr) {
+      t.querySelectorAll(':scope>tbody>tr').forEach(function (tr) {  // not the rows of a table nested in a cell
         Array.prototype.forEach.call(tr.children, function (td, i) { td.setAttribute('data-label', td.colSpan > 1 ? '' : (heads[i] || '')); });
       });
       t.classList.add('cardy');
     }
-    if (t.classList.contains('cardy')) fit(t);
-    if (!scrolls(t)) {  // too wide for the window: it scrolls sideways on its own, the page doesn't
-      var box = document.createElement('div');
-      box.className = 'pwide'; t.before(box); box.appendChild(t);
-    }
+    fit(t);
   });
 })();
 </script>

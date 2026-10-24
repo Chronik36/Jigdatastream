@@ -8,7 +8,7 @@ A tied charge that wasn't refunded turns an Unsure checkout Good on <a href="/dr
 {% if not r.cards %}<p class="muted">Nothing to check yet. Import a card statement or link your bank on the <a href="/bank">Bank</a> page, and add your bot webhooks. Only charges at stores your bots or order emails name are counted, and a profile's card is known from its last 4 digits.</p>{% else %}
 <div class="stats"><div class="card ok">Went through <b>{{r.total.went_through}}</b></div><div class="card">Charged <b>{{r.total.charged}}</b></div>
 <div class="card bad">Refunded <b>{{r.total.refunded}}</b></div><div class="card">Bot checkouts <b>{{r.total.bot}}</b></div><div class="card" style="--c:var(--orange)">Never charged <b style="color:var(--orange)">{{r.total.never_charged}}</b></div></div>
-{% for a in r.cards %}<section class="panel" style="margin:14px 0;overflow-x:auto">
+{% for a in r.cards %}<section class="panel" style="margin:14px 0">
 <h3 style="margin-top:0">{{a.name}}{% if a.last4 %} <span class="muted">•••• {{a.last4}}</span>{% endif %} <span class="muted" style="font-weight:400;font-size:14px">· {{a.spent|money}} kept</span></h3>
 <p style="margin:6px 0">{{ sums(a) }}{% if a.profiles %}<span class="muted"> · profiles on this card: {{a.profiles|join(", ")}}</span>{% elif not a.last4 %}<span class="muted"> · this card has no last 4 digits, so any profile's checkouts can count here</span>{% endif %}</p>
 <table><thead><tr><th>Store</th><th>Amount</th><th>Likely product</th><th>Charged on</th><th title="Charges minus refunds">Went through</th><th>Charged</th><th>Refunded</th><th>Bot checkouts</th><th>Tied 1 to 1</th></tr></thead><tbody>
