@@ -19,7 +19,7 @@
 <section class="panel" style="margin:14px 0"><h3 style="margin-top:0">Order emails</h3>
 <table><thead><tr><th>Date</th><th>Site / order #</th><th>Total</th><th>Status</th><th>Profile</th></tr></thead><tbody>
 {% for o in r.orders %}{% set status = o.shipping_status or "unknown" %}<tr><td>{{o.order_date or "-"}}</td><td><a href="/orders#order-{{o.id}}"><b>{{o.retailer or "-"}}</b></a>{% if o.order_number %}<div class="muted"><span data-copy>{{o.order_number}}</span></div>{% endif %}</td>
-<td class="num">{{o.total|money(o.currency)}}</td><td><span class="pill s-{{status}}">{{status|status_label}}</span></td>
+<td class="num"><span data-edit-price="{{o.id}}" data-value="{{o.total if o.total is not none else ''}}">{{o.total|money(o.currency)}}</span></td><td><span class="pill s-{{status}}" data-edit-status="{{o.id}}" data-status="{{status}}">{{status|status_label}}</span></td>
 <td>{% if o.profile_name %}<a href="/profile-orders?profile={{o.profile_name|urlencode}}">{{o.profile_name}}</a>{% else %}-{% endif %}</td></tr>
 {% else %}<tr><td colspan="5" class="muted">No order emails shipped here yet.</td></tr>{% endfor %}</tbody></table></section>
 {% endif %}

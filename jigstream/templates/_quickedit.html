@@ -1,0 +1,48 @@
+{# Tap any order price or status to fix it; the fix teaches the AI (prices: it re-reads the order's emails; statuses:
+   it searches the inboxes for the order's emails and learns from them). Mark an element with
+   data-edit-price="<order id>" data-value="<total>" or data-edit-status="<order id>" data-status="<status>". #}
+<style>
+[data-edit-price],[data-edit-status]{cursor:pointer}
+[data-edit-price]{border-bottom:1px dashed color-mix(in srgb,var(--accent) 55%,transparent)}
+[data-edit-price]:hover,[data-edit-status]:hover{filter:brightness(1.15)}
+[data-edit-price]:after,[data-edit-status]:after{content:"✎";font-size:.8em;margin-left:4px;opacity:0;transition:opacity .15s}
+[data-edit-price]:hover:after,[data-edit-status]:hover:after{opacity:.7}
+#qe form{display:flex;flex-direction:column;gap:10px;min-width:260px}
+#qe .row{display:flex;gap:8px;justify-content:flex-end}
+</style>
+<dialog id="qe"><form method="post" id="qe-form"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+<input type="hidden" name="back" id="qe-back">
+<b id="qe-title"></b><span class="muted small" id="qe-note"></span>
+<input name="price" id="qe-price" inputmode="decimal" autocomplete="off" placeholder="45.00">
+<select name="status" id="qe-status">{% for c in edit_statuses %}{% if c == "not_an_order" %}<option disabled>──────────</option>{% endif %}<option value="{{c}}">{{c|status_label}}</option>{% endfor %}</select>
+<div class="row"><button type="button" class="ghost" id="qe-cancel">Cancel</button><button>Save and teach</button></div></form></dialog>
+<script>
+(function () {
+  var dlg = document.getElementById('qe'), form = document.getElementById('qe-form');
+  var price = document.getElementById('qe-price'), status = document.getElementById('qe-status');
+  document.getElementById('qe-cancel').onclick = function () { dlg.close(); };
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest && e.target.closest('[data-edit-price],[data-edit-status]');
+    if (!el) return;
+    e.preventDefault(); e.stopPropagation();
+    var isPrice = el.hasAttribute('data-edit-price');
+    price.hidden = !isPrice; price.disabled = !isPrice; status.hidden = isPrice; status.disabled = isPrice;
+    if (isPrice) {
+      form.action = '/prices/order/' + el.getAttribute('data-edit-price');
+      document.getElementById('qe-back').value = location.pathname + location.search + location.hash;
+      price.value = el.getAttribute('data-value') || '';
+      document.getElementById('qe-title').textContent = 'The right price';
+      document.getElementById('qe-note').textContent = 'Saved for this order. The AI re-reads its emails to learn how this store writes prices.';
+    } else {
+      form.action = '/orders/' + el.getAttribute('data-edit-status') + '/label';
+      document.getElementById('qe-back').value = '1';
+      status.value = el.getAttribute('data-status') === 'shipped' ? 'in_transit' : (el.getAttribute('data-status') || '');
+      document.getElementById('qe-title').textContent = 'The right status';
+      document.getElementById('qe-note').textContent = 'The AI finds this order’s emails and learns the stage from them.';
+    }
+    dlg.showModal();
+    (isPrice ? price : status).focus();
+    if (isPrice) price.select();
+  }, true);
+})();
+</script>
