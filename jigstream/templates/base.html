@@ -1,17 +1,19 @@
 <!doctype html><html lang="en"{% if ui_theme == "light" %} data-theme="light"{% endif %}{% if ui_reveal %} class="reveal"{% endif %}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BotTrack</title><link rel="icon" href="{{url_for('static', filename='icon.png')}}">
-{% if on_phone %}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#0a1230">
+{% if on_phone %}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="{{'#ffffff' if ui_theme == 'light' else '#0a1230'}}">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="BotTrack"><link rel="manifest" href="{{url_for('mobile.manifest')}}" crossorigin="use-credentials"><link rel="apple-touch-icon" href="{{url_for('static', filename='icon.png')}}">
 <meta name="csrf" content="{{csrf_token()}}">{% endif %}
 <script>try { var bm = localStorage.getItem('bt-mini');  /* narrow windows start with the sidebar folded to icons */
   if (bm === '1' || (bm === null && innerWidth > 900 && innerWidth < 1200)) document.documentElement.classList.add('mini');
-  var t = localStorage.getItem('bt-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+} catch (e) {}</script>
+{% include "_theme_css.html" %}
 <style>
 @font-face{font-family:Inter;font-weight:400;font-display:swap;src:url("{{url_for('static', filename='fonts/inter-400.woff2')}}") format("woff2")}
 @font-face{font-family:Inter;font-weight:500;font-display:swap;src:url("{{url_for('static', filename='fonts/inter-500.woff2')}}") format("woff2")}
 @font-face{font-family:Inter;font-weight:600;font-display:swap;src:url("{{url_for('static', filename='fonts/inter-600.woff2')}}") format("woff2")}
 @font-face{font-family:Inter;font-weight:700;font-display:swap;src:url("{{url_for('static', filename='fonts/inter-700.woff2')}}") format("woff2")}
+html{background:var(--bg)}
 :root{
   /* BotTrack: navy base, light blue/teal first, green second, orange for accents */
   --bg:#0e1838;--side:#0a1230;--surface:#0f1a42;--surface-2:#15224f;--line:#1f2d63;--line-2:#2c3d7c;

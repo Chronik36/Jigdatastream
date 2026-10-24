@@ -33,7 +33,7 @@ A test opens the site's home page once through each proxy. Click a proxy for whe
 </section>
 <section>
 <form method="post" action="/proxies/test" class="pxbar">
-<select name="site" id="pxsite"><option value="all">All sites</option>{% for s in sites %}<option {{"selected" if s == site}}>{{s}}</option>{% endfor %}</select>
+<select name="site" id="pxsite">{% for s in sites %}<option {{"selected" if s == site}}>{{s}}</option>{% endfor %}</select>
 <button {{"disabled" if state.running or not groups}}>Test every proxy</button>
 <span class="muted" style="font-size:12px">or test a group or one proxy below</span></form>
 {% for g in groups %}
