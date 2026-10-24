@@ -38,3 +38,14 @@ and attaches it to each release. It installs for the current Windows user only (
 `%LOCALAPPDATA%\Programs\BotTrack`, and keeps its data in `%LOCALAPPDATA%\BotTrack`. In-app updates use the same
 `bottrack-code.zip` as the Mac app. The installer isn't code-signed, so Windows SmartScreen asks once:
 More info → Run anyway.
+
+## Release posts in Discord
+
+Each release can be posted, with its patch notes, to a channel in your Discord:
+
+1. In Discord, open the channel's settings: **Edit Channel > Integrations > Webhooks > New Webhook**, name it
+   BotTrack, then **Copy Webhook URL**.
+2. In GitHub, open Chronik36/Jigdatastream **Settings > Secrets and variables > Actions > New repository secret**,
+   name it `DISCORD_RELEASES_WEBHOOK` and paste the URL.
+
+From the next build of main on, every release is posted there. Without the secret nothing is posted.
