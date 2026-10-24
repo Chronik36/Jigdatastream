@@ -45,7 +45,7 @@
 </div>
 
 <div class="panel"><h4>Last 12 months<span class="sp"></span><span class="muted" style="font-weight:400">bars: spent · line: budget</span></h4>
-<div style="overflow-x:auto"><svg class="chart" viewBox="0 0 {{hist.width}} {{hist.height}}" width="100%" style="min-width:360px" role="img" aria-label="Monthly botting spend against budget">
+<div><svg class="chart" viewBox="0 0 {{hist.width}} {{hist.height}}" width="100%" role="img" aria-label="Monthly botting spend against budget">
 {% for g in hist.grid %}<line x1="{{hist.left}}" x2="{{hist.width - hist.right}}" y1="{{g.y}}" y2="{{g.y}}" stroke="{{'#2c3d7c' if loop.first else '#1f2d63'}}"/>
 <text x="{{hist.left - 8}}" y="{{g.y + 4}}" text-anchor="end">${{"{:,.0f}".format(g.v)}}</text>{% endfor %}
 {% for r in hist.rows %}<a href="?month={{r.month}}"><g><title>{{r.name}}: {{r.spent|money}} spent{% if r.budget %} of {{r.budget|money}}{% endif %}</title>

@@ -5,7 +5,7 @@
 .tform label{display:flex;flex-direction:column;gap:4px;font-size:12px;flex:1 1 170px;min-width:0}.tform select,.tform input[type=text]{width:100%;margin:0}
 .tform .chk{flex-direction:row;align-items:center;flex:0 0 auto;font-size:13px}</style>
 <p class="muted">Webhooks BotTrack couldn't place: the bot isn't named in them, or it can't tell what the message is. Messages from the same sender with the same kind of title are one card, so each choice covers all of them, and every webhook like it from now on. <b>Not a checkout</b> (task logs, monitors, restock pings) is left out of every count. Order and cancel emails are taught on the <a href="/inbox">Inbox</a>.</p>
-<div class="panel" style="overflow-x:auto"><h3 style="margin-top:0">Webhooks by bot</h3>
+<div class="panel"><h3 style="margin-top:0">Webhooks by bot</h3>
 <table><thead><tr><th>Bot</th><th class="num" title="Successful, declined and failed checkouts">Checkout attempts</th><th class="num">Successful</th><th class="num">Not a checkout</th><th class="num">To train</th></tr></thead><tbody>
 {% for b in counts %}<tr><td><b>{{b.bot}}</b></td><td class="num">{{b.attempts}}</td><td class="num ok">{{b.success}}</td><td class="num muted">{{b.ignored}}</td><td class="num" style="color:var(--orange)">{{b.unsure}}</td></tr>
 {% else %}<tr><td colspan="5" class="muted">No webhooks yet.</td></tr>{% endfor %}</tbody></table>
