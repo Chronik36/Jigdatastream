@@ -1,0 +1,66 @@
+{% extends "base.html" %}{% block body %}
+<p><a href="/setup">← Setup</a></p>
+<h2 style="margin:6px 0">Your other computers</h2>
+<p class="muted">Use BotTrack on your Mac and your PC and keep both the same: orders, expenses, verdicts, profiles, cards, proxies and
+training. Each computer keeps its own full copy and works on its own; changes go across within a minute whenever both are open.
+Gmail passwords, settings and Undo stay on each computer.</p>
+
+{% if invite %}<section class="panel" style="margin:14px 0">
+<h3 style="margin-top:0">Type this on the other computer</h3>
+<p>On the other computer open Setup, <b>Your other computers</b>, paste this code under <b>Link with a code</b> and press Link.
+It works for an hour, once.</p>
+<p style="font-family:ui-monospace,Menlo,monospace;word-break:break-all;user-select:all;background:var(--panel2,rgba(127,127,127,.12));padding:10px;border-radius:8px" data-copy="{{invite}}">{{invite}}</p>
+<p class="muted small">Tap the code to copy it. Send it to yourself any way you like: it only links the two computers while it's fresh,
+and everything they swap is sealed with a key only they know.</p>
+</section>{% endif %}
+
+{% if peers %}<section class="panel" style="margin:14px 0">
+<h3 style="margin-top:0">Linked with</h3>
+<div style="display:flex;flex-direction:column;gap:10px" id="peers">
+{% for p in peers %}<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+<b>{{p.name}}</b>
+<span class="muted" data-peer="{{p.id}}">{% if p.error %}<span class="bad">{{p.error}}</span>{% elif p.last_ok %}In sync, last {{p.last_ok[:16].replace("T", " ")}} UTC{% else %}Waiting for the first sync…{% endif %}</span>
+<span class="muted small">sent {{p.sent}} · got {{p.got}}</span>
+<span style="flex:1"></span>
+<form method="post" action="{{url_for('peersync.unlink_page', peer_id=p.id)}}" class="ghost" data-confirm="Stop syncing with {{p.name}}? Both computers keep everything they have now.">
+<input type="hidden" name="csrf" value="{{csrf_token()}}"><button class="ghost">Unlink</button></form>
+</div>{% endfor %}
+</div>
+<form method="post" action="{{url_for('peersync.sync_now')}}" style="margin-top:12px"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+<button {{"disabled" if state.running}}>{{"Syncing…" if state.running else "Sync now"}}</button>
+{% if backlog %}<span class="muted small">{{backlog}} change{{"s" if backlog != 1}} waiting to go across</span>{% endif %}</form>
+</section>{% endif %}
+
+<section class="panel" style="margin:14px 0;display:flex;flex-wrap:wrap;gap:24px">
+<div style="flex:1;min-width:240px">
+<h3 style="margin-top:0">Link a new computer</h3>
+<p class="muted">Install BotTrack on the other computer first (Mac or Windows). Then make a code here and type it there.</p>
+<form method="post" action="{{url_for('peersync.make_invite')}}"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Make a code</button></form>
+</div>
+<div style="flex:1;min-width:240px">
+<h3 style="margin-top:0">Link with a code</h3>
+<p class="muted">Made on the other computer.</p>
+<form method="post" action="{{url_for('peersync.join_page')}}" style="display:flex;gap:8px;flex-wrap:wrap"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+<input name="code" placeholder="BT1-…" style="flex:1;min-width:180px" autocomplete="off" required><button>Link</button></form>
+</div>
+</section>
+<p class="muted small">How it works: the computers reach each other through the same free Cloudflare link the phone uses, so this
+computer's link stays on while it's linked. When a computer restarts and its link changes, the other finds the new one through a
+private ntfy.sh topic only your computers know. If both change the same thing before they sync, the newer change wins. The same
+email or card on both is kept once.</p>
+{% if peers %}<script>
+setInterval(function () {
+  fetch('{{url_for("peersync.status")}}').then(function (r) { return r.json(); }).then(function (s) {
+    s.peers.forEach(function (p) {
+      var el = document.querySelector('[data-peer="' + p.id + '"]');
+      if (!el) return;
+      el.innerHTML = '';
+      var span = document.createElement('span');
+      if (p.error) { span.className = 'bad'; span.textContent = p.error; }
+      else span.textContent = p.last_ok ? 'In sync, last ' + p.last_ok.slice(0, 16).replace('T', ' ') + ' UTC' : 'Waiting for the first sync…';
+      el.appendChild(span);
+    });
+  }).catch(function () {});
+}, 5000);
+</script>{% endif %}
+{% endblock %}

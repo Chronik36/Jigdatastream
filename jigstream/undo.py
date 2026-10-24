@@ -34,7 +34,7 @@ def _tables(con):
     rows = con.execute("SELECT name, sql FROM sqlite_master WHERE type = 'table'").fetchall()
     virtual = [r[0] for r in rows if (r[1] or "").upper().startswith("CREATE VIRTUAL")]
     for name, _ in rows:
-        if name in SKIP or name.startswith("sqlite_") or name in virtual or any(name.startswith(v + "_") for v in virtual):
+        if name in SKIP or name.startswith(("sqlite_", "sync_")) or name in virtual or any(name.startswith(v + "_") for v in virtual):
             continue
         cols = [c[1] for c in con.execute(f'PRAGMA table_info("{name}")')]
         if cols:

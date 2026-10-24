@@ -9,7 +9,7 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import jigexpr, pricecheck, proxylogin, proxysessions, undo
+from . import jigexpr, peersync, pricecheck, proxylogin, proxysessions, undo
 from . import (analysis, bankpages, cardcheck, cardlocks, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
                packs, proxies, proxyaccounts, review, stock, stuck, tasks, tracking, training, updater, wallet, webtrain)
@@ -60,6 +60,7 @@ def create_app(db_path=None):
     app.register_blueprint(proxylogin.bp)
     app.register_blueprint(proxysessions.bp)
     app.register_blueprint(pricecheck.bp)
+    app.register_blueprint(peersync.bp)
     app.register_blueprint(packs.bp)
 
     @app.context_processor
@@ -941,6 +942,7 @@ def create_app(db_path=None):
                                tracking=carriers.state, page_reader=browsertrack._reader is not None,
                                page_tracking=os.environ.get("BROWSER_TRACKING", "1") != "0",
                                can_track=bool(carriers.available(os.environ)),
+                               computers=[p["name"] for p in peersync.peers(con())],
                                **mobile.setup_context())
 
     @app.post("/setup/discord/token")
