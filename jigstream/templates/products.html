@@ -178,7 +178,7 @@ a site that blocks automated visits is reported and you can type its price in.</
       {% if p.why %}<p class="pr-sub" style="margin:8px 0 0">When added: {{p.why}}</p>{% endif %}
       <div class="acts" style="margin-top:10px">
         <form method="post" action="/products/{{p.id}}/similar" data-loader="Searching the stores for similar products"><button class="ghost mini-btn">Find similar products</button></form>
-        <form method="post" action="/products/{{p.id}}/remove" onsubmit="return confirm('Stop tracking {{p.name|e}}?')"><button class="ghost mini-btn">Remove</button></form>
+        <form method="post" action="/products/{{p.id}}/remove" data-confirm="Stop tracking {{p.name|e}}?"><button class="ghost mini-btn">Remove</button></form>
       </div>
       <p class="pr-sub" style="margin:8px 0 0">Added {{p.added}}{% if p.updated %} · prices updated {{p.updated}}{% endif %}</p>
     </div>

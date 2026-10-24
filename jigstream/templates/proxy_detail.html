@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block body %}
+{% extends "base.html" %}{% from "_verdict.html" import verdict, checkout_table with context %}{% block body %}
 <style>
 .pdgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;align-items:start}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13.5px}.kv dt{color:var(--muted)}.kv dd{margin:0;color:var(--text);word-break:break-word}
@@ -40,5 +40,8 @@
 {% for s in sites %}{% set t = tests.get(s) %}<tr><td>{{s}}</td><td class="num ms">{{(t.ms ~ " ms") if t and t.ms is not none else "-"}}</td>
 <td>{% if t %}<span class="r-{{t.result}}">{{ {"ok": "OK", "blocked": "Site turned it away", "login": "Login rejected", "dead": "No answer", "error": "Error"}[t.result] }}</span>{% if t.error %} <span class="muted" style="font-size:12px">{{t.error}}</span>{% endif %}{% else %}<span class="muted">not tested</span>{% endif %}</td>
 <td class="muted">{{(t.tested_at or "")[:16]|replace("T", " ") if t else ""}}</td></tr>{% endfor %}</tbody></table></details>
-<form method="post" action="/proxies/delete" style="margin-top:16px" onsubmit="return confirm('Remove this proxy?')"><input type="hidden" name="id" value="{{p.id}}"><button class="danger">Remove proxy</button></form>
+<section class="panel" style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Checkouts through this proxy ({{used|length}})</h3>{% if used %}<a class="btn ghost" href="/review?src=proxy&name={{hostport|urlencode}}">Go through them</a>{% endif %}</div>
+<p class="muted" style="font-size:12.5px">Each with its profile, address and order email. Fix a result with its picker; it sticks and the AI learns from the order's emails.</p>
+{{ checkout_table(used) }}</section>
+<form method="post" action="/proxies/delete" style="margin-top:16px" data-confirm="Remove this proxy?"><input type="hidden" name="id" value="{{p.id}}"><button class="danger">Remove proxy</button></form>
 {% endblock %}

@@ -44,7 +44,7 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
 <div class="phead"><h2>Profiles <span class="muted" style="font-size:15px;font-weight:500">{{rows|length}}{% if group is not none %} in {{group or "no group"}}{% endif %}</span></h2>
 <button type="button" class="ghost" onclick="document.getElementById('exportdlg').showModal()">Export</button>
 <button type="button" onclick="openProfile()">+ Create profile</button>
-{% if total %}<form method="post" action="/profiles/clear" style="margin:0" onsubmit="return confirm('Are you sure you want to clear all profiles? This deletes all {{total}} profiles and can\'t be undone. Your cards and orders are kept.')"><input type="hidden" name="confirm" value="{{total}}"><button class="danger">Clear all profiles</button></form>{% endif %}</div>
+{% if total %}<form method="post" action="/profiles/clear" style="margin:0" data-confirm="Are you sure you want to clear all profiles? This deletes all {{total}} profiles and can't be undone. Your cards and orders are kept."><input type="hidden" name="confirm" value="{{total}}"><button class="danger">Clear all profiles</button></form>{% endif %}</div>
 
 <div class="playout">
 <aside class="gside">
@@ -57,7 +57,7 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
   {% if ungrouped %}<a href="/profiles?group=" class="{{'on' if group == ''}}"><i>No group</i> <span>{{ungrouped}}</span></a>{% endif %}
   <form method="post" action="/profiles/groups"><input type="hidden" name="action" value="add"><input name="name" placeholder="New group" required><button>Add</button></form>
   {% if group %}<form method="post" action="/profiles/groups"><input type="hidden" name="action" value="rename"><input type="hidden" name="name" value="{{group}}"><input name="new_name" placeholder="Rename {{group}}" required><button class="ghost">Save</button></form>
-  <form method="post" action="/profiles/groups" onsubmit="return confirm('Delete the group {{group}}? Its profiles are kept, just ungrouped.')"><input type="hidden" name="action" value="delete"><input type="hidden" name="name" value="{{group}}"><button class="danger" style="width:100%">Delete group</button></form>{% endif %}
+  <form method="post" action="/profiles/groups" data-confirm="Delete the group {{group}}? Its profiles are kept, just ungrouped."><input type="hidden" name="action" value="delete"><input type="hidden" name="name" value="{{group}}"><button class="danger" style="width:100%">Delete group</button></form>{% endif %}
 </aside>
 
 <section>
@@ -73,7 +73,8 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
   <button class="ghost" name="action" value="duplicate">Copy</button>
   <span class="sep"></span>
   <button type="button" onclick="openDistribute()">Mass Distribute</button>
-  <button class="danger" name="action" value="delete" onclick="return confirm('Delete the ticked profiles?')">Delete</button>
+  <button type="button" class="ghost" onclick="openRewrite()" title="Change addresses, names or phones on the ticked profiles with expressions like APT 1-%c5% or a find &amp; replace">Expressions</button>
+  <button class="danger" name="action" value="delete" data-confirm="Delete the ticked profiles?">Delete</button>
 </div>
 </form>
 
@@ -85,7 +86,7 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
   <div class="icons">
     {% if issues %}<span class="warnicon" title="{{issues|join('\n')}}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>{% endif %}
     <a class="edit" href="#" onclick="openProfile({{loop.index0}}); return false" title="Edit profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></a>
-    <form method="post" action="{{url_for('profile_delete', name=p.name)}}" onsubmit="return confirm('Delete {{p.name}}?')"><button class="del" title="Delete profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button></form>
+    <form method="post" action="{{url_for('profile_delete', name=p.name)}}" data-confirm="Delete {{p.name}}?"><button class="del" title="Delete profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button></form>
   </div>
   <h3 title="{{p.name}}">{{p.bot_name or p.name}}{% if p.site %} <span class="tag site">{{p.site}}</span>{% endif %}{% if p.group_name %} <span class="tag grp">{{p.group_name}}</span>{% endif %}{% if p.bot %} <span class="tag">{{p.bot}}</span>{% endif %}</h3>
   <div class="who" data-private>{{p.email or "no email"}}{% if p.phone %} · {{p.phone}}{% endif %}</div>
@@ -162,6 +163,77 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
 <div class="df"><button type="button" class="ghost" onclick="this.closest('dialog').close()">Cancel</button><button>Save</button></div>
 </form></dialog>
 
+
+<dialog id="rwdlg" class="md"><form method="post" action="/profiles/rewrite" id="rwform">
+<input type="hidden" name="back" value="{{request.full_path}}"><div id="rwnames"></div>
+<div class="dh"><h3>Change with expressions</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
+<div class="rwb">
+  <div class="rwleft">
+    <div class="rwrow"><label>Field<select name="field" id="rwfield">{% for f, l in [("address1","Address line 1"),("address2","Address line 2"),("city","City"),("state","State"),("zip","ZIP"),("first_name","First name"),("last_name","Last name"),("email","Email"),("phone","Phone")] %}<option value="{{f}}">{{l}}</option>{% endfor %}</select></label>
+    <label>How<select name="mode" id="rwmode"><option value="template">Set it to (template)</option><option value="regex">Find &amp; replace (regex)</option></select></label></div>
+    <label id="rwfindl" hidden>Find (regular expression, not case sensitive)<input name="find" id="rwfind" placeholder="e.g. \s*(apt|unit|#)\s*\w+$" autocomplete="off" spellcheck="false"></label>
+    <label><span id="rwrepl">Set it to</span><input name="replace" id="rwreplace" value="{value}, APT 1-%c5%" autocomplete="off" spellcheck="false"></label>
+    <p class="muted rwhint">Use <code>{value}</code> for the field as it is now, or <code>{address1}</code> <code>{address2}</code> <code>{city}</code> <code>{zip}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{email}</code> <code>{phone}</code>. In find &amp; replace, <code>\1</code> is the first group found. Every profile gets its own random picks.</p>
+    <div id="rwaddr"><label class="inl"><input type="checkbox" name="shipping" checked> Shipping address</label> <label class="inl"><input type="checkbox" name="billing" checked> Billing address</label></div>
+    <div class="rwprev"><div class="fl2">Preview <span class="muted" id="rwcount"></span> <button type="button" class="ghost sm" onclick="rwPreview()">Reroll</button></div><table class="nocard"><tbody id="rwrows"><tr><td class="muted">Type a template to see it on your profiles.</td></tr></tbody></table></div>
+  </div>
+  <div class="rwref"><input id="rwsearch" placeholder="Search expressions" autocomplete="off">
+  {% set ns = namespace(sec="") %}{% for sec, ex, what, example in expressions %}{% if sec != ns.sec %}<div class="sec">{{sec}}</div>{% set ns.sec = sec %}{% endif %}<button type="button" class="ex" data-ex="{{ex}}" title="Example: {{example}}"><span>{{what}}</span><code>{{ex}}</code></button>{% endfor %}</div>
+</div>
+<div class="df"><button type="button" class="ghost" onclick="this.closest('dialog').close()">Cancel</button><button data-confirm="Change this field on the ticked profiles? You can't undo it, but you can run another change.">Apply to profiles</button></div>
+</form></dialog>
+<style>
+.rwb{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:0}.rwleft{padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.rwleft label{display:flex;flex-direction:column;gap:4px;font-size:12px;margin:0}.rwleft input,.rwleft select{margin:0;font-family:ui-monospace,Menlo,monospace}.rwleft select{font-family:inherit}
+.rwrow{display:grid;grid-template-columns:1fr 1fr;gap:10px}.rwhint{font-size:12px;margin:0;line-height:1.5}.rwhint code{font-size:11.5px}
+label.inl{display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin-right:12px}
+.rwprev table{margin:6px 0 0;font-size:12.5px}.rwprev td{padding:6px 8px}.rwprev td.b{color:var(--muted);text-decoration:line-through}.fl2{font-size:12px;font-weight:600;display:flex;gap:8px;align-items:center}
+.btn.sm,button.sm{padding:3px 9px;font-size:11.5px;margin:0}
+.rwref{border-left:1px solid var(--line);padding:10px;max-height:60vh;overflow:auto}.rwref input{margin:0 0 6px;width:100%}
+.rwref .sec{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:10px 4px 4px}
+.rwref .ex{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;margin:0 0 2px;padding:6px 8px;background:none;border:0;box-shadow:none;color:var(--text);text-align:left;border-radius:8px;font-weight:400;font-size:12.5px}
+.rwref .ex:hover{background:var(--accent-soft)}.rwref .ex code{color:var(--accent);font-size:11.5px}
+@media (max-width:760px){.rwb{grid-template-columns:minmax(0,1fr)}.rwref{border-left:0;border-top:1px solid var(--line);max-height:220px}}
+</style>
+<script>
+function openRewrite() {
+  if (!picks().length) return btAlert('Tick the profiles to change first.');
+  copyPicks('rwnames'); rwMode(); document.getElementById('rwdlg').showModal(); rwPreview();
+}
+function rwMode() {
+  const re = document.getElementById('rwmode').value === 'regex', f = document.getElementById('rwfield').value;
+  document.getElementById('rwfindl').hidden = !re;
+  document.getElementById('rwrepl').textContent = re ? 'Replace with (expressions work here too)' : 'Set it to';
+  document.getElementById('rwaddr').hidden = !['address1', 'address2', 'city', 'state', 'zip'].includes(f);
+}
+let rwTimer;
+function rwPreview() {
+  const body = new FormData(document.getElementById('rwform')); body.set('preview', '1');
+  fetch('/profiles/rewrite', {method: 'POST', body}).then(r => r.json()).then(r => {
+    const rows = document.getElementById('rwrows'); rows.innerHTML = '';
+    document.getElementById('rwcount').textContent = r.error ? '' : `(${r.rows.length} of ${r.total})`;
+    if (r.error) { rows.innerHTML = '<tr><td class="muted"></td></tr>'; rows.querySelector('td').textContent = r.error; return; }
+    r.rows.forEach(x => {
+      const tr = document.createElement('tr');
+      [x.name, x.before, x.after].forEach((t, i) => { const td = document.createElement('td'); td.textContent = t || '—'; if (i === 1) td.className = 'b'; if (i) td.dataset.private = ''; tr.appendChild(td); });
+      rows.appendChild(tr);
+    });
+  });
+}
+['rwfield', 'rwmode'].forEach(id => document.getElementById(id).addEventListener('change', () => { rwMode(); rwPreview(); }));
+['rwfind', 'rwreplace'].forEach(id => document.getElementById(id).addEventListener('input', () => { clearTimeout(rwTimer); rwTimer = setTimeout(rwPreview, 250); }));
+let rwLast = document.getElementById('rwreplace');
+['rwfind', 'rwreplace'].forEach(id => document.getElementById(id).addEventListener('focus', e => rwLast = e.target));
+document.querySelectorAll('.rwref .ex').forEach(b => b.addEventListener('click', () => {
+  const i = rwLast, at = i.selectionStart ?? i.value.length;
+  i.value = i.value.slice(0, at) + b.dataset.ex + i.value.slice(i.selectionEnd ?? at);
+  i.focus(); i.selectionStart = i.selectionEnd = at + b.dataset.ex.length; rwPreview();
+}));
+document.getElementById('rwsearch').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase();
+  document.querySelectorAll('.rwref .ex').forEach(b => b.hidden = q && !b.textContent.toLowerCase().includes(q));
+});
+</script>
 <dialog id="exportdlg"><form method="post" action="/profiles/export" enctype="multipart/form-data" id="exportform">
 <div class="dh"><h3>Export profiles</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
 <div class="db">
@@ -211,7 +283,7 @@ function saveAddress() {
   body.append('nickname', f.elements.nickname.value);
   ['address1', 'address2', 'city', 'state', 'zip', 'country'].forEach(k => body.append('bill_' + k, f.elements['bill_' + k].value));
   fetch('/profiles/addresses', {method: 'POST', body}).then(r => r.json()).then(r => {
-    if (r.error) return alert(r.error);
+    if (r.error) return btAlert(r.error);
     ADDRESSES = r.addresses; fillAddresses();
   });
 }
@@ -253,12 +325,12 @@ function fillEmails() {
   fetch('/emails/export?' + q).then(r => r.text()).then(t => {
     const n = picks().length, lines = t.split('\n').filter(Boolean);
     document.querySelector('#distform textarea[name=values]').value = lines.slice(0, n).join('\n');
-    if (lines.length < n) alert('That group has ' + lines.length + ' address(es) for ' + n + ' profiles, so some will repeat.');
+    if (lines.length < n) btAlert('That group has ' + lines.length + ' address(es) for ' + n + ' profiles, so some will repeat.');
   });
 }
 function openDistribute() {
   const n = picks().length;
-  if (!n) return alert('Tick the profiles to update first.');
+  if (!n) return btAlert('Tick the profiles to update first.');
   copyPicks('distnames');
   document.getElementById('distcount').textContent = 'Selected ' + n + ' profile' + (n === 1 ? '' : 's');
   fieldHelp(); document.getElementById('distdlg').showModal();
