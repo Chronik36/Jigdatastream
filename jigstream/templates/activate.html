@@ -3,6 +3,9 @@
 <h2>Enter your BotTrack key</h2>
 <p class="muted">BotTrack needs a key made for your Gmail address. Ask the person who sent you BotTrack for one, then paste it here.
 The key works on every computer (Mac or Windows) where that Gmail is connected.</p>
+{% if testing %}<div class="flash">Test mode: this is what everyone else sees. Request access below (it comes to your own inbox, then Allow it on
+<a href="{{url_for('accountkeys.keys_page')}}#requests">Account keys</a>), or make a key there and paste it here.
+<form method="post" action="{{url_for('accountkeys.keys_test_lock')}}" style="display:inline"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button class="ghost">Stop testing</button></form></div>{% endif %}
 {% if s.why and s.grace_until %}<div class="flash">You can keep using BotTrack until {{s.grace_until}}. {{s.why}}</div>{% endif %}
 <form method="post" class="panel" style="display:flex;flex-direction:column;gap:10px">
 <label>Your key<br><textarea name="key" rows="3" required placeholder="BT1K-…" style="width:100%;font-family:ui-monospace,Menlo,monospace" autocomplete="off"></textarea></label>
