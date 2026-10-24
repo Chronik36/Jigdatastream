@@ -46,6 +46,9 @@ html[data-theme=light] .privsw input:checked~.knob:after{background:#fff}
     var t = sw.checked ? 'light' : 'dark';
     root.dataset.theme = t;
     try { localStorage.setItem('bt-theme', t); } catch (e) {}
+    var body = new URLSearchParams({theme: t}), csrf = document.querySelector('meta[name=csrf]');
+    if (csrf) body.append('csrf', csrf.content);
+    fetch('/prefs/theme', {method: 'POST', body: body}).catch(function () {});
     var m = document.querySelector('meta[name=theme-color]');
     if (m) m.content = t === 'light' ? '#ffffff' : '#0a1230';
   });

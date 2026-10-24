@@ -1,0 +1,62 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.cl-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px;margin-bottom:16px}
+.cl-steps .panel{margin:0}.cl-steps b.n{display:inline-flex;width:22px;height:22px;border-radius:50%;align-items:center;justify-content:center;background:var(--accent-soft);color:var(--accent);font-size:12px;margin-right:6px}
+.cl-steps form{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0}.cl-steps select{margin:0;width:auto}
+.cl-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}.cl-bar input{margin:0;width:auto}
+.st-locked{color:var(--orange)}.st-open{color:var(--green)}
+#clprog{display:none}#clprog.on{display:flex}
+.res-ok{color:var(--green)}.res-bad{color:var(--red)}
+</style>
+<p><a href="/cards">← Cards</a></p>
+<h2 style="margin:0 0 6px">Lock and unlock virtual cards</h2>
+<p class="muted" style="margin:0 0 16px">BotTrack opens your bank's website in its own window. You sign in there yourself: BotTrack never sees or keeps
+your password, and the window forgets the sign-in when it closes. Then it presses each card's lock or unlock switch for you, one card at a time.</p>
+{% if not available %}<div class="panel">This works in the BotTrack Mac app, which can open the bank's site in its own window. Open BotTrack from your Applications folder.</div>
+{% else %}
+<div class="cl-steps">
+<section class="panel"><b class="n">1</b><b>Open your bank</b>
+<form method="post" action="/cards/locks/open"><select name="bank">{% for b in banks %}<option {{"selected" if b == bank}}>{{b}}</option>{% endfor %}</select>
+<button>{{"Open again" if open else "Open bank window"}}</button></form></section>
+<section class="panel"><b class="n">2</b><b>Sign in, go to your virtual cards</b>
+<p class="muted" style="font-size:12.5px;margin:8px 0 0">{% if bank == "Amex" %}Amex: Account Services, then Virtual cards (or Employee / virtual cards on a business account).{% else %}Capital One: open the card, then Virtual card numbers.{% endif %}
+Leave the list with every card showing.</p></section>
+<section class="panel"><b class="n">3</b><b>Scan the page</b>
+<form method="post" action="/cards/locks/scan"><button {{"disabled" if not open}}>Scan cards</button></form></section>
+</div>
+<div class="banner" id="clprog"><span id="cltext">Working…</span><span style="flex:1"></span><form method="post" action="/cards/locks/stop" style="margin:0"><button class="ghost">Stop</button></form></div>
+{% if s and s.job.results and not s.job.running %}<section class="panel" style="margin-bottom:16px"><h3 style="margin-top:0">Last run: {{s.job.want}}</h3>
+{% for r in s.job.results %}<div class="{{'res-ok' if r.ok else 'res-bad'}}">•••• {{r.last4}}: {{"done" if r.ok else "didn't work"}} <span class="muted">({{r.note}})</span></div>{% endfor %}
+{% if s.job.results|rejectattr("ok")|list %}<p class="muted" style="font-size:12.5px">For the ones that didn't work: press Teach below, then lock or unlock one of them yourself in the bank window.</p>{% endif %}</section>{% endif %}
+{% if cards %}
+<form method="post" id="clform">
+<div class="cl-bar">
+<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" onclick="document.querySelectorAll('input.pick').forEach(c => c.checked = this.checked)"> All</label>
+<button formaction="/cards/locks/run" name="want" value="lock">Lock picked</button>
+<button formaction="/cards/locks/run" name="want" value="unlock" class="ghost">Unlock picked</button>
+<button formaction="/cards/locks/import" class="ghost">Add picked to Cards</button>
+<span style="flex:1"></span>
+<button formaction="/cards/locks/teach" name="want" value="lock" class="ghost" title="Lock one card yourself and BotTrack copies the click">Teach lock</button>
+<button formaction="/cards/locks/teach" name="want" value="unlock" class="ghost">Teach unlock</button>
+</div>
+<table><thead><tr><th></th><th>Card</th><th>Last 4</th><th>Expiry</th><th>On the bank's page</th><th>In BotTrack</th></tr></thead><tbody>
+{% for c in cards %}<tr><td><input class="pick" type="checkbox" name="last4" value="{{c.last4}}"></td>
+<td>{{c.label or "Virtual card"}}</td><td class="pv">•••• {{c.last4}}</td><td>{{c.exp or "-"}}</td>
+<td>{% if c.locked is none %}<span class="muted">can't tell</span>{% elif c.locked %}<span class="st-locked">Locked</span>{% else %}<span class="st-open">Unlocked</span>{% endif %}</td>
+<td>{% set k = saved.get(c.last4) %}{% if k %}<span class="muted">{{k.status|title}}</span>{% else %}<span class="muted">not added{{" (full number on page)" if c.number}}</span>{% endif %}</td></tr>{% endfor %}
+</tbody></table></form>
+<p class="muted" style="font-size:12px">Full numbers, expiry and CVV are saved (encrypted) only for cards whose page shows them; the rest are added by their last 4.</p>
+{% elif s and s.window %}<div class="panel muted">No cards scanned yet. Open the page listing your virtual cards in the bank window, then press Scan cards.</div>{% endif %}
+<script>
+(function poll() {
+  fetch('/cards/locks/status', {cache: 'no-store'}).then(r => r.json()).then(s => {
+    const bar = document.getElementById('clprog'), t = document.getElementById('cltext');
+    if (s.running) { bar.classList.add('on'); t.textContent = 'Working through cards: ' + s.done + ' of ' + s.total; }
+    else if (s.learning) { bar.classList.add('on'); t.textContent = 'Watching: ' + s.learning + ' one card yourself in the bank window.'; }
+    else if (bar.classList.contains('on') || s.learned) return location.reload();
+    if (s.running || s.learning) setTimeout(poll, 1500);
+  }).catch(() => {});
+})();
+</script>
+{% endif %}
+{% endblock %}
