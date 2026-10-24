@@ -101,6 +101,7 @@ def test_send_logs_page_needs_consent(tmp_path, monkeypatch):
 def test_send_logs_page_without_address(tmp_path, monkeypatch):
     env = dict(os.environ)
     env.pop("BOTTRACK_LOGS_TO", None)
+    env.pop("GMAIL_ACCOUNTS", None)
     monkeypatch.setattr(os, "environ", env)
     monkeypatch.setattr(logs, "DEVELOPER_EMAIL", "")
     page = create_app(str(tmp_path / "w.db")).test_client().get("/logs/send").get_data(as_text=True)
@@ -138,3 +139,11 @@ def test_email_body_has_recent_errors_and_tail(tmp_path, monkeypatch):
     assert "line 249" in body and "line 49\n" not in body  # only the last 200 lines
     assert "abcdefghijklmnop" not in body and "4111" not in body
     assert next(smtp.sent[0].iter_attachments()).get_filename() == "bottrack-logs.zip"
+
+
+def test_logs_go_to_the_first_inbox_by_default(monkeypatch):
+    monkeypatch.delenv("BOTTRACK_LOGS_TO", raising=False)
+    monkeypatch.setenv("GMAIL_ACCOUNTS", "dev@gmail.com:abcd, other@gmail.com:efgh")
+    assert logs.developer_email() == "dev@gmail.com"
+    monkeypatch.setenv("BOTTRACK_LOGS_TO", "someone@example.com")
+    assert logs.developer_email() == "someone@example.com"
