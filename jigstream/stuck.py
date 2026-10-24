@@ -11,7 +11,7 @@ import re
 from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 
-from . import bank, profilematch
+from . import bank, profilematch, profiles
 
 CANCELLED = ("cancelled", "refunded")
 # A refund posts soon after a cancel (Target refunds almost at once). It may carry tax and shipping on top
@@ -73,7 +73,7 @@ def _same_buyer(c, o):
     email = profilematch.norm_email(c["email"])
     if email and email == profilematch.norm_email(o["recipient_email"]):
         return "To email"
-    if c["profile"] and o["profile_name"] and c["profile"] == o["profile_name"]:
+    if c["profile"] and o["profile_name"] and c.get("profile_key", c["profile"]) == o["profile_name"]:
         return "profile"
     if email and email == profilematch.norm_email(o["account"]):
         return "inbox"
@@ -99,6 +99,9 @@ def cross_reference(con):
         if _number(o["order_number"]):
             by_number.setdefault(_number(o["order_number"]), o)
     checkouts = [dict(c) for c in con.execute("SELECT * FROM checkouts WHERE status='success' ORDER BY ts")]
+    resolve = profiles.resolver(con)
+    for c in checkouts:  # the saved profile it ran on: one bot name can be saved once per retail site
+        c["profile_key"] = resolve(c["profile"], c["site"]) if c["profile"] else c["profile"]
     used, out = set(), []
     for c in checkouts:
         o = by_number.get(_number(c["order_number"]))
@@ -208,9 +211,9 @@ def _cancelled_after(c, set_at):
 
 def _cards(con):
     """profile name -> card last 4, and bank account id -> its last 4, where known."""
-    profiles = {r[0]: r[1] for r in con.execute("SELECT name, card_last4 FROM profiles") if r[1]}
+    cards = {r[0]: r[1] for r in con.execute("SELECT name, card_last4 FROM profiles") if r[1]}
     accounts = {r[0]: r[1] for r in con.execute("SELECT id, mask FROM bank_accounts") if r[1]}
-    return profiles, accounts
+    return cards, accounts
 
 
 def _refund_fits(c, tx, price, profile_cards, account_cards):
@@ -218,7 +221,7 @@ def _refund_fits(c, tx, price, profile_cards, account_cards):
     if not bank.names_agree(tx["description"], c["site"]) and not (
             c["order"] and bank.names_agree(tx["description"], c["order"]["retailer"])):
         return None
-    card, account = profile_cards.get(c["profile"]), account_cards.get(tx["account_id"])
+    card, account = profile_cards.get(c.get("profile_key", c["profile"])), account_cards.get(tx["account_id"])
     if card and account and card[-4:] != account[-4:]:
         return None
     t, day = when(c["ts"]), bank._day(tx["date"])

@@ -204,21 +204,80 @@ FIELDS = ["bot", "first_name", "last_name", "phone", "email", "ship_address1", "
           "bill_country", "card_last4", "raw", "card_brand", "card_exp", "fmt"]
 
 
+def tagged(name, site):
+    return f"{name} ({site})" if site else name
+
+
+def rename(con, old, new):
+    """Change a profile's key; orders matched to it follow."""
+    con.execute("UPDATE profiles SET name = ?, bot_name = COALESCE(bot_name, ?) WHERE name = ?", (new, old, old))
+    if "profile_name" in {r[1] for r in con.execute("PRAGMA table_info(tracked_orders)")}:
+        con.execute("UPDATE tracked_orders SET profile_name = ? WHERE profile_name = ?", (new, old))
+
+
+def _key(con, name, site):
+    """The saved profile an import of `name` under `site` updates, or a new key for it. Bots reuse names like
+    "Profile 1" in every site's group, so one name can be saved once per retail site: the copies are tagged
+    with their site, and checkouts find theirs by the site they ran on (resolver)."""
+    rows = con.execute("SELECT name, COALESCE(site, '') AS site FROM profiles WHERE COALESCE(bot_name, name) = ?",
+                       (name,)).fetchall()
+    same = [r["name"] for r in rows if r["site"] == site]
+    if same:
+        return same[0]
+    if len(rows) == 1 and (not site or not rows[0]["site"]):
+        return rows[0]["name"]  # imported again without a site, or getting its first one: the same profile
+    if not rows:
+        return name
+    for r in rows:  # the name is now on two sites: the one saved bare gets its site tag too
+        if r["name"] == name and r["site"]:
+            rename(con, name, tagged(name, r["site"]))
+    key, taken = tagged(name, site or "no site"), {r[0] for r in con.execute("SELECT name FROM profiles")}
+    n = 2
+    while key in taken:
+        key, n = f"{tagged(name, site or 'no site')} {n}", n + 1
+    return key
+
+
 def ingest(con, text, bot="", site="", group=""):
-    """Import a bot's profile export. A profile already saved under the same name is updated in place, so its
-    linked card stays; the retail site and group are set when given."""
+    """Import a bot's profile export. A profile already saved under the same name and retail site is updated in
+    place, so its linked card stays; the same name under another site is saved as its own profile. The retail
+    site and group are set when given."""
     site, group = (site or "").strip(), (group or "").strip()
     if group:
         con.execute("INSERT OR IGNORE INTO profile_groups VALUES (?)", (group,))
     extra = [("site", site)] * bool(site) + [("group_name", group)] * bool(group)
-    cols = ["name", *FIELDS, *(k for k, _ in extra)]
+    cols = ["name", "bot_name", *FIELDS, *(k for k, _ in extra)]
     n = 0
     for p in parse_profiles(text, bot):
         if not p["name"]:
             continue
-        values = {**p, **dict(extra)}
+        values = {**p, **dict(extra), "bot_name": p["name"], "name": _key(con, p["name"], site)}
         con.execute(f"INSERT INTO profiles ({', '.join(cols)}) VALUES ({', '.join(':' + c for c in cols)})"
                     f" ON CONFLICT(name) DO UPDATE SET {', '.join(f'{c} = excluded.{c}' for c in cols[1:])}", values)
         n += 1
     con.commit()
     return n
+
+
+def _squash(text):
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+
+def resolver(con):
+    """(bot's profile name, site the checkout ran on) -> the saved profile's key. A name saved on one site only
+    is that profile wherever it checks out; a name on several picks the one whose retail site the checkout's
+    site names ("Target" for target.com). Names no saved profile has come back as they are."""
+    by = {}
+    for r in con.execute("SELECT name, COALESCE(bot_name, name), COALESCE(site, '') FROM profiles"):
+        by.setdefault(r[1], []).append((r[0], _squash(r[2])))
+
+    def resolve(name, site=""):
+        found = by.get(name)
+        if not found:
+            return name
+        if len(found) == 1:
+            return found[0][0]
+        s = _squash(site)
+        hit = next((k for k, ps in found if ps and s and (ps in s or s in ps)), None)
+        return hit or next((k for k, ps in found if not ps), None) or found[0][0]
+    return resolve

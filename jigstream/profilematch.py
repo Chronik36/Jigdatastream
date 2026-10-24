@@ -112,10 +112,13 @@ def score(order, prof, recipient, inbox):
 def _checkout_profiles(con, names):
     """order number -> profile name, from successful bot checkouts."""
     out = {}
-    for r in con.execute("SELECT order_number, profile FROM checkouts WHERE status='success' AND order_number != ''"
+    from .profiles import resolver
+    resolve = resolver(con)
+    for r in con.execute("SELECT order_number, profile, site FROM checkouts WHERE status='success' AND order_number != ''"
                          " AND order_number IS NOT NULL AND profile IS NOT NULL"):
-        if r["profile"] in names:
-            out[re.sub(r"[^A-Za-z0-9]", "", r["order_number"]).upper()] = r["profile"]
+        key = resolve(r["profile"], r["site"])
+        if key in names:
+            out[re.sub(r"[^A-Za-z0-9]", "", r["order_number"]).upper()] = key
     return out
 
 
@@ -224,8 +227,10 @@ def history(con, orders):
         if status not in ("cancelled", "returned", "refunded", "not_an_order"):  # only orders that stuck cost money
             h["spend"] += o["total"] or 0
     # Bot checkouts that never produced an email (yet) still show where the profile checked out.
+    from .profiles import resolver
+    resolve = resolver(con)
     for r in con.execute("SELECT profile, site, COUNT(*) n FROM checkouts WHERE status='success' GROUP BY profile, site"):
-        h = out.get(r["profile"])
+        h = out.get(resolve(r["profile"], r["site"]))
         if h:
             h["checkouts"] += r["n"]
             if r["site"] and not any(r["site"].lower() in s.lower() or s.lower() in r["site"].lower() for s in h["sites"]):
