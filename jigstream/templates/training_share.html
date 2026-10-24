@@ -1,0 +1,37 @@
+{% extends "base.html" %}{% block body %}
+<h2>Shared learning</h2>
+<p class="muted">Every correction you make teaches your own BotTrack. Sharing them teaches everyone's: packs from all users are
+merged and ship with updates, and each copy shows its model the shared examples closest to each email, next to its own.
+They're plain email text and answers, so they help whichever model size you run (4B, 8B or 14B).</p>
+<div class="stats"><div class="card">Your corrections <b>{{own}}</b></div><div class="card">Ready to share <b>{{pack.examples|length}}</b></div>
+<div class="card">Shared examples in use <b>{{shared_n}}</b></div></div>
+
+<section class="panel"><h3 style="margin-top:0">Share your corrections</h3>
+<p style="font-size:13.5px">Before anything leaves this Mac, each example is scrubbed: names, email addresses, phone numbers, street addresses,
+card numbers and links are swapped for made-up ones, and order and tracking numbers for look-alikes.
+{% if pack.left_out %}<b>{{pack.left_out}}</b> example{{"s" if pack.left_out != 1}} still held one of your names, addresses or inboxes after that, so {{"they're" if pack.left_out != 1 else "it's"}} left out.{% endif %}
+It's sent from your Gmail to the developer{% if not to %}, but this copy has no developer address yet{% endif %}.</p>
+{% if preview %}<details style="margin:10px 0"><summary style="cursor:pointer"><b>See exactly what's sent</b> <span class="muted">(first {{preview|length}} of {{pack.examples|length}})</span></summary>
+{% for ex in preview %}<div class="exbox"><div class="muted small">{{ex.sender_domain}} · {{ex.label}}</div><pre>{{ex.prompt[:1200]}}{% if ex.prompt|length > 1200 %}…{% endif %}</pre><pre class="ans">{{ex.answer|tojson(indent=1)}}</pre></div>{% endfor %}</details>{% endif %}
+{% if pack.examples and to and accounts %}<form method="post" action="/training/share" style="display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+{% if accounts|length > 1 %}<label class="muted small">Send from <select name="sender" style="margin:0">{% for a in accounts %}<option>{{a}}</option>{% endfor %}</select></label>{% endif %}
+<label style="display:flex;gap:8px;align-items:flex-start;font-size:13.5px"><input type="checkbox" name="consent" value="1" required style="margin-top:3px"> I've looked at what's sent and it's OK to share these {{pack.examples|length}} scrubbed examples with every BotTrack user.</label>
+<button>Share {{pack.examples|length}} examples</button></form>
+{% elif not pack.examples %}<p class="muted">No corrections yet. Fix statuses on Orders, label emails on Inbox, or use Go through on Spend.</p>
+{% elif not accounts %}<p class="muted">Connect a Gmail inbox on <a href="/setup">Setup</a>; the pack is sent from it.</p>
+{% else %}<p class="muted">Sharing turns on in builds that have a developer address.</p>{% endif %}
+</section>
+
+<section class="panel" style="margin-top:16px"><h3 style="margin-top:0">Shared examples on this Mac</h3>
+<p class="muted" style="font-size:13px">{{built_in_n}} came with this update{% if sources %}; the rest you added below{% endif %}.</p>
+{% if sources %}<table class="nocard"><tbody>{% for s in sources %}<tr><td>{{s.source}}</td><td class="num">{{s.n}}</td><td style="text-align:right"><form method="post" action="/training/share/forget" style="margin:0" data-confirm="Stop using the {{s.n}} examples from {{s.source}}?"><input type="hidden" name="source" value="{{s.source}}"><button class="ghost sm">Remove</button></form></td></tr>{% endfor %}</tbody></table>{% endif %}
+<form method="post" action="/training/share/import" enctype="multipart/form-data" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<input type="file" name="pack" accept=".json,.txt" style="margin:0"><button class="ghost">Add a pack</button></form>
+<p class="muted small">A pack is the .json attached to a "BotTrack training pack" email. <a href="/training/share/export.json">Download every shared example as one pack</a> to ship it with the next update.</p>
+</section>
+<style>
+.exbox{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:var(--surface-2)}
+.exbox pre{white-space:pre-wrap;word-break:break-word;font-size:12px;margin:6px 0 0;max-height:260px;overflow:auto}.exbox .ans{color:var(--accent)}
+.small{font-size:12px}button.sm{padding:4px 10px;font-size:12px;margin:0}
+</style>
+{% endblock %}

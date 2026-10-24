@@ -12,7 +12,7 @@ from . import address as A
 from . import jigexpr
 from . import (analysis, bankpages, cardcheck, cardlocks, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
-               proxies, proxyaccounts, review, stock, stuck, tasks, tracking, training, updater, wallet, webtrain)
+               packs, proxies, proxyaccounts, review, stock, stuck, tasks, tracking, training, updater, wallet, webtrain)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
@@ -56,6 +56,7 @@ def create_app(db_path=None):
     app.register_blueprint(tracking.bp)
     app.register_blueprint(review.bp)
     app.register_blueprint(proxyaccounts.bp)
+    app.register_blueprint(packs.bp)
 
     @app.context_processor
     def nav_flags():

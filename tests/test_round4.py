@@ -131,3 +131,39 @@ def test_deletes_ask_in_the_page(tmp_path):
     c = create_app(str(tmp_path / "d.db")).test_client()
     page = c.get("/profiles").data.decode()
     assert "return confirm(" not in page and 'data-confirm="Delete the ticked profiles?"' in page and "btConfirm" in page
+
+
+def test_training_pack_scrubs_and_picks(tmp_path, monkeypatch):
+    from jigstream import packs
+    monkeypatch.setenv("GMAIL_ACCOUNTS", "jacob.real@gmail.com:abcdabcdabcdabcd")
+    con = db.connect(str(tmp_path / "k.db"))
+    store = Store(con)
+    con.execute("INSERT INTO profiles (name, first_name, last_name, ship_address1) VALUES ('P', 'Jacobus', 'Realname', '7100 County Road 9')")
+    prompt = ("From: Target <orders@target.com>\nSubject: Your order 102000000000404 has shipped\nDate: x\n\n"
+              "Hi Jacobus, order 102000000000404 ships to Jacobus Realname, 7100 County Road 9 Apt 4, Columbus, OH 43215. "
+              "Track 770000000001 at https://track.example.com/t?id=secret. Call 614-555-1234. Card 4111 1111 1111 1111. "
+              "Sent to jacob.real@gmail.com or orders@target.com")
+    answer = {"kind": "order", "order_number": "102000000000404", "tracking_number": "770000000001",
+              "shipping_name": "Jacobus Realname", "shipping_address": "7100 County Road 9", "shipping_status": "shipped"}
+    con.execute("INSERT INTO training_examples (message_id, sender, subject, prompt, corrected, status, model_was_right)"
+                " VALUES ('<1>', 'Target <orders@target.com>', 'Your order has shipped', ?, ?, 'shipped', 0)",
+                (prompt, json.dumps(answer)))
+    con.commit()
+    pack = packs.build(con, store, rng=random.Random(1))
+    assert len(pack["examples"]) == 1
+    ex = pack["examples"][0]
+    blob = ex["prompt"] + json.dumps(ex["answer"])
+    for secret in ("Jacobus", "Realname", "7100", "43215", "jacob.real", "614-555-1234", "4111", "102000000000404",
+                   "770000000001", "secret"):
+        assert secret not in blob, secret
+    assert "orders@target.com" in ex["prompt"] and ex["sender_domain"] == "target.com"
+    assert len(ex["answer"]["order_number"]) == 15 and ex["answer"]["order_number"].isdigit()
+    # round trip through the email body, then into another Mac's shared examples
+    other = db.connect(str(tmp_path / "o.db"))
+    Store(other)
+    assert packs.import_pack(other, packs.decode(packs.encode(pack)), "test") == 1
+    assert packs.import_pack(other, pack, "again") == 0
+    picker = packs.picker(Store(other), default=[("default", "{}")])
+    near = picker(Email("<2>", "Target <orders@target.com>", "Your order has shipped", "", "", "me@x"))
+    far = picker(Email("<3>", "Shop <hi@elsewhere.io>", "Weekly deals", "", "", "me@x"))
+    assert near and near[0][0].startswith("From: Target") and far == [("default", "{}")]

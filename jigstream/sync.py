@@ -10,6 +10,7 @@ from . import sales
 from .extract import extract, looks_like_purchase
 from .llm import LLMError, from_config as llm_for
 from .mail import fetch_emails
+from . import packs
 from .training import few_shot
 
 logger = logging.getLogger("jigstream.sync")
@@ -73,7 +74,8 @@ def process(email, store, llm, config, counts, log, examples=(), platforms=(), q
         return
     started = time.monotonic()
     try:
-        result = extract(llm, email, config.max_body_chars, examples, platforms)
+        shown = examples(email) if callable(examples) else examples  # the examples closest to this email
+        result = extract(llm, email, config.max_body_chars, shown, platforms)
     except LLMError as e:
         if "Could not reach" in str(e):
             raise
@@ -114,12 +116,12 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None, sto
     platforms = sales.platforms(store.db)
     config.search_query = sales.with_terms(config.search_query, sales.custom_platforms(store.db))
     seen = store.seen_ids()
-    examples = few_shot(store) if config.use_examples else []
+    examples = packs.picker(store, few_shot(store)) if config.use_examples else []
     quiet = quiet_senders(store.db)
     if quiet:
         logger.info("%d sender(s) only send ads; their ads skip the model", len(quiet))
     if examples:
-        logger.info("using %d training example(s) in prompts", len(examples))
+        logger.info("%d training example(s) to pick from (yours and shared)", len(examples))
 
     if emails is not None:
         for email in emails:

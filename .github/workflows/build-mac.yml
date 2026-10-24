@@ -52,6 +52,7 @@ jobs:
       - run: bash packaging/build_app.sh dist
         env:
           BOTTRACK_BUILD: build-${{ github.run_number }}-${{ github.sha }}
+          BOTTRACK_DEVELOPER_EMAIL: ${{ secrets.BOTTRACK_LOGS_TO }}
       - name: Smoke test the bundled Python and code
         run: |
           D=$(mktemp -d); hdiutil attach dist/BotTrack.dmg -mountpoint "$D" -nobrowse
