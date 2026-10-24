@@ -182,8 +182,16 @@ def email_body(note, info, log_dir=None):
     return "\n".join(parts)
 
 
+def _built_in_address():
+    """The developer address a release was built with (developer.txt, from a build secret; never in the code)."""
+    try:
+        return (Path(__file__).with_name("developer.txt").read_text().strip().splitlines() or [""])[0]
+    except OSError:
+        return ""
+
+
 def developer_email():
-    to = (os.environ.get("BOTTRACK_LOGS_TO") or DEVELOPER_EMAIL).strip()
+    to = (os.environ.get("BOTTRACK_LOGS_TO") or DEVELOPER_EMAIL or _built_in_address()).strip()
     if not to:
         accounts = parse_accounts(os.environ.get("GMAIL_ACCOUNTS", ""))
         to = accounts[0][0] if accounts else ""

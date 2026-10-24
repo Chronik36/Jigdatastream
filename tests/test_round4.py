@@ -131,3 +131,57 @@ def test_deletes_ask_in_the_page(tmp_path):
     c = create_app(str(tmp_path / "d.db")).test_client()
     page = c.get("/profiles").data.decode()
     assert "return confirm(" not in page and 'data-confirm="Delete the ticked profiles?"' in page and "btConfirm" in page
+
+
+def test_training_pack_scrubs_and_picks(tmp_path, monkeypatch):
+    from jigstream import packs
+    monkeypatch.setenv("GMAIL_ACCOUNTS", "jacob.real@gmail.com:abcdabcdabcdabcd")
+    con = db.connect(str(tmp_path / "k.db"))
+    store = Store(con)
+    con.execute("INSERT INTO profiles (name, first_name, last_name, ship_address1) VALUES ('P', 'Jacobus', 'Realname', '6432 State Route 22')")
+    prompt = ("From: Target <orders@target.com>\nSubject: Your order 102003854854119 has shipped\nDate: x\n\n"
+              "Hi Jacobus, order 102003854854119 ships to Jacobus Realname, 6432 State Route 22 Apt 4, Columbus, OH 43215. "
+              "Track 879115796750 at https://track.example.com/t?id=secret. Call 614-555-1234. Card 4111 1111 1111 1111. "
+              "Sent to jacob.real@gmail.com or orders@target.com")
+    answer = {"kind": "order", "order_number": "102003854854119", "tracking_number": "879115796750",
+              "shipping_name": "Jacobus Realname", "shipping_address": "6432 State Route 22", "shipping_status": "shipped"}
+    con.execute("INSERT INTO training_examples (message_id, sender, subject, prompt, corrected, status, model_was_right)"
+                " VALUES ('<1>', 'Target <orders@target.com>', 'Your order has shipped', ?, ?, 'shipped', 0)",
+                (prompt, json.dumps(answer)))
+    con.commit()
+    pack = packs.build(con, store, rng=random.Random(1))
+    assert len(pack["examples"]) == 1
+    ex = pack["examples"][0]
+    blob = ex["prompt"] + json.dumps(ex["answer"])
+    for secret in ("Jacobus", "Realname", "6432", "43215", "jacob.real", "614-555-1234", "4111", "102003854854119",
+                   "879115796750", "secret"):
+        assert secret not in blob, secret
+    assert "orders@target.com" in ex["prompt"] and ex["sender_domain"] == "target.com"
+    assert len(ex["answer"]["order_number"]) == 15 and ex["answer"]["order_number"].isdigit()
+    # round trip through the email body, then into another Mac's shared examples
+    other = db.connect(str(tmp_path / "o.db"))
+    Store(other)
+    assert packs.import_pack(other, packs.decode(packs.encode(pack)), "test") == 1
+    assert packs.import_pack(other, pack, "again") == 0
+    picker = packs.picker(Store(other), default=[("default", "{}")])
+    near = picker(Email("<2>", "Target <orders@target.com>", "Your order has shipped", "", "", "me@x"))
+    far = picker(Email("<3>", "Shop <hi@elsewhere.io>", "Weekly deals", "", "", "me@x"))
+    assert near and near[0][0].startswith("From: Target") and far == [("default", "{}")]
+
+
+def test_jig_styles_from_drop_results(tmp_path):
+    from jigstream import jigstats
+    con = db.connect(str(tmp_path / "j.db"))
+    con.execute("INSERT INTO profiles (name, ship_address1) VALUES ('front', 'XQZ 6432 State Route 22'),"
+                " ('after', '6432 KJH State Route 22 Apt 4')")
+    con.commit()
+    items = [{"site": "Target", "profile": "front", "outcome": "cancelled"}] * 6 + \
+            [{"site": "target.com", "profile": "after", "outcome": "confirmed"}] * 5 + \
+            [{"site": "Target", "profile": "after", "outcome": "cancelled"}] + \
+            [{"site": "Target", "profile": "after", "outcome": "decline"}] * 9
+    r = jigstats.report(con, items)["Target"]
+    front = {row["style"]: row for row in r["groups"]["Front"]}
+    assert front["Letters after the number"]["rate"] == 17 and front["Letters after the number"].get("best")
+    assert front["Letters before the number"]["rate"] == 100
+    assert front["Letters after the number"]["recipe"]["replace"] == r"\1 %c3% "
+    assert {row["style"] for row in r["groups"]["Unit"]} == {"Apt", "No unit"}

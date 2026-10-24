@@ -175,6 +175,8 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
     <label><span id="rwrepl">Set it to</span><input name="replace" id="rwreplace" value="{value}, APT 1-%c5%" autocomplete="off" spellcheck="false"></label>
     <p class="muted rwhint">Use <code>{value}</code> for the field as it is now, or <code>{address1}</code> <code>{address2}</code> <code>{city}</code> <code>{zip}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{email}</code> <code>{phone}</code>. In find &amp; replace, <code>\1</code> is the first group found. Every profile gets its own random picks.</p>
     <div id="rwaddr"><label class="inl"><input type="checkbox" name="shipping" checked> Shipping address</label> <label class="inl"><input type="checkbox" name="billing" checked> Billing address</label></div>
+    <details class="rwstats" id="rwstats"><summary><b>Suggest from my Drops results</b> <span class="muted">which jig styles get cancelled least, per store</span></summary>
+      <div id="rwstatsbody" class="muted small">Loading…</div></details>
     <div class="rwprev"><div class="fl2">Preview <span class="muted" id="rwcount"></span> <button type="button" class="ghost sm" onclick="rwPreview()">Reroll</button></div><table class="nocard"><tbody id="rwrows"><tr><td class="muted">Type a template to see it on your profiles.</td></tr></tbody></table></div>
   </div>
   <div class="rwref"><input id="rwsearch" placeholder="Search expressions" autocomplete="off">
@@ -187,6 +189,8 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
 .rwleft label{display:flex;flex-direction:column;gap:4px;font-size:12px;margin:0}.rwleft input,.rwleft select{margin:0;font-family:ui-monospace,Menlo,monospace}.rwleft select{font-family:inherit}
 .rwrow{display:grid;grid-template-columns:1fr 1fr;gap:10px}.rwhint{font-size:12px;margin:0;line-height:1.5}.rwhint code{font-size:11.5px}
 label.inl{display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin-right:12px}
+.rwstats{border:1px solid var(--line);border-radius:10px;padding:8px 10px}.rwstats summary{cursor:pointer;font-size:12.5px}
+.rwst{margin:8px 0 0;font-size:12.5px}.rwst th{text-align:left;padding:8px 6px 2px;font-size:11px}.rwst td{padding:5px 6px}.rwst tr.best td{color:var(--green)}
 .rwprev table{margin:6px 0 0;font-size:12.5px}.rwprev td{padding:6px 8px}.rwprev td.b{color:var(--muted);text-decoration:line-through}.fl2{font-size:12px;font-weight:600;display:flex;gap:8px;align-items:center}
 .btn.sm,button.sm{padding:3px 9px;font-size:11.5px;margin:0}
 .rwref{border-left:1px solid var(--line);padding:10px;max-height:60vh;overflow:auto}.rwref input{margin:0 0 6px;width:100%}
@@ -196,6 +200,33 @@ label.inl{display:inline-flex;flex-direction:row;align-items:center;gap:6px;marg
 @media (max-width:760px){.rwb{grid-template-columns:minmax(0,1fr)}.rwref{border-left:0;border-top:1px solid var(--line);max-height:220px}}
 </style>
 <script>
+let rwStats = null;
+document.getElementById('rwstats').addEventListener('toggle', e => {
+  if (!e.target.open || rwStats) return;
+  fetch('/profiles/jig-stats').then(r => r.json()).then(data => { rwStats = data; rwShowStats(Object.keys(data)[0]); });
+});
+function rwShowStats(store) {
+  const box = document.getElementById('rwstatsbody'), stores = Object.keys(rwStats);
+  if (!stores.length) { box.textContent = 'No kept or cancelled checkouts on profiles with addresses yet. Sync Discord and your inboxes, then come back.'; return; }
+  const esc = t => String(t).replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[ch]);
+  let html = `<label class="small">Store <select id="rwstore">${stores.map(s => `<option ${s === store ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label><table class="nocard rwst"><tbody>`;
+  for (const [group, rows] of Object.entries(rwStats[store].groups)) {
+    if (!rows.length) continue;
+    html += `<tr><th colspan="4">${esc(group)}</th></tr>`;
+    rows.forEach((r, i) => {
+      html += `<tr class="${r.best ? 'best' : ''}"><td>${esc(r.style)}${r.best ? ' <span class="pill s-delivered">best</span>' : ''}</td><td class="num">${r.rate}% cancelled</td><td class="muted">${r.kept} kept · ${r.cancelled} cancelled</td>`
+        + `<td>${r.recipe ? `<button type="button" class="ghost sm" data-g="${esc(group)}" data-i="${i}">Use</button>` : ''}</td></tr>`;
+    });
+  }
+  box.innerHTML = html + `</tbody></table><p class="muted small">Styles need ${5} checkouts before one is called best. "Use" fills in the expression; check the preview, then Apply.</p>`;
+  box.querySelector('#rwstore').addEventListener('change', e => rwShowStats(e.target.value));
+  box.querySelectorAll('button[data-g]').forEach(b => b.addEventListener('click', () => {
+    const r = rwStats[store].groups[b.dataset.g][+b.dataset.i].recipe;
+    document.getElementById('rwfield').value = r.field; document.getElementById('rwmode').value = r.mode;
+    document.getElementById('rwfind').value = r.find; document.getElementById('rwreplace').value = r.replace;
+    rwMode(); rwPreview();
+  }));
+}
 function openRewrite() {
   if (!picks().length) return btAlert('Tick the profiles to change first.');
   copyPicks('rwnames'); rwMode(); document.getElementById('rwdlg').showModal(); rwPreview();
