@@ -4,7 +4,9 @@ Providers don't share one API, so each account says where to ask:
 - a usage address that answers with JSON, and which fields in it are the data used / left / total
   (dotted paths such as "data.traffic_left"), in GB, MB or bytes;
 - a list address that answers with a proxy list (one per line, or a JSON list of them). Refresh pool replaces the
-  account's group on the Proxies tab with what it returns.
+  account's group on the Proxies tab with what it returns. Providers that make lists on request take a JSON body,
+  which is POSTed instead.
+A "*" in a field path adds the numbers up across every plan ("packages.*.usage.gb_remaining").
 The API key goes in the address as {key}, or in a header. It is kept in BotTrack's database on this Mac and is
 only ever sent to the provider's own addresses. Presets fill in what's known for a provider; anything else can be
 typed from the provider's API docs.
@@ -24,7 +26,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS proxy_accounts (
     id INTEGER PRIMARY KEY, name TEXT, api_key TEXT, auth TEXT DEFAULT 'url',
     usage_url TEXT, used_path TEXT, left_path TEXT, total_path TEXT, unit TEXT DEFAULT 'gb',
-    list_url TEXT, grp TEXT,
+    list_url TEXT, list_body TEXT, grp TEXT,
     used_gb REAL, left_gb REAL, total_gb REAL, usage_error TEXT, checked_at TEXT,
     pool_size INTEGER, pool_error TEXT, refreshed_at TEXT
 );
@@ -39,15 +41,32 @@ PRESETS = {
                  "usage_url": "https://proxy.webshare.io/api/v2/stats/aggregate/?timestamp__gte={month_start}&timestamp__lte={now}",
                  "list_url": "https://proxy.webshare.io/api/v2/proxy/list/?mode=direct&page_size=100",
                  "help": "API key from Webshare's dashboard (API → Keys). Data used counts this month; Refresh pool loads up to 100 proxies."},
+    "ResiFactory": {"auth": "bearer", "unit": "gb", "used_path": "", "left_path": "balances.*.gb", "total_path": "",
+                    "usage_url": "https://resifactory.net/api/v1/balance",
+                    "list_url": "https://resifactory.net/api/v1/proxies",
+                    "list_body": '{"country": "us", "quantity": 100, "proxyType": "rotating", "format": "json"}',
+                    "help": "API key (rf_live_...) from ResiFactory's dashboard with usage:read and proxies:generate. Data left adds up every pool; add \"pool\": \"your pool id\" to the list body to pick one."},
+    "FlameProxies": {"auth": "bearer", "unit": "gb", "used_path": "packages.*.usage.gb_used",
+                     "left_path": "packages.*.usage.gb_remaining", "total_path": "packages.*.usage.gb_total",
+                     "usage_url": "https://flameproxies.com/api/customer/non-api-packages/usage",
+                     "list_url": "https://flameproxies.com/api/customer/proxies/generate",
+                     "list_body": '{"package_id": 0, "quantity": 100, "country": "US", "proxy_type": "sticky", "format": "standard"}',
+                     "help": "API key (fp_live_...) from FlameProxies' dashboard (APIs). Put your package ID in place of 0 in the list body; it's on the dashboard next to the plan."},
     "IPRoyal Residential": {"auth": "bearer", "unit": "gb", "used_path": "", "left_path": "available_traffic", "total_path": "",
                             "usage_url": "https://resi-api.iproyal.com/v1/me", "list_url": "",
                             "help": "API token from IPRoyal's dashboard (Residential → API). Residential uses one gateway, so there's no list to refresh."},
 }
 
 
+def _setup(con):
+    con.executescript(SCHEMA)
+    if "list_body" not in {r[1] for r in con.execute("PRAGMA table_info(proxy_accounts)")}:
+        con.execute("ALTER TABLE proxy_accounts ADD COLUMN list_body TEXT")
+
+
 def ensure(con):
     proxies.ensure(con)
-    return db.setup_once(con, "proxyaccounts", lambda c: c.executescript(SCHEMA))
+    return db.setup_once(con, "proxyaccounts", _setup)
 
 
 def _con():
@@ -65,24 +84,27 @@ def fill_dates(url, today=None):
     return url.replace("{month_start}", start.isoformat() + "Z").replace("{now}", now.isoformat() + "Z")
 
 
-def _request(url, key, auth):
+def _request(url, key, auth, body=None):
     url = fill_dates(url)
     headers = {"User-Agent": "BotTrack", "Accept": "application/json, text/plain, */*"}
+    if body:
+        headers["Content-Type"] = "application/json"
     if auth == "bearer":
         headers["Authorization"] = f"Bearer {key}"
     elif auth == "token":
         headers["Authorization"] = f"Token {key}"
     elif auth == "x-api-key":
         headers["X-API-Key"] = key
-    return urllib.request.Request(url.replace("{key}", urllib.request.quote(key or "", safe="")), headers=headers)
+    return urllib.request.Request(url.replace("{key}", urllib.request.quote(key or "", safe="")), headers=headers,
+                                  data=body.encode() if body else None, method="POST" if body else "GET")
 
 
-def fetch(url, key, auth, opener=None):
-    """The provider's answer as text. Errors read like the provider's, without the key."""
+def fetch(url, key, auth, opener=None, body=None):
+    """The provider's answer as text (POSTing body as JSON when given). Errors read like the provider's, without the key."""
     if not (url or "").startswith("https://"):
         raise ValueError("The address must start with https://")
     try:
-        with (opener or urllib.request.urlopen)(_request(url, key, auth), timeout=20) as r:
+        with (opener or urllib.request.urlopen)(_request(url, key, auth, body), timeout=20) as r:
             return r.read(2_000_000).decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         raise ValueError(f"The provider answered {e.code} {e.reason}"
@@ -92,10 +114,15 @@ def fetch(url, key, auth, opener=None):
 
 
 def dig(data, path):
-    """A value from JSON by a dotted path ("data.0.left"); None when it isn't there."""
-    for part in (path or "").split("."):
-        if not part:
-            continue
+    """A value from JSON by a dotted path ("data.0.left"); None when it isn't there. "*" sums the rest of the path
+    over every item ("packages.*.usage.gb_used")."""
+    parts = [p for p in (path or "").split(".") if p]
+    for i, part in enumerate(parts):
+        if part == "*":
+            items = data.values() if isinstance(data, dict) else data if isinstance(data, list) else []
+            found = [_gb(dig(x, ".".join(parts[i + 1:])), "gb") for x in items]
+            found = [v for v in found if v is not None]
+            return round(sum(found), 6) if found else None
         if isinstance(data, list) and part.isdigit() and int(part) < len(data):
             data = data[int(part)]
         elif isinstance(data, dict) and part in data:
@@ -141,8 +168,9 @@ def pool_lines(text):
             data = json.loads(s)
         except json.JSONDecodeError:
             data = None
-        if isinstance(data, dict):
-            data = next((v for v in data.values() if isinstance(v, list)), [])
+        if isinstance(data, dict):  # {"proxies": [...]}, or {"proxies": "line\nline"}
+            data = next((v for v in data.values() if isinstance(v, list)), None) or next(
+                (v.splitlines() for v in data.values() if isinstance(v, str) and v.count(":") >= 1 and "\n" in v), [])
         if isinstance(data, list):
             out = []
             for x in data:
@@ -161,7 +189,8 @@ def refresh_pool(con, acct, opener=None):
     """Replace the account's group with the provider's current list. Returns how many proxies it has now."""
     group = acct["grp"] or acct["name"]
     try:
-        lines = pool_lines(fetch(acct["list_url"], acct["api_key"], acct["auth"], opener))
+        body = (acct.get("list_body") or "").strip() or None
+        lines = pool_lines(fetch(acct["list_url"], acct["api_key"], acct["auth"], opener, body))
         if not [line for line in lines if proxies.parse_line(line)]:
             raise ValueError("The provider's list had no proxies BotTrack could read")
     except ValueError as e:
@@ -190,7 +219,7 @@ def accounts(con):
     return out
 
 
-FIELDS = ("name", "auth", "usage_url", "used_path", "left_path", "total_path", "unit", "list_url", "grp")
+FIELDS = ("name", "auth", "usage_url", "used_path", "left_path", "total_path", "unit", "list_url", "list_body", "grp")
 
 
 @bp.post("/proxies/accounts/save")
@@ -205,6 +234,12 @@ def save():
     for u in ("usage_url", "list_url"):
         if f[u] and not f[u].startswith("https://"):
             flash("Provider addresses must start with https://")
+            return redirect(url_for("proxies.page") + "#accounts")
+    if f["list_body"]:
+        try:
+            json.loads(f["list_body"])
+        except json.JSONDecodeError:
+            flash("The list body has to be JSON, like {\"quantity\": 100}.")
             return redirect(url_for("proxies.page") + "#accounts")
     key = (request.form.get("api_key") or "").strip()
     aid = request.form.get("id", type=int)

@@ -197,3 +197,40 @@ def test_provider_presets():
         {"proxy_address": "5.6.7.8", "port": 81, "username": "u", "password": "p", "valid": False}]})
     assert proxyaccounts.pool_lines(page) == ["1.2.3.4:80:u:p"]
     assert proxyaccounts._request(p["list_url"], "K", p["auth"]).headers["Authorization"] == "Token K"
+
+
+def test_star_paths_sum_every_plan_and_list_body_is_posted(tmp_path):
+    usage = {"packages": [{"usage": {"gb_used": 1.2, "gb_total": 5, "gb_remaining": 3.8}},
+                          {"usage": {"gb_used": 0.3, "gb_total": 2, "gb_remaining": 1.7}}]}
+    assert proxyaccounts.dig(usage, "packages.*.usage.gb_remaining") == 5.5
+    assert proxyaccounts.dig({"balances": {"a": {"gb": 2}, "b": {"gb": 0.5}}}, "balances.*.gb") == 2.5
+    assert proxyaccounts.dig({"balances": {}}, "balances.*.gb") is None
+
+    con = proxyaccounts.ensure(db.connect(str(tmp_path / "a.db")))
+    p = proxyaccounts.PRESETS["FlameProxies"]
+    con.execute("INSERT INTO proxy_accounts (name, api_key, auth, usage_url, used_path, left_path, total_path, unit, list_url, list_body)"
+                " VALUES ('Flame', 'fp_live_k', ?, ?, ?, ?, ?, ?, ?, ?)",
+                (p["auth"], p["usage_url"], p["used_path"], p["left_path"], p["total_path"], p["unit"], p["list_url"], p["list_body"]))
+    sent = []
+
+    class Answer(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def opener(req, timeout):
+        sent.append(req)
+        if req.get_method() == "POST":
+            return Answer(json.dumps({"count": 2, "proxies": ["proxy.flameproxies.com:8989:u1:p", "proxy.flameproxies.com:8989:u2:p"]}).encode())
+        return Answer(json.dumps(usage).encode())
+
+    acct = proxyaccounts._acct(con, 1)
+    assert proxyaccounts.check_usage(con, acct, opener) == (1.5, 5.5, 7.0)
+    assert proxyaccounts.refresh_pool(con, acct, opener) == 2
+    post = sent[-1]
+    assert post.get_header("Authorization") == "Bearer fp_live_k" and post.get_header("Content-type") == "application/json"
+    assert json.loads(post.data)["package_id"] == 0
+    # ResiFactory's plain list answer: one string of lines inside the JSON.
+    assert proxyaccounts.pool_lines(json.dumps({"proxies": "h:7777:a:b\nh:7777:c:d", "count": 2})) == ["h:7777:a:b", "h:7777:c:d"]
