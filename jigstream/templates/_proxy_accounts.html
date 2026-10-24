@@ -20,6 +20,7 @@
 <dialog id="acdlg" class="md"><form method="post" action="/proxies/accounts/save" id="acform"><input type="hidden" name="id">
 <div class="dh"><h3>Provider account</h3><button type="button" class="x" onclick="this.closest('dialog').close()">×</button></div>
 <div class="acf">
+<label class="full">Provider<select id="acpreset" onchange="pxPreset(this.value)"><option value="">Other (fill in from its API docs)</option>{% for n in presets %}<option>{{n}}</option>{% endfor %}</select><span class="muted small" id="achelp"></span></label>
 <label>Name<input name="name" required placeholder="e.g. Oculus Resi"></label>
 <label>API key<input name="api_key" type="password" autocomplete="off" placeholder="from the provider's dashboard"><span class="muted small" id="ackeyhint"></span></label>
 <label>Key goes<select name="auth">{% for k, v in auths.items() %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></label>
@@ -32,7 +33,7 @@
 <label>Numbers are in<select name="unit"><option value="gb">GB</option><option value="mb">MB</option><option value="bytes">bytes</option></select></label>
 <div class="sec2">Proxy pool</div>
 <label class="full">List address (answers with a proxy list)<input name="list_url" placeholder="https://api.provider.com/v1/proxies/list?key={key}&amp;count=50&amp;format=ip:port:user:pass"></label>
-<p class="muted small full">Both addresses come from the provider's API docs or dashboard ("API", "generate list", "usage"). Paste one in with your key replaced by {key}. Fields are dotted paths into the JSON answer, e.g. <code>data.traffic.left</code>; Check data shows the answer when a field isn't found.</p>
+<p class="muted small full">Both addresses come from the provider's API docs or dashboard ("API", "generate list", "usage"). Paste one in with your key replaced by {key}; {month_start} and {now} become this month's start and the current time. Fields are dotted paths into the JSON answer, e.g. <code>data.traffic.left</code>; Check data shows the answer when a field isn't found.</p>
 </div>
 <div class="df"><button type="button" class="ghost" onclick="this.closest('dialog').close()">Cancel</button><button>Save</button></div></form></dialog>
 <style>
@@ -47,12 +48,21 @@ button.sm{padding:4px 10px;font-size:12px;margin:0}
 @media (max-width:600px){.acf{grid-template-columns:1fr}}
 </style>
 <script>
+const PX_PRESETS = {{ presets|tojson }};
+function pxPreset(name) {
+  const f = document.getElementById('acform'), p = PX_PRESETS[name];
+  document.getElementById('achelp').textContent = p ? p.help : '';
+  if (!p) return;
+  ['auth', 'unit', 'usage_url', 'used_path', 'left_path', 'total_path', 'list_url'].forEach(k => f[k].value = p[k] || '');
+  if (!f.name.value) f.name.value = name;
+}
 function pxAcct(a) {
   const f = document.getElementById('acform'); f.reset();
   a = a || {};
   ['id', 'name', 'auth', 'grp', 'usage_url', 'used_path', 'left_path', 'total_path', 'unit', 'list_url'].forEach(k => { if (a[k] != null) f[k].value = a[k]; });
   document.getElementById('ackeyhint').textContent = a.key_hint ? `Saved key ${a.key_hint}; leave blank to keep it.` : '';
   f.api_key.required = !a.id;
+  document.getElementById('acpreset').value = ''; document.getElementById('achelp').textContent = '';
   document.getElementById('acdlg').showModal();
 }
 </script>
