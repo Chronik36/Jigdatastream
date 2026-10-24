@@ -38,7 +38,7 @@ bp = Blueprint("proxylogin", __name__)
 # and the buttons pressed. Nothing leaves the window except when BotTrack reads it back.
 RECORD_JS = r"""(() => {
 if (window.__btRec) return '1';
-window.__btRec = true; window.__btReqs = []; window.__btClicks = [];
+window.__btRec = true; window.__btReqs = []; window.__btClicks = []; window.__btSteps = window.__btSteps || [];
 const keep = r => { window.__btReqs.push(r); if (window.__btReqs.length > 40) window.__btReqs.shift(); };
 const hdrs = h => { const o = {}; try { if (!h) return o; if (h instanceof Headers) h.forEach((v, k) => o[k] = v);
   else if (Array.isArray(h)) h.forEach(([k, v]) => o[k] = v); else Object.assign(o, h); } catch (e) {} return o; };
@@ -64,11 +64,39 @@ XMLHttpRequest.prototype.send = function (b) {
     this.addEventListener('load', () => { try { r.status = this.status;
       r.text = (typeof this.response === 'string' ? this.response : JSON.stringify(this.response) || '').slice(0, 300000); keep(r); } catch (e) {} }); }
   return XS.apply(this, arguments); };
+// Every setting you change on the way (a sticky/rotating switch, a TTL dropdown or box, the Generate button) is a
+// step, so the same motions can be done again for you. Sign-in boxes (passwords, emails, usernames) are never noted.
+const PRIVATE = /pass|email|user|login|card|cc-|cvv|otp|code|token|secret|phone|name/i;
+const label = el => { let t = el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
+  if (t || !/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return (t || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+  const own = l => [...l.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join(' ').trim() || l.innerText;
+  if (el.id) { const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) t = own(l); }
+  if (!t) { const l = el.closest('label'); if (l) t = own(l); }
+  if (!t) { const p = el.parentElement; const prev = el.previousElementSibling || (p && p.previousElementSibling);
+    if (prev && (prev.innerText || '').length < 60) t = prev.innerText; }
+  return (t || '').trim().replace(/\s+/g, ' ').slice(0, 60); };
+const steady = id => id && !/\d{3,}|[a-f0-9]{8,}|^:r|^radix|^headlessui|^react|^mui/i.test(id) ? id : '';
+const desc = el => ({tag: el.tagName, text: (el.innerText || el.value || '').trim().replace(/\s+/g, ' ').slice(0, 60),
+  label: label(el), name: el.getAttribute('name') || '', id: steady(el.id), role: el.getAttribute('role') || '',
+  type: el.getAttribute('type') || '', index: [...document.querySelectorAll(el.tagName)].indexOf(el)});
+const step = s => { s.page = location.href; s.at = Date.now(); window.__btSteps.push(s); if (window.__btSteps.length > 200) window.__btSteps.shift(); };
+const secret = el => el.type === 'password' || el.type === 'email' || el.type === 'hidden' || PRIVATE.test(el.name || '')
+  || PRIVATE.test(el.getAttribute('autocomplete') || '') || PRIVATE.test(el.id || '');
 document.addEventListener('click', e => {
-  const c = e.target.closest('button,[role=button],a,input[type=submit],input[type=button]');
+  const c = e.target.closest('button,[role=button],[role=option],[role=tab],[role=radio],[role=switch],[role=menuitem],[role=menuitemradio],[role=combobox],a,label,li,input[type=submit],input[type=button],input[type=radio],input[type=checkbox]')
+    || (e.target.children.length <= 2 && (e.target.innerText || '').trim().length && (e.target.innerText || '').trim().length <= 40 ? e.target : null);
   if (!c) return;
   const text = (c.innerText || c.value || c.getAttribute('aria-label') || '').trim().slice(0, 60);
   window.__btClicks.push({tag: c.tagName, text, index: [...document.querySelectorAll(c.tagName)].indexOf(c), page: location.href, at: Date.now()});
+  if (c.tagName === 'INPUT' && (c.type === 'radio' || c.type === 'checkbox')) return;  // noted as a change below
+  step({act: 'click', el: desc(c)});
+}, true);
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (!el || !el.tagName || secret(el)) return;
+  if (el.tagName === 'SELECT') step({act: 'select', el: desc(el), value: el.value, text: (el.selectedOptions[0] || {}).text || ''});
+  else if (el.type === 'checkbox' || el.type === 'radio') step({act: 'check', el: desc(el), on: el.checked});
+  else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') step({act: 'type', el: desc(el), value: String(el.value).slice(0, 40)});
 }, true);
 return '1';
 })()"""
@@ -78,6 +106,7 @@ SHOWN_JS = r"""(() => [...document.querySelectorAll('textarea,input:not([type=pa
   + '\n' + (document.body ? document.body.innerText : ''))()"""
 
 PULL_JS = ("JSON.stringify({reqs: (window.__btReqs || []).splice(0), clicks: (window.__btClicks || []).slice(-8), "
+           "steps: (window.__btSteps || []).splice(0), "
            "page: location.href, cookie: document.cookie, shown: " + SHOWN_JS + ".slice(0, 300000)})")
 
 CLICK_JS = r"""((b) => {
@@ -88,6 +117,45 @@ const el = all.filter(visible).find(e => b.text && name(e) === b.text) || all[b.
 if (!el) return JSON.stringify({error: 'the "' + (b.text || b.tag) + '" button isn\'t on the page'});
 el.scrollIntoView({block: 'center'}); el.click();
 return JSON.stringify({clicked: name(el)});
+})"""
+
+# Does one noted step again: finds the same control (by its id, name, label, words or place on the page) and clicks
+# it, picks the same option, or types the same value the way a person would (so the page's own code sees it).
+STEP_JS = r"""((s) => {
+const visible = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+const norm = t => (t || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+const d = s.el || {};
+const all = [...document.querySelectorAll(d.tag || '*')];
+const label = el => { let t = el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
+  if (t || !/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return (t || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+  const own = l => [...l.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join(' ').trim() || l.innerText;
+  if (el.id) { const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) t = own(l); }
+  if (!t) { const l = el.closest('label'); if (l) t = own(l); }
+  if (!t) { const p = el.parentElement; const prev = el.previousElementSibling || (p && p.previousElementSibling);
+    if (prev && (prev.innerText || '').length < 60) t = prev.innerText; }
+  return (t || '').trim().replace(/\s+/g, ' ').slice(0, 60); };
+const shown = all.filter(visible);
+const el = (d.id && document.getElementById(d.id))
+  || (d.name && shown.find(e => e.getAttribute('name') === d.name && (!d.type || e.getAttribute('type') !== 'radio' || norm(e.value) === norm(d.text) || label(e) === d.label)))
+  || (s.act === 'click' && d.text && shown.find(e => norm(e.innerText || e.value) === d.text && (!d.label || label(e) === d.label)))
+  || (s.act === 'click' && d.text && shown.find(e => norm(e.innerText || e.value) === d.text))
+  || (s.act === 'click' && d.text.includes(':') && shown.find(e => e.tagName === d.tag && norm(e.innerText || e.value).split(':')[0] === d.text.split(':')[0]))
+  || (d.label && shown.find(e => label(e) === d.label && (s.act !== 'click' || !d.text || norm(e.innerText || e.value) === d.text)))
+  || (d.index >= 0 && all[d.index] && visible(all[d.index]) ? all[d.index] : null);
+if (!el) return JSON.stringify({missing: d.label || d.text || d.name || d.tag});
+el.scrollIntoView({block: 'center'});
+const fire = (t) => el.dispatchEvent(new Event(t, {bubbles: true}));
+if (s.act === 'click') el.click();
+else if (s.act === 'check') { if (el.checked !== s.on) el.click(); }
+else if (s.act === 'select') {
+  const o = [...el.options].find(o => norm(o.text) === norm(s.text)) || [...el.options].find(o => o.value === s.value);
+  if (!o) return JSON.stringify({missing: 'the "' + s.text + '" choice'});
+  el.value = o.value; fire('input'); fire('change');
+} else if (s.act === 'type') {
+  const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  el.focus(); Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, s.value); fire('input'); fire('change'); el.blur();
+}
+return JSON.stringify({done: norm(el.innerText || el.value || label(el))});
 })"""
 
 FETCH_JS = r"""((r) => {
@@ -240,11 +308,13 @@ def recipe_from(reqs, clicks, shown, before=(), page=""):
     if best:
         headers = {k: v for k, v in (best.get("headers") or {}).items() if k.lower() not in DROP_HEADERS}
         return {"kind": "request", "method": best.get("method") or "GET", "url": best["url"], "headers": headers,
-                "body": best.get("body") if best.get("body") != "[binary]" else None, "page": best.get("page") or page}, lines
+                "body": best.get("body") if best.get("body") != "[binary]" else None, "page": best.get("page") or page,
+                **({"at": best["at"]} if best.get("at") else {})}, lines
     new = [ln for ln in lines_in(shown) if ln not in set(before)]
     if new and clicks:
         b = clicks[-1]
-        return {"kind": "click", "page": b.get("page") or page, "button": {k: b.get(k) for k in ("tag", "text", "index")}}, new
+        return {"kind": "click", "page": b.get("page") or page, "button": {k: b.get(k) for k in ("tag", "text", "index")},
+                **({"at": b["at"]} if b.get("at") else {})}, new
     return None, []
 
 
@@ -256,8 +326,10 @@ class Session:
         self.windows, self.seen = {}, {}  # account id -> window / {"lines", "recipe", "before", "cookie"}
         self.lock = threading.Lock()
 
-    def open(self, aid, url, name, saved=None):
-        self.seen[aid] = {"lines": [], "recipe": None, "before": None, "cookie": "", "watching": True}
+    def open(self, aid, url, name, saved=None, combo=None):
+        """combo: the session type and TTL being taught ({"session", "ttl"}), or None for a first sign-in."""
+        self.seen[aid] = {"lines": [], "recipe": None, "before": None, "cookie": "", "watching": True, "steps": [],
+                          "combo": combo}
         w = self.windows.get(aid)
         if w is not None:
             try:
@@ -360,6 +432,7 @@ class Session:
                     time.sleep(1.5)
                     continue
                 reqs = (reqs + got.get("reqs", []))[-60:]
+                state["steps"] = (state["steps"] + got.get("steps", []))[-200:]
                 if state["before"] is None:
                     state["before"] = lines_in(got.get("shown", ""))
                 recipe, lines = recipe_from(reqs, got.get("clicks", []), got.get("shown", ""), state["before"], got.get("page", ""))
@@ -372,9 +445,53 @@ class Session:
     def status(self, aid):
         s = self.seen.get(aid) or {}
         r = s.get("recipe") or {}
+        from . import proxysessions
+        steps = [x for x in s.get("steps") or [] if x.get("act")]
         return {"open": aid in self.windows, "watching": bool(s.get("watching")), "found": len(s.get("lines") or []),
                 "kind": r.get("kind"), "from": urlparse(r.get("url") or r.get("page") or "").path or "",
-                "button": (r.get("button") or {}).get("text") or ""}
+                "button": (r.get("button") or {}).get("text") or "",
+                "steps": [proxysessions.describe(x) for x in steps[-6:]], "nsteps": len(steps)}
+
+    def do_steps(self, aid, steps, wait=8):
+        """Do noted steps in the account's window, one by one, waiting for each control to show up (a dropdown's
+        choices appear only after it's opened)."""
+        for st in steps:
+            end = time.time() + wait
+            while True:
+                got = json.loads(self.js(aid, f"{STEP_JS}({json.dumps(st)})") or "{}")
+                if not got.get("missing"):
+                    break
+                if time.time() > end:
+                    raise ValueError(f"Couldn't find {got['missing']} on the provider's page. Pick this choice again "
+                                     "to teach it again (the dashboard may have changed).")
+                time.sleep(0.7)
+            time.sleep(0.9)
+
+    def replay_steps(self, aid, steps, page, timeout=40):
+        """Set the choice the way it was taught and make a list: the lines from the page's own answer, or new ones
+        that showed up on the page."""
+        w = self.windows.get(aid)
+        if w is None:
+            raise SignIn("The provider's window isn't open. Press Sign in again on this account.")
+        if page and (self.js(aid, "location.href") or "") != page:
+            w.load_url(page)
+            time.sleep(4)
+        self.js(aid, RECORD_JS)
+        first = json.loads(self.js(aid, PULL_JS) or "{}")  # also empties what the page did before
+        before = lines_in(first.get("shown", ""))
+        self.do_steps(aid, steps)
+        reqs, end = [], time.time() + timeout
+        while time.time() < end:
+            time.sleep(1.5)
+            self.js(aid, RECORD_JS)
+            got = json.loads(self.js(aid, PULL_JS) or "{}")
+            reqs += got.get("reqs", [])
+            _, lines = recipe_from(reqs, got.get("clicks") or [{"page": page}], got.get("shown", ""), before, got.get("page", ""))
+            if lines:
+                return lines
+        if "sign" in (self.js(aid, "document.body ? document.body.innerText.slice(0, 3000) : ''") or "").lower():
+            raise SignIn("The provider wants you to sign in again. Press Sign in again on this account.")
+        return []
 
     def keep(self, aid):
         """Stop watching and tuck the window away; it stays signed in for Refresh pool."""
@@ -478,11 +595,13 @@ def keep_signin(con, aid, saved):
     con.commit()
 
 
-def fresh_lines(acct, opener=None, con=None):
+def fresh_lines(acct, opener=None, con=None, setting=None):
     """A fresh list for an account set up by signing in. Raises ValueError (SignIn included) with what to do.
-    With con, a sign-in the site renewed along the way is saved."""
+    With con, a sign-in the site renewed along the way is saved. setting: a taught session type and TTL
+    (proxysessions.find): its request straight from BotTrack when that request says which session it wants,
+    else its steps done again in the window."""
     try:
-        recipe = json.loads(acct.get("recipe") or "{}")
+        recipe = setting["recipe"] if setting else json.loads(acct.get("recipe") or "{}")
     except json.JSONDecodeError:
         recipe = {}
     if not recipe:
@@ -490,7 +609,14 @@ def fresh_lines(acct, opener=None, con=None):
     aid = acct["id"]
     saved = unseal(acct.get("site_session"))
     used_window = False
-    if recipe["kind"] == "request":
+    if setting and not setting.get("direct"):
+        if not available():
+            raise SignIn("Setting the session type and TTL is done in the provider's page, which needs the BotTrack Mac app.")
+        page = (setting["steps"][0].get("page") if setting["steps"] else None) or recipe.get("page") or acct.get("site_url")
+        session().ensure(aid, acct, saved, page)
+        lines = session().replay_steps(aid, setting["steps"], page)
+        used_window = True
+    elif recipe["kind"] == "request":
         cookie = cookie_header(saved, recipe["url"]) if saved else acct.get("site_cookie") or ""
         text, renewed = _direct(recipe, cookie, opener)
         if saved and renew(saved, renewed, recipe["url"]) and con is not None:
@@ -561,12 +687,22 @@ def status():
     aid = request.args.get("id", type=int)
     if not available() or not aid:
         return jsonify({"open": False})
-    return jsonify(session().status(aid))
+    out = session().status(aid)
+    combo = (session().seen.get(aid) or {}).get("combo")
+    if combo:
+        from . import proxyaccounts, proxysessions
+        con = _con()
+        acct = proxyaccounts._acct(con, aid) or {}
+        out["teaching"] = proxysessions.label(combo["session"], combo["ttl"])
+        out["shared"] = bool(proxysessions.shared_for(con, acct.get("site_url"), combo["session"], combo["ttl"]))
+        out["tried"] = (session().seen.get(aid) or {}).get("tried") or ""
+    return jsonify(out)
 
 
 @bp.post("/proxies/login/save")
 def save():
     """Keep what the window learned, and fill the account's group with the list it just saw."""
+    from . import proxyaccounts, proxysessions
     con = _con()
     aid = request.form.get("id", type=int)
     if not available() or not aid:
@@ -576,15 +712,46 @@ def save():
     if not s.get("recipe"):
         flash("BotTrack hasn't seen a proxy list in that window yet. Generate one there, then press Use this again.")
         return _back()
-    con.execute("UPDATE proxy_accounts SET recipe=?, site_cookie=?, site_session=? WHERE id=?",
-                (json.dumps(s["recipe"]), s.get("cookie") or "", seal(signin) if signin and (signin["cookies"] or signin["storage"]) else None, aid))
-    con.commit()
-    from . import proxyaccounts
+    recipe, combo = dict(s["recipe"]), s.get("combo")
     acct = proxyaccounts._acct(con, aid)
-    n = proxyaccounts.replace_group(con, acct, s["lines"])
-    flash(f"Learned {acct['name']}. Its group has the {n} proxies you just made. Refresh pool makes a fresh list any time; "
+    if combo:
+        steps = proxysessions.save(con, aid, combo["session"], combo["ttl"], recipe, s.get("steps") or [], acct["site_url"])
+        if not acct.get("recipe"):  # the first one taught is also what plain Refresh pool uses
+            con.execute("UPDATE proxy_accounts SET recipe=? WHERE id=?", (json.dumps(recipe), aid))
+        what = f"{proxysessions.label(combo['session'], combo['ttl'])} ({len(steps)} step{'s' if len(steps) != 1 else ''})"
+    else:
+        recipe.pop("at", None)
+        con.execute("UPDATE proxy_accounts SET recipe=? WHERE id=?", (json.dumps(recipe), aid))
+        what = acct["name"]
+    con.execute("UPDATE proxy_accounts SET site_cookie=?, site_session=? WHERE id=?",
+                (s.get("cookie") or "", seal(signin) if signin and (signin["cookies"] or signin["storage"]) else acct.get("site_session"), aid))
+    con.commit()
+    n = proxyaccounts.replace_group(con, proxyaccounts._acct(con, aid), s["lines"])
+    flash(f"Learned {what}. The group has the {n} proxies you just made. Generate makes a fresh list any time; "
           "the sign-in is kept (encrypted) until the site ends it.")
     return _back()
+
+
+@bp.post("/proxies/login/try")
+def try_shared():
+    """While teaching: do the steps other people shared for this provider and choice in the open window."""
+    from . import proxyaccounts, proxysessions
+    con = _con()
+    aid = request.form.get("id", type=int)
+    s = session().seen.get(aid) if available() else None
+    combo = (s or {}).get("combo")
+    acct = proxyaccounts._acct(con, aid) if aid else None
+    steps = proxysessions.shared_for(con, acct["site_url"], combo["session"], combo["ttl"]) if acct and combo else None
+    if not steps:
+        return jsonify({"error": "No shared steps for this provider and choice yet."})
+
+    def run():
+        try:
+            session().do_steps(aid, steps)
+        except ValueError as e:
+            s["tried"] = str(e)
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify({"ok": True, "steps": [proxysessions.describe(x) for x in steps]})
 
 
 # Suggest a provider ------------------------------------------------------------------------------------------------
