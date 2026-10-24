@@ -30,3 +30,11 @@ the app as `BotTrack-android-<versionCode>.apk`, and phones running an older num
 
 Anything in a release is public: the .dmg, the Android app and the app's Python code. Settings, inboxes, orders,
 cards and keys never leave the user's Mac.
+
+## Windows
+
+The same workflow builds `BotTrack-Setup.exe` on a Windows runner (`packaging/windows/build_windows.ps1`, Inno Setup)
+and attaches it to each release. It installs for the current Windows user only (no admin prompt), into
+`%LOCALAPPDATA%\Programs\BotTrack`, and keeps its data in `%LOCALAPPDATA%\BotTrack`. In-app updates use the same
+`bottrack-code.zip` as the Mac app. The installer isn't code-signed, so Windows SmartScreen asks once:
+More info → Run anyway.
