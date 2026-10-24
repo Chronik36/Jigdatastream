@@ -45,8 +45,8 @@ function pickProfiles(sel) {
 {% for o in pick.orders %}{% set status = o.shipping_status or "unknown" %}<tr>
 <td>{{o.order_date or "-"}}</td><td><a href="/orders#order-{{o.id}}"><b>{{o.retailer or "-"}}</b></a>{% if o.order_number %}<div class="muted"><span data-copy>{{o.order_number}}</span></div>{% endif %}</td>
 <td><ul class="items">{% for i in o["items"] %}<li>{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}</li>{% endfor %}</ul></td>
-<td class="num">{{o.total|money(o.currency)}}</td>
-<td><span class="pill s-{{status}}">{{status|status_label}}</span>{% if o.estimated_delivery %}<div class="muted" style="white-space:nowrap;font-size:12px;margin-top:4px">ETA {{o.estimated_delivery}}</div>{% endif %}</td>
+<td class="num"><span data-edit-price="{{o.id}}" data-value="{{o.total if o.total is not none else ''}}">{{o.total|money(o.currency)}}</span></td>
+<td><span class="pill s-{{status}}" data-edit-status="{{o.id}}" data-status="{{status}}">{{status|status_label}}</span>{% if o.estimated_delivery %}<div class="muted" style="white-space:nowrap;font-size:12px;margin-top:4px">ETA {{o.estimated_delivery}}</div>{% endif %}</td>
 <td>{% if o.tracking_number %}<a class="track" href="{{o|track_url}}" target="_blank" rel="noopener"><span class="muted">{{o.carrier or "Track"}}</span> {{o.tracking_number}} ↗</a>{% else %}<span class="muted">No tracking yet</span>{% endif %}</td>
 <td class="muted">{{o.profile_match or ""}}</td>
 <td>{% set bad = status in ("cancelled", "returned", "refunded") %}<form method="post" action="/orders/{{o.id}}/label" style="margin:0"><input type="hidden" name="back" value="1">
