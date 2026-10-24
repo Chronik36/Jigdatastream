@@ -42,7 +42,7 @@ If one is wrong, pick Good, Bad or Not an order next to it: it sticks, and when 
 <td>{{ verdict(c) }}</td>
 <td><a href="{{ link(by='group', name=c.proxy_group or 'No group') }}">{{c.proxy_group or "-"}}</a></td><td class="muted"><a class="muted" href="{{ link(by='proxy', name=c.proxy or 'No proxy') }}">{{c.proxy or "-"}}</a></td><td><a href="{{ link(by='profile', name=c.profile or 'No profile') }}"><b>{{c.profile or "-"}}</b></a>{% if c.address %}<div style="font-size:12px"><a class="muted" href="{{ link(by='address', name=c.address) }}" title="Every checkout to this address, whatever the jig">{{c.address}}</a></div>{% endif %}{% if c.email %}<div class="muted" style="font-size:12px">{{c.email}}</div>{% endif %}</td>
 <td class="muted" style="white-space:nowrap">{{(c.ts or "")[:10] if not day}} {{(c.ts or "")[11:16]}}</td><td>{{c.bot or "-"}}</td>
-<td>{{c.product or "-"}}{% if c.size %} <span class="muted">· {{c.size}}</span>{% endif %}{% if c.order_number %}<div class="muted">{{c.order_number}}</div>{% endif %}</td></tr>{% endfor %}
+<td>{{c.product or "-"}}{% if c.size %} <span class="muted">· {{c.size}}</span>{% endif %}{% if c.order_number %}<div class="muted"><span data-copy>{{c.order_number}}</span></div>{% endif %}</td></tr>{% endfor %}
 </tbody></table></section>{% endfor %}{% else %}<p class="muted">No checkouts here.</p>{% endfor %}
 <h3>Best {{('on ' ~ day) if day}}{{(' for ' ~ name) if by}}</h3>
 {% else %}
