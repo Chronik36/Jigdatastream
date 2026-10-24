@@ -70,6 +70,9 @@ def _setup(con):
     # When the bank gave the charge a time (Plaid does for many cards): Card check ties a charge to a checkout by it.
     if "time" not in {r[1] for r in con.execute("PRAGMA table_info(bank_transactions)")}:
         con.execute("ALTER TABLE bank_transactions ADD COLUMN time TEXT")
+    # A card used only for botting: its charges with no receipt or order still count as botting spend.
+    if "all_botting" not in {r[1] for r in con.execute("PRAGMA table_info(bank_accounts)")}:
+        con.execute("ALTER TABLE bank_accounts ADD COLUMN all_botting INTEGER")
 
 
 def ensure(con):
@@ -361,12 +364,64 @@ def fill_amounts_from_charges(con):
     return filled
 
 
+REFUND_DAYS = 90
+PAYMENT = re.compile(r"payment|autopay|thank you|transfer|interest|cash ?back|reward|statement credit", re.I)
+
+
+def match_expense_refunds(con):
+    """Money back for a botting receipt (a returned server, a refunded plan): a credit on your statement naming
+    the vendor, up to REFUND_DAYS after the receipt and no more than it cost, is tied to it and taken off what it
+    cost. Returns how many were tied."""
+    from . import ledger
+    ledger.ensure(con)
+    expenses = [dict(e) for e in con.execute("SELECT id, vendor, amount, date FROM expenses WHERE amount > 0"
+                                             " AND refunded IS NULL AND date IS NOT NULL ORDER BY date")]
+    tied = 0
+    for t in con.execute("SELECT * FROM bank_transactions WHERE amount < 0 AND match_kind IS NULL"
+                         " AND COALESCE(match_how, '') != 'ignored' ORDER BY date").fetchall():
+        when, back = _day(t["date"]), round(-t["amount"], 2)
+        if not when or PAYMENT.search(t["description"] or ""):
+            continue
+        fits = [e for e in expenses if e["vendor"] and names_agree(t["description"], e["vendor"]) and _day(e["date"])
+                and 0 <= (when - _day(e["date"])).days <= REFUND_DAYS and back <= round(e["amount"], 2) + 0.01]
+        if not fits:
+            continue
+        e = min(fits, key=lambda e: (abs(e["amount"] - back), (when - _day(e["date"])).days))
+        con.execute("UPDATE expenses SET refunded = ? WHERE id = ?", (back, e["id"]))
+        con.execute("UPDATE bank_transactions SET match_kind = 'expense_refund', match_id = ?, match_how = 'auto'"
+                    " WHERE id = ?", (e["id"], t["id"]))
+        expenses.remove(e)
+        tied += 1
+    con.commit()
+    return tied
+
+
+def botting_card_spend(con, year=None):
+    """Charges on cards you use only for botting that no receipt or order explains, minus refunds on them
+    (card payments and rewards aside): botting spend the emails don't show."""
+    ensure(con)
+    where = "a.all_botting = 1 AND t.match_kind IS NULL AND COALESCE(t.match_how, '') != 'ignored' AND t.pending = 0"
+    args = ()
+    if year:
+        where += " AND substr(t.date, 1, 4) = ?"
+        args = (str(year),)
+    rows = con.execute(f"SELECT t.* FROM bank_transactions t JOIN bank_accounts a ON a.id = t.account_id WHERE {where}",
+                       args).fetchall()
+    from . import ledger
+    if not rows:
+        return 0
+    close = ledger.close_matches(ledger.ensure(con))  # a few dollars off a receipt: that receipt already counts it
+    return round(sum(t["amount"] for t in rows if t["id"] not in close
+                     and (t["amount"] > 0 or not PAYMENT.search(t["description"] or ""))), 2)
+
+
 def auto_match(con):
     """Match every charge nobody has decided on yet. A match needs one clear winner: the store name
     agreeing, or the only order/receipt of that exact amount near that date. Receipts with no amount take
     theirs from their charge first (fill_amounts_from_charges). Returns how many matched."""
     ensure(con)
     fill_amounts_from_charges(con)
+    match_expense_refunds(con)
     rows = con.execute("SELECT * FROM bank_transactions WHERE match_how IS NULL AND amount > 0 AND pending = 0"
                        " ORDER BY date").fetchall()
     matched = 0

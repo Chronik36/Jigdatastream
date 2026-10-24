@@ -65,7 +65,8 @@ MIGRATIONS = [("tracked_orders", "status_manual", "INTEGER DEFAULT 0"),
               ("expenses", "amount_checked", "INTEGER DEFAULT 0"),
               ("tracked_orders", "shipping_name", "TEXT"), ("tracked_orders", "recipient_email", "TEXT"),
               ("tracked_orders", "profile_name", "TEXT"), ("tracked_orders", "profile_match", "TEXT"),
-              ("tracked_orders", "profile_candidates", "TEXT"), ("tracked_orders", "profile_manual", "INTEGER DEFAULT 0")]
+              ("tracked_orders", "profile_candidates", "TEXT"), ("tracked_orders", "profile_manual", "INTEGER DEFAULT 0"),
+              ("expenses", "refunded", "REAL")]
 
 LABEL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS labels (

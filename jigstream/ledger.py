@@ -18,7 +18,9 @@ CREATE TABLE IF NOT EXISTS ledger_rejects (
     PRIMARY KEY (tx_id, kind, target_id)
 );
 """
-MIGRATIONS = [("expenses", "paid_with", "TEXT")]
+# refunded: money back on a receipt (a returned server, a cancelled plan), from a bank credit or marked by hand.
+MIGRATIONS = [("expenses", "paid_with", "TEXT"), ("expenses", "refunded", "REAL")]
+NET = "(amount - COALESCE(refunded, 0))"  # what a receipt really cost
 
 PAY_METHODS = ["PayPal balance", "Crypto", "Cash", "Gift card", "Card not imported", "Other"]
 STATES = {
@@ -199,7 +201,7 @@ def by_month(con, months):
     """{month: {category: amount}} for botting expenses in those months."""
     ensure(con)
     out = {m: defaultdict(float) for m in months}
-    for r in con.execute("SELECT substr(date, 1, 7) AS m, category, SUM(amount) AS total FROM expenses"
+    for r in con.execute("SELECT substr(date, 1, 7) AS m, category, SUM(amount - COALESCE(refunded, 0)) AS total FROM expenses"
                          " WHERE amount IS NOT NULL AND substr(date, 1, 7) BETWEEN ? AND ? GROUP BY m, category",
                          (months[0], months[-1])):
         if r["m"] in out:
@@ -255,18 +257,18 @@ def overview(con, today=None):
     this_m = month_key(today)
     prev_m = month_key(today.replace(day=1) - timedelta(days=1))
     spent = {r["m"]: r["total"] or 0 for r in con.execute(
-        "SELECT substr(date, 1, 7) AS m, COALESCE(SUM(amount), 0) AS total FROM expenses WHERE substr(date, 1, 7) IN (?, ?)"
+        "SELECT substr(date, 1, 7) AS m, COALESCE(SUM(amount - COALESCE(refunded, 0)), 0) AS total FROM expenses WHERE substr(date, 1, 7) IN (?, ?)"
         " GROUP BY m", (this_m, prev_m))}
     year_ago = (today - timedelta(days=365)).isoformat()
-    last_year = con.execute("SELECT SUM(amount) FROM expenses WHERE date > ?", (year_ago,)).fetchone()[0] or 0
+    last_year = con.execute("SELECT SUM(amount - COALESCE(refunded, 0)) FROM expenses WHERE date > ?", (year_ago,)).fetchone()[0] or 0
     cats = [dict(r) for r in con.execute(
-        "SELECT category, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS n FROM expenses WHERE substr(date, 1, 7) = ?"
+        "SELECT category, COALESCE(SUM(amount - COALESCE(refunded, 0)), 0) AS total, COUNT(*) AS n FROM expenses WHERE substr(date, 1, 7) = ?"
         " GROUP BY category ORDER BY total DESC", (this_m,))]
     for c in cats:
         c["color"] = CATEGORY_COLORS.get(c["category"], "#8592bd")
     since = (today - timedelta(days=90)).isoformat()
     vendors = [dict(r) for r in con.execute(
-        "SELECT vendor, category, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS n FROM expenses WHERE date > ?"
+        "SELECT vendor, category, COALESCE(SUM(amount - COALESCE(refunded, 0)), 0) AS total, COUNT(*) AS n FROM expenses WHERE date > ?"
         " GROUP BY lower(vendor) ORDER BY total DESC LIMIT 8", (since,))]
     return {"month": this_m, "month_name": MONTH_NAMES[today.month - 1], "this_month": spent.get(this_m, 0),
             "last_month": spent.get(prev_m, 0), "last_year": last_year, "categories": cats, "vendors": vendors,

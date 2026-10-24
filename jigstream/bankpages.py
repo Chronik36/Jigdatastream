@@ -145,6 +145,18 @@ def bank_match(tx_id):
     return _back()
 
 
+@pages.post("/bank/accounts/<int:account_id>/botting")
+def bank_account_botting(account_id):
+    c = _con()
+    c.execute("UPDATE bank_accounts SET all_botting = CASE WHEN all_botting = 1 THEN NULL ELSE 1 END WHERE id = ?",
+              (account_id,))
+    c.commit()
+    on = c.execute("SELECT all_botting, name FROM bank_accounts WHERE id = ?", (account_id,)).fetchone()
+    if on:
+        flash(f"{on['name']}: " + ("every charge counts as botting spend." if on["all_botting"] else "back to receipts only."))
+    return _back()
+
+
 @pages.post("/bank/accounts/<int:account_id>/delete")
 def bank_account_delete(account_id):
     c = _con()

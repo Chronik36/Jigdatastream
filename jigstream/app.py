@@ -166,6 +166,14 @@ def create_app(db_path=None):
         year = request.args.get("year") if request.args.get("year") in years else years[0]
         return render_template("dashboard.html", s=overview.summary(c, year), years=years)
 
+    @app.get("/spend")
+    def spend_page():
+        c = Store(con()).db
+        years = overview.years(c)
+        year = request.args.get("year") if request.args.get("year") in years else years[0]
+        return render_template("spend.html", s=overview.summary(c, year), b=overview.spend_breakdown(c, year),
+                               years=years, statuses=STATUS_CHOICES, labels=STATUS_LABELS)
+
     @app.get("/imports")
     def imports_page():
         report, unmatched = analysis.failure_report(con())

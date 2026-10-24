@@ -18,7 +18,7 @@
 <div class="dhead"><h2>Dashboard</h2>
 <form method="get"><select name="year" onchange="this.form.submit()" aria-label="Year">{% for y in years %}<option {{"selected" if y == s.year}}>{{y}}</option>{% endfor %}</select></form></div>
 <div class="stats">
-<a class="card" href="/orders" title="Orders that stuck plus botting expenses. Cancelled, refunded and returned orders aren't counted.">Spent in {{s.year}} <b>{{s.total_out|money}}</b><small>{{s.spend|money}} on orders · {{s.expenses|money}} on botting</small></a>
+<a class="card" href="/spend?year={{s.year}}" title="Where it comes from: orders that stuck plus botting expenses. Cancelled, refunded and returned orders aren't counted.">Spent in {{s.year}} <b>{{s.total_out|money}}</b><small>{{s.spend|money}} on orders · {{s.expenses|money}} on botting</small></a>
 <a class="card" href="/orders">Orders <b>{{s.orders}}</b><small>{% if s.orders_dropped %}{{s.orders_dropped}} cancelled or refunded not counted{% else %}orders that stuck{% endif %}</small></a>
 <a class="card ok" href="/drop">Successful checkouts <b>{{s.good}}</b><small>{{s.rate}}% of {{s.checkouts}} checkouts</small></a>
 <a class="card" href="/expenses/profit" title="Payouts from eBay, Mercari, Vinted, StockX, Tradepost and the rest: from payout emails, payout deposits on your statements, or typed in">Sold in {{s.year}} <b>{{s.income|money}}</b><small>{% if s.income %}{{(s.income - s.total_out)|money}} after what you spent{% else %}no sales or payouts yet{% endif %}</small></a>
