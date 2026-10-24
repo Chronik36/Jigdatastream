@@ -1,4 +1,10 @@
 {% extends "base.html" %}{% from "_verdict.html" import verdict with context %}{% block body %}
+{# The price, and a box to fix it: the AI then re-reads the emails and learns how that store writes prices. #}
+{% macro price_box(kind, id, value, currency, manual) %}<div class="pricebox"><div class="big">{{value|money(currency)}}{% if manual %} <span class="muted small" title="Set by hand">✎</span>{% endif %}</div>
+<button type="button" class="ghost sm" onclick="this.closest('.pricebox').classList.add('editing');this.closest('.pricebox').querySelector('input[name=price]').focus()">Wrong price?</button>
+<form method="post" action="/prices/{{kind}}/{{id}}" class="pform"><input type="hidden" name="back" value="{{here}}&at={{at}}">
+<label class="muted small">Right price<input name="price" inputmode="decimal" autocomplete="off" value="{{'%.2f'|format(value) if value is not none}}" required></label>
+<button class="sm">Save and teach the AI</button></form></div>{% endmacro %}
 {% set here = "/review?" ~ (base|urlencode) %}
 {% set outcome_names = {"confirmed": "Good", "no_email": "Unsure", "cancelled": "Cancelled", "decline": "Declined", "failure": "Failed", "not_order": "Not an order"} %}
 <div class="rvhead"><div><h2 style="margin:0">Go through: {{title}}</h2>
@@ -6,9 +12,9 @@
 <a class="btn ghost" href="{{request.referrer if request.referrer and '/review' not in request.referrer else '/spend'}}">Done</a></div>
 {% if not keys %}<div class="panel muted">Nothing here.</div>{% else %}
 <div class="rv">
-<aside class="rvlist panel"><form id="pickform" method="get" action="/review">{% for k, v in base.items() if k != "ids" %}<input type="hidden" name="{{k}}" value="{{v}}">{% endfor %}<input type="hidden" name="ids" id="ids">
+<details class="rvlist panel" id="rvlist" open><summary>All {{keys|length}} items · {{i + 1}} of {{keys|length}}</summary><form id="pickform" method="get" action="/review">{% for k, v in base.items() if k != "ids" %}<input type="hidden" name="{{k}}" value="{{v}}">{% endfor %}<input type="hidden" name="ids" id="ids">
 <div class="rvtools"><label class="muted"><input type="checkbox" id="all"> All</label><button type="submit" class="ghost" id="gosel" disabled>Go through ticked</button></div></form>
-<ol>{% for k in keys %}{% set l = labels.get(k) %}{% if l %}<li class="{{'on' if k == at}}{{' ok' if k in done}}"><input type="checkbox" class="pk" value="{{k}}" aria-label="Tick"><a href="{{here}}&at={{k}}"><span class="rk">{{l.kind}}</span> <b>{{l.title}}</b>{% if l.amount is not none %} <span class="num">{{l.amount|money}}</span>{% endif %}<span class="muted rs">{{l.date}} · {{l.sub[:60]}}</span></a>{% if k in done %}<span class="tick" title="Checked">✓</span>{% endif %}</li>{% endif %}{% endfor %}</ol></aside>
+<ol>{% for k in keys %}{% set l = labels.get(k) %}{% if l %}<li class="{{'on' if k == at}}{{' ok' if k in done}}"><input type="checkbox" class="pk" value="{{k}}" aria-label="Tick"><a href="{{here}}&at={{k}}"><span class="rk">{{l.kind}}</span> <b>{{l.title}}</b>{% if l.amount is not none %} <span class="num">{{l.amount|money}}</span>{% endif %}<span class="muted rs">{{l.date}} · {{l.sub[:60]}}</span></a>{% if k in done %}<span class="tick" title="Checked">✓</span>{% endif %}</li>{% endif %}{% endfor %}</ol></details>
 
 <section class="rvbody">
 <div class="rvnav"><a class="btn ghost{{' dis' if not prev_key}}" href="{{here ~ '&at=' ~ prev_key if prev_key else '#'}}" id="prev">‹ Back</a>
@@ -16,13 +22,14 @@
 <a class="btn ghost{{' dis' if not next_key}}" href="{{here ~ '&at=' ~ next_key if next_key else '#'}}" id="next">Next ›</a></div>
 {% if not d %}<div class="panel muted">This one is gone (removed or merged).</div>
 {% elif d.kind == "order" %}{% set o = d.o %}{% set status = o.shipping_status or "unknown" %}
-<article class="panel rvcard"><div class="rvtop"><div><span class="rk">Order</span><h3>{{o.retailer or "Order"}} <span class="muted">{{o.order_number or ""}}</span></h3>
-<div class="muted">{{o.order_date or "no date"}}{% if o.account %} · <span data-private>{{o.account}}</span>{% endif %}</div></div><div class="big">{{o.total|money(o.currency)}}</div></div>
+<article class="panel rvcard"><div class="rvtop"><div><span class="rk">Order</span><h3>{{o.retailer or "Order"}} {% if o.order_number %}<span class="muted" data-copy title="Copy the order number">{{o.order_number}}</span>{% endif %}</h3>
+<div class="muted">{{o.order_date or "no date"}}{% if o.account %} · <span data-private data-copy>{{o.account}}</span>{% endif %}{% if o.recipient_email and o.recipient_email != o.account %} · sent to <span data-private data-copy>{{o.recipient_email}}</span>{% endif %}</div></div>
+{{ price_box("order", o.id, o.total, o.currency, o.total_manual) }}</div>
 <ul class="items">{% for it in o["items"] %}<li>{{it.name}}{% if it.quantity and it.quantity != 1 %} x{{it.quantity}}{% endif %}</li>{% else %}<li class="muted">No items listed</li>{% endfor %}</ul>
 <div class="rvgrid">
 <div><div class="fl">Status</div><span class="pill s-{{status}}">{{status|status_label}}</span>{% if o.status_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}{% include "_stagebar.html" %}
 <form method="post" action="/orders/{{o.id}}/label" class="fix"><input type="hidden" name="back" value="1"><select name="status" class="relabel" title="Set the right status; the AI learns from this order's emails"><option value="">Fix status…</option>{% for st in statuses %}<option value="{{st}}" {{"disabled" if st == status}}>{{st|status_label}}</option>{% endfor %}<option disabled>──────────</option><option value="not_an_order">Not an order (remove)</option></select></form></div>
-<div><div class="fl">Tracking</div>{% if o.tracking_number %}<a class="track" href="{{o|track_url}}" target="_blank" rel="noopener"><span class="muted">{{o.carrier or "Track"}}</span> {{o.tracking_number}} ↗</a>{% else %}<span class="muted">No tracking yet</span>{% endif %}{% if o.carrier_status %}<div class="muted small">{{o.carrier_status}}</div>{% endif %}{% if o.estimated_delivery %}<div class="muted small">ETA {{o.estimated_delivery}}</div>{% endif %}</div>
+<div><div class="fl">Tracking</div>{% if o.tracking_number %}<a class="track" href="{{o|track_url}}" target="_blank" rel="noopener"><span class="muted">{{o.carrier or "Track"}}</span> {{o.tracking_number}} ↗</a> <span class="muted small" data-copy="{{o.tracking_number}}" title="Copy the tracking number">copy</span>{% else %}<span class="muted">No tracking yet</span>{% endif %}{% if o.carrier_status %}<div class="muted small">{{o.carrier_status}}</div>{% endif %}{% if o.estimated_delivery %}<div class="muted small">ETA {{o.estimated_delivery}}</div>{% endif %}</div>
 <div><div class="fl">Profile</div>{% if o.profile_name %}<a href="/profile-orders?profile={{o.profile_name|urlencode}}"><b>{{o.profile_name}}</b></a> <span class="muted small">{{o.profile_match or ""}}</span>{% elif o.profile_candidates %}<span style="color:var(--orange)">Could be {{o.profile_candidates|join(", ")}}</span>{% else %}<span class="muted">No match</span>{% endif %}
 <form method="post" action="/orders/{{o.id}}/profile" class="fix"><input type="hidden" name="back" value="{{here}}&at={{at}}"><select name="profile" onchange="if (this.value !== '__keep__') this.form.submit()" title="Pick the profile this order was placed with"><option value="__keep__">Change profile…</option>{% for n in o.profile_candidates %}<option value="{{n}}">{{n}}</option>{% endfor %}{% for n in profile_names if n not in o.profile_candidates %}<option value="{{n}}">{{n}}</option>{% endfor %}<option value="">None of my profiles</option>{% if o.profile_manual %}<option value="__auto__">Match automatically</option>{% endif %}</select></form></div>
 <div><div class="fl">Ship to</div><div data-private>{% if o.shipping_name %}<b>{{o.shipping_name}}</b><br>{% endif %}{% set al = o|address_label %}{% if al %}<a href="/address?name={{al|urlencode}}" title="Everything at this address">{{o.shipping_address}}</a>{% else %}{{o.shipping_address or "-"}}{% endif %}</div></div>
@@ -31,7 +38,7 @@
 </article>
 {% elif d.kind == "expense" %}{% set e = d.e %}
 <article class="panel rvcard"><div class="rvtop"><div><span class="rk">Receipt</span><h3>{{e.vendor or "Receipt"}}</h3><div class="muted">{{e.date or "no date"}}{% if e.billing_period %} · {{e.billing_period|replace("_", " ")}}{% endif %}</div></div>
-<div class="big">{{e.amount|money(e.currency)}}{% if e.refunded %}<div class="muted small">{{e.refunded|money}} refunded</div>{% endif %}</div></div>
+<div>{{ price_box("expense", e.id, e.amount, e.currency, e.amount_manual) }}{% if e.refunded %}<div class="muted small" style="text-align:right">{{e.refunded|money}} refunded</div>{% endif %}</div></div>
 <p>{{e.description or ""}}</p>
 <div class="rvgrid"><div><div class="fl">Category</div><form method="post" action="/review/expense/{{e.id}}/category" class="fix"><input type="hidden" name="back" value="{{here}}&at={{at}}"><select name="category" onchange="this.form.submit()" title="What kind of botting cost this is">{% for cat in categories %}<option value="{{cat}}" {{"selected" if cat == e.category}}>{{cat|replace("_", " ")|capitalize}}</option>{% endfor %}</select></form></div>
 <div><div class="fl">Fix it</div><div class="btnrow">
@@ -58,8 +65,14 @@
 <style>
 .rvhead{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
 .rv{display:grid;grid-template-columns:minmax(220px,320px) minmax(0,1fr);gap:16px;align-items:start}
-@media (max-width:900px){.rv{grid-template-columns:minmax(0,1fr)}.rvlist{max-height:260px}}
-.rvlist{padding:10px;max-height:calc(100vh - 180px);overflow:auto;position:sticky;top:70px}
+.rvlist{padding:10px;max-height:calc(100vh - 180px);overflow:auto;position:sticky;top:70px}.rvlist>summary{display:none}
+@media (max-width:900px){.rv{grid-template-columns:minmax(0,1fr)}
+  .rvlist{position:static;max-height:none;overflow:visible;order:2}.rvlist>summary{display:block;cursor:pointer;font-weight:600;padding:4px 2px;list-style:revert}
+  .rvbody{order:1}}
+.pricebox{display:flex;flex-direction:column;align-items:flex-end;gap:6px}.pricebox .pform{display:none;gap:6px;align-items:flex-end;flex-wrap:wrap;justify-content:flex-end;margin:0}
+.pricebox.editing .pform{display:flex}.pricebox.editing>button{display:none}.pform label{display:flex;flex-direction:column;gap:3px;margin:0}
+.pform input{margin:0;width:110px;font-size:16px;text-align:right}
+@media (max-width:600px){.rvtop{flex-direction:column}.pricebox{align-items:flex-start}.pricebox .big{text-align:left}.pricebox .pform{justify-content:flex-start}}.pform button,.pricebox>button{margin:0}button.sm{padding:4px 10px;font-size:12px}
 .rvlist ol{list-style:none;margin:0;padding:0}.rvlist li{display:flex;gap:8px;align-items:flex-start;padding:7px 6px;border-radius:8px}
 .rvlist li.on{background:var(--accent-soft)}.rvlist li a{flex:1;min-width:0;color:inherit;text-decoration:none;font-size:13px}
 .rvlist li .rs{display:block;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rvlist li .num{float:right}
@@ -99,7 +112,11 @@
     else if (e.key === 'ArrowRight') go('next');
     else if (e.key === 'Enter') { const f = document.querySelector('.rvact form'); if (f) f.requestSubmit(); }
   });
-  const on = document.querySelector('.rvlist li.on'); if (on) on.scrollIntoView({block: 'center'});
+  // On a phone the list goes under the item, folded; on a wide screen it's the side pane, always open.
+  const list = document.getElementById('rvlist');
+  if (list && matchMedia('(max-width:900px)').matches) list.open = false;
+  const on = document.querySelector('.rvlist li.on');
+  if (on && list && list.open) { const box = list.getBoundingClientRect(), r = on.getBoundingClientRect(); list.scrollTop += r.top - box.top - box.height / 2; }
 })();
 </script>
 {% endblock %}

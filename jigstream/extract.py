@@ -186,8 +186,45 @@ def _money(value):
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    m = re.search(r"-?\d[\d,]*\.?\d*", str(value))
-    return float(m.group(0).replace(",", "")) if m else None
+    m = re.search(r"-?\d[\d,.]*", str(value))
+    if not m:
+        return None
+    raw = m.group(0).rstrip(".,")
+    if re.fullmatch(r"-?\d{1,3}(\.\d{3})*,\d{2}|-?\d+,\d{2}", raw):  # 45,00 or 1.234,50 (European)
+        raw = raw.replace(".", "").replace(",", ".")
+    try:
+        return float(raw.replace(",", ""))
+    except ValueError:
+        return None
+
+
+def amounts_in(text):
+    """Every money amount written in the email."""
+    return {round(_amount_of(m), 2) for m in MONEY_VALUE.finditer(text or "")}
+
+
+def check_cents(price, text):
+    """A price the email only shows with a decimal point in it: 4500 read from $45.00."""
+    if price is None:
+        return None
+    shown = amounts_in(text)
+    return round(price / 100, 2) if shown and round(price, 2) not in shown and round(price / 100, 2) in shown else price
+
+
+def check_total(total, text):
+    """The model's total held against the email it read. A total the email never shows is a misread: most often
+    the cents run together with the dollars ($45<sup>00</sup> read as 4500), so the same number with the decimal
+    put back wins when the email shows it; otherwise the email's own Total line. When the email shows no money at
+    all (or the total), the model's answer stands."""
+    if total is None:
+        return None
+    shown = amounts_in(text)
+    if not shown or round(total, 2) in shown:
+        return total
+    if round(total / 100, 2) in shown:
+        return round(total / 100, 2)
+    found = find_total(text)
+    return found if found is not None else total
 
 
 def _date(value):
@@ -260,8 +297,8 @@ def normalize(data, email):
 
     if kind == "botting_expense" and NOT_A_CHARGE.search(email.subject or "") and not PAID_WORDS.search(email.subject or ""):
         kind = "other"  # a reminder or renewal notice, not money spent
-    if kind in ("botting_expense", "order") and total is None:
-        total = find_total(email.body)
+    if kind in ("botting_expense", "order"):
+        total = find_total(email.body) if total is None else check_total(total, email.body)
 
     if kind == "botting_expense":
         category = data.get("expense_category")
@@ -314,7 +351,7 @@ def normalize(data, email):
             items.append({
                 "name": _str(item.get("name")),
                 "quantity": item.get("quantity") if isinstance(item.get("quantity"), (int, float)) else 1,
-                "price": _money(item.get("price")),
+                "price": check_cents(_money(item.get("price")), email.body),
             })
 
     tracking = _str(data.get("tracking_number"))

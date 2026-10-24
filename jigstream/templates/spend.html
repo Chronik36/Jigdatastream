@@ -12,7 +12,7 @@
 <p class="muted" style="font-size:12px">Returned or refunded? Press Refunded on its row in the <a href="/expenses/ledger">Ledger</a>; refunds on your statements come off by themselves.</p></section>
 </div>
 <section class="panel" style="margin-top:16px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">Biggest orders</h3><a class="btn ghost" href="/review?src=biggest&year={{b.year}}">Go through them</a></div><table><thead><tr><th>Date</th><th>Store / order #</th><th class="num">Total</th><th>Status</th><th>Correct it</th></tr></thead><tbody>
-{% for o in b.biggest %}<tr><td>{{o.order_date or "-"}}</td><td><a href="/orders#order-{{o.id}}"><b>{{o.retailer or "-"}}</b></a><div class="muted">{{o.order_number or ""}}</div></td><td class="num">{{o.total|money(o.currency)}}</td>
+{% for o in b.biggest %}<tr><td>{{o.order_date or "-"}}</td><td><a href="/orders#order-{{o.id}}"><b>{{o.retailer or "-"}}</b></a>{% if o.order_number %}<div class="muted"><span data-copy>{{o.order_number}}</span></div>{% endif %}</td><td class="num">{{o.total|money(o.currency)}}</td>
 <td><span class="pill s-{{o.shipping_status or 'unknown'}}">{{(o.shipping_status or "unknown")|status_label}}</span></td>
 <td><form method="post" action="/orders/{{o.id}}/label" style="margin:0"><input type="hidden" name="back" value="1"><select name="status" onchange="if (this.value) this.form.submit()" aria-label="Correct this order"><option value="">Change…</option><option value="cancelled">Cancelled</option><option value="returned">Returned</option><option value="not_an_order">Not an order</option></select></form></td></tr>
 {% else %}<tr><td colspan="5" class="muted">No orders.</td></tr>{% endfor %}</tbody></table></section>

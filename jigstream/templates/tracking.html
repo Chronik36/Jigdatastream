@@ -9,7 +9,7 @@
 <div class="board">{% for key, title, hint in lanes %}<section class="lane" id="lane-{{key}}"><h3><span class="dotl l-{{key}}"></span>{{title}} <span class="muted">{{by_lane[key]|length}}</span></h3><p class="muted hint">{{hint}}</p>
 {% for o in by_lane[key] %}{% set status = o.shipping_status or "unknown" %}<article class="tcard{{' late' if o.id in late}}" id="order-{{o.id}}">
 <div class="trow"><b>{{o.retailer or "Unknown store"}}</b><span class="num">{{o.total|money(o.currency)}}</span></div>
-<div class="muted small">{{o.order_number or "No order #"}} · {{o.order_date or "no date"}}</div>
+<div class="muted small">{% if o.order_number %}<span data-copy>{{o.order_number}}</span>{% else %}No order #{% endif %} · {{o.order_date or "no date"}}</div>
 <div class="titems" title="{% for i in o['items'] %}{{i.name}}{% if not loop.last %}; {% endif %}{% endfor %}">{% for i in o["items"] %}{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}{% if not loop.last %}; {% endif %}{% else %}<span class="muted">No items listed</span>{% endfor %}</div>
 {% include "_stagebar.html" %}
 <div class="steps"><span class="{{'on' if key in ('ordered','moving','out','delivered')}}">Ordered</span><span class="{{'on' if key in ('moving','out','delivered')}}">Shipped</span><span class="{{'on' if key in ('out','delivered')}}">Out</span><span class="{{'on' if key == 'delivered'}}">Delivered</span></div>

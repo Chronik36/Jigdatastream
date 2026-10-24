@@ -65,7 +65,7 @@ class ExtractTests(unittest.TestCase):
         self.assertEqual(r["order_date"], "2026-10-01")
 
     def test_botting_expense_from_unknown_vendor(self):
-        e = mail("Your receipt", sender="Stripe <receipts@stripe.com>")
+        e = mail("Your receipt", sender="Stripe <receipts@stripe.com>", body="Amount paid $45.00")
         r = normalize({"kind": "botting_expense", "vendor": "Brand New Proxies", "expense_category": "proxy",
                        "billing_period": "monthly", "total": "$45.00"}, e)
         self.assertEqual((r["vendor"], r["category"], r["billing_period"], r["amount"]),
@@ -107,7 +107,7 @@ class SyncTests(unittest.TestCase):
             mail("Order confirmed", date="2026-10-01T10:00:00+00:00"),
             mail("Your order shipped", date="2026-10-03T10:00:00+00:00"),
             mail("Delivered", date="2026-10-06T10:00:00+00:00"),
-            mail("Whop receipt", sender="Whop <no-reply@whop.com>"),
+            mail("Whop receipt", sender="Whop <no-reply@whop.com>", body="Total paid: $50.00"),
             mail("Weekly deals", body="Order now and save, everything $99.00"),
             mail("Account notice", body="We updated our privacy policy"),
         ]

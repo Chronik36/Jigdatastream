@@ -13,5 +13,5 @@
 <td>{% if c.profile %}<a href="/profile-orders?profile={{c.profile|urlencode}}">{{c.profile}}</a>{% else %}-{% endif %}</td>
 <td>{% if c.address %}<a href="/address?name={{c.address|urlencode}}" data-private>{{c.address}}</a>{% if c.address_full and c.address_full|upper != c.address|upper %}<div class="muted" style="font-size:12px" data-private>{{c.address_full}}</div>{% endif %}{% else %}<span class="muted">-</span>{% endif %}</td>
 <td class="muted">{{c.proxy_group or ""}}{% if c.proxy %}<div style="font-size:12px">{% if ":" in c.proxy %}<a href="/proxies/find?hp={{c.proxy|urlencode}}" title="This proxy's page: speed, location and every checkout through it">{{c.proxy}}</a>{% else %}{{c.proxy}}{% endif %}</div>{% endif %}</td>
-<td>{{c.product or "-"}}{% if c.order_number %}<div class="muted">{{c.order_number}}</div>{% endif %}</td></tr>
+<td>{{c.product or "-"}}{% if c.order_number %}<div class="muted"><span data-copy>{{c.order_number}}</span></div>{% endif %}</td></tr>
 {% else %}<tr><td colspan="7" class="muted">No checkout webhooks here yet.</td></tr>{% endfor %}</tbody></table>{% endmacro %}

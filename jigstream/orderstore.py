@@ -66,7 +66,9 @@ MIGRATIONS = [("tracked_orders", "status_manual", "INTEGER DEFAULT 0"),
               ("tracked_orders", "shipping_name", "TEXT"), ("tracked_orders", "recipient_email", "TEXT"),
               ("tracked_orders", "profile_name", "TEXT"), ("tracked_orders", "profile_match", "TEXT"),
               ("tracked_orders", "profile_candidates", "TEXT"), ("tracked_orders", "profile_manual", "INTEGER DEFAULT 0"),
-              ("expenses", "refunded", "REAL")]
+              ("expenses", "refunded", "REAL"),
+              # a price changed by hand (pricecheck.py): never changed by a sync or the price re-check
+              ("tracked_orders", "total_manual", "INTEGER DEFAULT 0"), ("expenses", "amount_manual", "INTEGER DEFAULT 0")]
 
 LABEL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS labels (
@@ -413,6 +415,8 @@ class Store:
             fields["items"] = json.dumps(fields["items"])
         if fields.get("tracking_number") != row["tracking_number"]:
             fields["tracking_url"] = None  # a link from the email only fits the old number
+        if "total" in fields and fields["total"] != row["total"]:
+            fields["total_manual"] = 1  # typed in: the price re-check leaves it alone
         if fields:
             cols = ", ".join(f"{k} = ?" for k in fields)
             self.db.execute(f"UPDATE tracked_orders SET {cols} WHERE id = ?", (*fields.values(), order_id))
@@ -453,6 +457,9 @@ class Store:
         return cur.lastrowid
 
     def update_expense(self, expense_id, fields):
+        was = self.db.execute("SELECT amount FROM expenses WHERE id = ?", (expense_id,)).fetchone()
+        if "amount" in fields and was is not None and fields["amount"] != was[0]:
+            fields = dict(fields, amount_manual=1)  # typed in: the price re-check leaves it alone
         self.db.execute(f"UPDATE expenses SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
                         (*fields.values(), expense_id))
         self.db.commit()
@@ -502,6 +509,19 @@ class Store:
             " VALUES (NULL,NULL,?,?,?,?,?,?,?,?,?,?,?)",
             (email.message_id, email.sender, email.subject, email.date, prompt, json.dumps(raw),
              raw.get("shipping_status") or raw.get("kind"), json.dumps(corrected), label, int(right),
+             datetime.now(timezone.utc).isoformat()))
+        self.db.commit()
+
+    def add_price_example(self, email, prompt, raw, corrected):
+        """An email whose price was fixed by hand: the answer with the right price."""
+        self.db.execute("DELETE FROM training_examples WHERE label_id IS NULL AND message_id = ?", (email.message_id,))
+        right = raw.get("total") is not None and abs(float(raw.get("total") or 0) - corrected["total"]) < 0.01
+        self.db.execute(
+            "INSERT INTO training_examples (label_id, order_id, message_id, sender, subject, email_date,"
+            " prompt, model_output, model_status, corrected, status, model_was_right, created_at)"
+            " VALUES (NULL,NULL,?,?,?,?,?,?,?,?,'price',?,?)",
+            (email.message_id, email.sender, email.subject, email.date, prompt, json.dumps(raw),
+             raw.get("shipping_status") or raw.get("kind"), json.dumps(corrected), int(right),
              datetime.now(timezone.utc).isoformat()))
         self.db.commit()
 
