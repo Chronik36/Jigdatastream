@@ -57,7 +57,7 @@ JSON keys. Leave out any key that is unknown or doesn't apply to the kind, and n
   "retailer": store or brand name for orders,
   "order_number": string,
   "order_date": "YYYY-MM-DD",
-  "items": [{{"name": string, "quantity": number, "price": number}}],
+  "items": [{{"name": string, "quantity": number, "price": number}}] (only what was bought in this order; never products from "you may also like", "recommended for you", "recently viewed" or other suggestions),
   "total": number (the amount actually paid, e.g. "Total", "Amount paid", "Amount charged"; for expenses too),
   "currency": "USD" or other ISO code,
   "shipping_address": full address as one string,
@@ -354,6 +354,8 @@ def normalize(data, email):
                 "price": check_cents(_money(item.get("price")), email.body),
             })
 
+    items = drop_suggested(items, email.body)
+
     tracking = _str(data.get("tracking_number"))
     carrier = _str(data.get("carrier"))
     if tracking:
@@ -416,6 +418,58 @@ FOOTER = re.compile(r"\bunsubscribe\b|\bprivacy (policy|notice)\b|\bmanage (your
                     r"\ball rights reserved\b|\bthis (e-?mail|message) was sent to\b", re.I)
 
 
+# Store emails end with products they'd like to sell you; those are never the order's items.
+RECS = re.compile(r"^\W*(you (may|might) (also )?(like|love)|recommended (for you|products|items)|(customers|shoppers|guests) "
+                  r"(also|who)|(based on|inspired by) your|recently viewed|(more|items|picks|picked|top picks) (for|to) "
+                  r"(you|love|explore)|frequently bought|similar (items|products)|shop (similar|more|the look)|"
+                  r"(trending|popular) (now|items|products)|complete the look|related (items|products)|don't forget|"
+                  r"still (thinking|interested)|deals (for|picked for) you|our picks|more to (love|explore))\b", re.I)
+# What ends a suggestions block: the order's own details coming back.
+ORDER_LINE = re.compile(r"\b(order|subtotal|total|tax|ship(ping|ped|s)? to|deliver(y|ing)|address|payment|paid|"
+                        r"tracking|qty|quantity|arriv)\b", re.I)
+REC_LINES = 60
+
+
+def split_recommendations(text):
+    """(the email without its suggestion blocks, the text of those blocks)."""
+    keep, recs, left = [], [], 0
+    for line in (text or "").splitlines():
+        if RECS.search(line) and len(line) < 80:
+            left = REC_LINES
+            recs.append(line)
+            continue
+        if left and not ORDER_LINE.search(line):
+            left -= 1
+            recs.append(line)
+            continue
+        left = 0
+        keep.append(line)
+    return "\n".join(keep), "\n".join(recs)
+
+
+def _name_key(name):
+    return re.sub(r"[^a-z0-9]+", " ", re.sub(r"(\.\.\.|…)\s*$", "", (name or "").lower())).strip()[:30]
+
+
+def truncated(name):
+    return bool(re.search(r"(\.\.\.|…)\s*$", name or ""))
+
+
+def drop_suggested(items, body=None):
+    """The order's items without products the email only suggested: names found only in its suggestion blocks,
+    and cut-off names (ending in "...") listed beside full ones, which is how store carousels show them."""
+    if body:
+        main, recs = split_recommendations(body)
+        main_k = re.sub(r"[^a-z0-9]+", " ", main.lower())
+        recs_k = re.sub(r"[^a-z0-9]+", " ", recs.lower())
+        items = [i for i in items if not (_name_key(i["name"]) and _name_key(i["name"]) in recs_k
+                                          and _name_key(i["name"]) not in main_k)]
+    full = [i for i in items if not truncated(i.get("name"))]
+    if full and len(full) < len(items):
+        items = full
+    return items
+
+
 def compact(body):
     """The email text with what costs the model time but tells it nothing taken out: the empty cells and
     spacer rows receipt HTML leaves behind, repeated lines, and the legal footer at the end. Every token
@@ -429,7 +483,7 @@ def compact(body):
             continue
         lines.append(line)
         last = line
-    text = "\n".join(lines)
+    text = split_recommendations("\n".join(lines))[0]
     # Footers come after the order details; only cut one that starts in the back half of a long email.
     m = next((m for m in FOOTER.finditer(text) if m.start() > max(2000, len(text) // 2)), None)
     if m:

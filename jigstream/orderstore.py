@@ -151,6 +151,21 @@ def _words(s):
     return {w for w in re.findall(r"[a-z0-9]+", (s or "").lower()) if len(w) > 1}
 
 
+def drop_suggested_items(con):
+    """Orders saved before suggested products were filtered: drop cut-off names ("...") listed beside full ones.
+    Returns how many orders changed."""
+    from .extract import drop_suggested
+    n = 0
+    for row in con.execute("SELECT id, items FROM tracked_orders WHERE items LIKE '%...%' OR items LIKE '%…%'").fetchall():
+        items = json.loads(row[1] or "[]")
+        kept = drop_suggested([i for i in items if isinstance(i, dict) and i.get("name")])
+        if len(kept) < len(items):
+            con.execute("UPDATE tracked_orders SET items=? WHERE id=?", (json.dumps(kept), row[0]))
+            n += 1
+    con.commit()
+    return n
+
+
 def with_pictures(items, images):
     """Items with the product photo from their email: the picture whose alt text names the item, or for a
     one-item order the store's own product picture. Returns True when one was added."""
