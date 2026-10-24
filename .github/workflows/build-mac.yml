@@ -77,6 +77,8 @@ jobs:
           R="$D/BotTrack.app/Contents/Resources"
           PYTHONPATH="$R/app" "$R/python/bin/python3" -c "import flask, webview, mlx_lm, jigstream.macapp, jigstream.app; jigstream.app.create_app('/tmp/t.db'); print('imports ok')"
           "$R/ollama/ollama" --version || true
+          # The Manual as one HTML file for the release (made with the app's own Python and code).
+          PYTHONPATH="$R/app" "$R/python/bin/python3" packaging/export_manual.py dist/BotTrack-Manual.html || echo "manual export failed"
           hdiutil detach "$D"
       - uses: actions/upload-artifact@v4
         with:
@@ -106,10 +108,18 @@ jobs:
           if [ -n "$prev" ] && git cat-file -e "${prev##*-}^{commit}" 2>/dev/null; then range="${prev##*-}..HEAD"; fi
           git log $range --no-merges --pretty='- %s' | sed -E 's/ \(#[0-9]+\)$//' | head -40 > notes.txt
           [ -s notes.txt ] || git log -1 --pretty='- %s' > notes.txt
+          # The page shows how to install first, then what's new; README.md and the Manual are attached too.
+          { echo "**New to BotTrack?** Read **README.md** below for how to install (Mac, Windows, Android, iPhone), and open **BotTrack-Manual.html** for the full manual."
+            echo; echo "### What's new"; cat notes.txt; } > body.txt
+          cp packaging/README.md README.md
           shopt -s nullglob
-          gh release create "$tag" dist/BotTrack.dmg dist/bottrack-code.zip apk/*.apk win/*.exe \
+          gh release create "$tag" dist/BotTrack.dmg dist/bottrack-code.zip apk/*.apk win/*.exe README.md dist/BotTrack-Manual*.html \
             -R "$repo" \
-            --title "BotTrack build ${{ github.run_number }}" --notes-file notes.txt
+            --title "BotTrack build ${{ github.run_number }}" --notes-file body.txt
+          # The releases repository's front page shows the same README.
+          sha=$(gh api "repos/$repo/contents/README.md" -q .sha 2>/dev/null || true)
+          gh api -X PUT "repos/$repo/contents/README.md" -f message="README for build ${{ github.run_number }}" \
+            -f content="$(base64 < README.md | tr -d '\n')" ${sha:+-f sha="$sha"} >/dev/null || echo "README update failed"
       # Each release with its patch notes in your Discord channel, when the DISCORD_RELEASES_WEBHOOK secret is set
       # (Discord channel > Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL).
       - name: Post the release to Discord
