@@ -1,0 +1,40 @@
+{# Tap to copy: order numbers, tracking numbers and email addresses carry data-copy (the value, or empty to copy
+   what's shown; an address inside <...> is copied on its own). Works in the Mac window and the phone app. #}
+<div id="btcopied" class="btcopied" role="status" aria-live="polite"></div>
+<style>
+[data-copy]{cursor:copy;border-bottom:1px dotted color-mix(in srgb,var(--muted) 70%,transparent);-webkit-user-select:all;user-select:all}
+[data-copy]:hover{color:var(--accent)}
+.btcopied{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;pointer-events:none;
+  background:var(--surface-2);border:1px solid var(--line-2);color:var(--text);padding:8px 14px;border-radius:99px;font-size:13px;z-index:1000;transition:.2s}
+.btcopied.on{opacity:1;transform:translate(-50%,0)}
+</style>
+<script>
+(function () {
+  const toast = document.getElementById('btcopied');
+  let hide;
+  function shown(text) {
+    toast.textContent = 'Copied ' + (text.length > 40 ? text.slice(0, 40) + '…' : text);
+    toast.classList.add('on'); clearTimeout(hide); hide = setTimeout(() => toast.classList.remove('on'), 1400);
+  }
+  function copy(text) {
+    const old = () => {  // the phone app's web view and plain http pages have no clipboard API
+      const t = document.createElement('textarea'); t.value = text; t.setAttribute('readonly', '');
+      t.style.cssText = 'position:fixed;top:0;left:0;opacity:0'; document.body.appendChild(t);
+      t.select(); t.setSelectionRange(0, text.length);
+      let ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+      t.remove(); return ok;
+    };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => shown(text), () => old() && shown(text));
+    else if (old()) shown(text);
+  }
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-copy]');
+    if (!el || window.getSelection().toString().length > (el.textContent || '').trim().length) return;
+    e.preventDefault(); e.stopPropagation();
+    let text = (el.dataset.copy || el.textContent || '').trim();
+    const addr = text.match(/<([^<>\s]+@[^<>\s]+)>/);
+    if (addr) text = addr[1];
+    if (text) copy(text.replace(/^#/, ''));
+  }, true);
+})();
+</script>

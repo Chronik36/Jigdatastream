@@ -43,7 +43,7 @@ function pickProfiles(sel) {
 <div class="sites">{% for site, n in pick.sites|dictsort(by="value", reverse=true) %}<span class="{{'bot' if not n}}" title="{{'From your bot checkouts; no order email yet' if not n else ''}}">{{site}}{% if n %}<b>{{n}}</b>{% endif %}</span>{% else %}<span class="bot">No checkouts yet</span>{% endfor %}</div>
 <table><thead><tr><th>Date</th><th>Site / order #</th><th>Items</th><th>Total</th><th>Status</th><th>Tracking</th><th>Matched on</th><th>Correct it</th></tr></thead><tbody>
 {% for o in pick.orders %}{% set status = o.shipping_status or "unknown" %}<tr>
-<td>{{o.order_date or "-"}}</td><td><a href="/orders#order-{{o.id}}"><b>{{o.retailer or "-"}}</b></a><div class="muted">{{o.order_number or ""}}</div></td>
+<td>{{o.order_date or "-"}}</td><td><a href="/orders#order-{{o.id}}"><b>{{o.retailer or "-"}}</b></a>{% if o.order_number %}<div class="muted"><span data-copy>{{o.order_number}}</span></div>{% endif %}</td>
 <td><ul class="items">{% for i in o["items"] %}<li>{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}</li>{% endfor %}</ul></td>
 <td class="num">{{o.total|money(o.currency)}}</td>
 <td><span class="pill s-{{status}}">{{status|status_label}}</span>{% if o.estimated_delivery %}<div class="muted" style="white-space:nowrap;font-size:12px;margin-top:4px">ETA {{o.estimated_delivery}}</div>{% endif %}</td>
