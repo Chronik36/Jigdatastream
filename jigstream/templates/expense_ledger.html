@@ -42,7 +42,9 @@ td{vertical-align:middle}.m{font-size:12.5px}.sub{display:block;font-size:12.5px
 <button name="action" value="confirm" title="Same purchase: the charge differs by {{(t.amount - r.amount)|abs|money}}">Confirm</button><button class="ghost" name="action" value="reject">Not this</button></form>
 {% elif r.state == "charge_only" %}
 <button type="button" onclick="openMatch({{t.id}})">Match…</button>
-<form method="post" action="/bank/{{t.id}}/match"><input type="hidden" name="action" value="ignore"><button class="ghost" title="Not a purchase you track (groceries, rent...)">Ignore</button></form>
+<form method="post" action="/bank/{{t.id}}/match"><input type="hidden" name="action" value="expense"><input type="hidden" name="vendor" value="{{t.description}}">
+<select name="category" onchange="if (this.value) this.form.requestSubmit()" title="A botting expense with no email receipt: add it" aria-label="Mark as expense"><option value="">Mark as expense…</option>{% for k in categories %}<option value="{{k}}">{{k|replace("_", " ")|capitalize}}</option>{% endfor %}</select></form>
+<form method="post" action="/bank/{{t.id}}/match"><input type="hidden" name="action" value="ignore"><button class="ghost" title="Not an expense: not a purchase you track (groceries, rent...)">Not an expense</button></form>
 {% elif r.state == "receipt_only" %}
 <form method="post" action="/expenses/{{e.id}}/paid"><select name="method" onchange="this.form.requestSubmit()" title="Paid without one of your imported cards">
 <option value="">Paid another way…</option>{% for p in methods %}<option value="{{p}}">{{p}}</option>{% endfor %}</select></form>
@@ -53,7 +55,8 @@ td{vertical-align:middle}.m{font-size:12.5px}.sub{display:block;font-size:12.5px
 {% endif %}
 {% if e and not e.subscription_id %}<button type="button" class="ghost" title="Track as a subscription" onclick='openRepeat({{ {"vendor": e.vendor, "amount": e.amount, "category": e.category, "expense_id": e.id, "period": e.billing_period if e.billing_period in rec_periods else "monthly"}|tojson }})'>Repeats</button>
 {% elif r.state == "charge_only" %}<button type="button" class="ghost" title="Track as a subscription" onclick='openRepeat({{ {"vendor": t.description, "amount": t.amount, "tx_id": t.id}|tojson }})'>Repeats</button>{% endif %}
-{% if e %}<button type="button" class="ghost" onclick='openExpense({{e|tojson}})'>Edit</button>{% endif %}
+{% if e %}<button type="button" class="ghost" onclick='openExpense({{e|tojson}})'>Edit</button>
+<form method="post" action="/expenses/{{e.id}}/not-expense" onsubmit="return confirm('Not a botting expense? It is removed, and its email teaches the AI to skip emails like it.')"><button class="ghost" title="Not a botting expense: remove it and train the AI">Not an expense</button></form>{% endif %}
 </div></td></tr>
 {% else %}<tr><td colspan="7" class="muted">{{"Nothing here." if counts.all else "No botting receipts or card charges yet. Sync your inboxes, or import a card statement on the Bank page."}}</td></tr>{% endfor %}
 </tbody></table>

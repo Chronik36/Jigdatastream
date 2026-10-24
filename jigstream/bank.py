@@ -329,10 +329,44 @@ def candidates(con, tx, include_claimed=False):
     return found
 
 
+def fill_amounts_from_charges(con):
+    """A receipt email with no total BotTrack could read takes its amount from the card charge it was paid with:
+    the one unmatched charge whose description names the vendor, dated from DAYS_BEFORE days before the email to
+    DAYS_AFTER days after. The charge is matched to it. Returns how many were filled."""
+    ensure(con)
+    charges = [dict(t) for t in con.execute(
+        "SELECT * FROM bank_transactions WHERE match_kind IS NULL AND COALESCE(match_how, '') != 'ignored'"
+        " AND amount > 0 AND pending = 0")]
+    taken, filled = set(), 0
+    for e in con.execute("SELECT id, vendor, date FROM expenses WHERE amount IS NULL AND date IS NOT NULL"
+                         " ORDER BY date").fetchall():
+        when = _day(e["date"])
+        if not when or not e["vendor"]:
+            continue
+        found = sorted(((abs((_day(t["date"]) - when).days), t) for t in charges
+                        if t["id"] not in taken and _day(t["date"])
+                        and -DAYS_BEFORE <= (_day(t["date"]) - when).days <= DAYS_AFTER
+                        and names_agree(t["description"], e["vendor"])), key=lambda f: f[0])
+        if not found or (len(found) > 1 and found[0][0] == found[1][0]
+                         and round(found[0][1]["amount"], 2) != round(found[1][1]["amount"], 2)):
+            continue  # nothing, or two different amounts equally likely: leave it for you
+        t = found[0][1]
+        con.execute("UPDATE expenses SET amount = ?, currency = COALESCE(currency, ?) WHERE id = ?",
+                    (t["amount"], t["currency"] or "USD", e["id"]))
+        con.execute("UPDATE bank_transactions SET match_kind = 'expense', match_id = ?, match_how = 'amount from charge'"
+                    " WHERE id = ?", (e["id"], t["id"]))
+        taken.add(t["id"])
+        filled += 1
+    con.commit()
+    return filled
+
+
 def auto_match(con):
     """Match every charge nobody has decided on yet. A match needs one clear winner: the store name
-    agreeing, or the only order/receipt of that exact amount near that date. Returns how many matched."""
+    agreeing, or the only order/receipt of that exact amount near that date. Receipts with no amount take
+    theirs from their charge first (fill_amounts_from_charges). Returns how many matched."""
     ensure(con)
+    fill_amounts_from_charges(con)
     rows = con.execute("SELECT * FROM bank_transactions WHERE match_how IS NULL AND amount > 0 AND pending = 0"
                        " ORDER BY date").fetchall()
     matched = 0
