@@ -316,11 +316,12 @@ def main():
     app.config.update(PORT=port, BIND_HOST=host, PHONE_LINK=True)
     threading.Thread(target=lambda: app.run(host=host, port=port, debug=False, use_reloader=False),
                      daemon=True).start()
-    from . import tunnel
-    if phones:
+    from . import peersync, tunnel
+    if phones or (os.environ.get("SYNC_LINK") == "1" and peersync.link_wanted(app.config.get("DB_PATH"))):
         tunnel.ensure(port)  # reuses the link left running by an update restart, so its address stays
     else:
         tunnel.stop()
+    peersync.start(app)  # keeps a linked Mac or PC the same as this one
 
     def timers():
         """Sync every few hours (first once the AI is ready) and check for updates every few hours."""

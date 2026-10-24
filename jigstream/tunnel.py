@@ -170,17 +170,16 @@ def _watch(port, gen):
 
 
 def announce(url, post=urllib.request.urlopen):
-    """Post the current address to this Mac's private topic, where the Android app looks for it."""
-    topic = os.environ.get("PHONE_PAIR_TOPIC", "")
-    if not topic:
-        return
-    try:
-        req = urllib.request.Request(NTFY + topic, data=url.encode(), method="POST",
-                                     headers={"Title": "BotTrack", "Cache": "yes"})
-        post(req, timeout=15).close()
-        logger.info("posted the new phone link")
-    except Exception as e:
-        logger.warning("couldn't post the phone link to ntfy.sh: %s", e)
+    """Post the current address to this Mac's private topics, where the Android app and linked computers
+    (peersync.py) look for it."""
+    for topic in {os.environ.get("PHONE_PAIR_TOPIC", ""), os.environ.get("SYNC_TOPIC", "")} - {""}:
+        try:
+            req = urllib.request.Request(NTFY + topic, data=url.encode(), method="POST",
+                                         headers={"Title": "BotTrack", "Cache": "yes"})
+            post(req, timeout=15).close()
+            logger.info("posted the new link")
+        except Exception as e:
+            logger.warning("couldn't post the link to ntfy.sh: %s", e)
 
 
 def _kill(pid):
