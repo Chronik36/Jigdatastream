@@ -1,0 +1,147 @@
+{# The order sheet (ordersheet.py): anything with data-sheet="<order id>" opens it on a tap, except its own links,
+   buttons, pickers and copy targets. A bottom sheet on a phone, a panel in the middle on a computer. #}
+<dialog id="osheet" class="osheet" aria-label="Order"><div class="os-wrap" id="oswrap"></div></dialog>
+<style>
+[data-sheet]{cursor:pointer}
+body dialog.osheet{outline:none;width:min(600px,calc(100vw - 32px));max-height:min(88vh,980px);overflow:auto;scrollbar-width:none;padding:0}
+body dialog.osheet::-webkit-scrollbar{display:none}
+.osheet .os-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:12px;padding:16px 18px;
+  background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.osheet .os-head:before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--grad)}
+.osheet .os-ic{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:none;color:var(--accent);background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)}
+.osheet .os-ht{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.osheet .os-ht b{font-size:clamp(16px,4.6vw,20px);letter-spacing:-.01em;overflow-wrap:anywhere}
+.osheet .os-body{padding:16px 18px 22px;display:flex;flex-direction:column;gap:12px}
+.osheet .os-hero{display:flex;gap:16px;align-items:center;padding:16px;border-radius:18px;border:1px solid var(--line-2);
+  background:radial-gradient(120% 140% at 0% 0%,color-mix(in srgb,var(--accent) 16%,transparent),transparent 60%),
+  linear-gradient(135deg,color-mix(in srgb,var(--blue) 18%,var(--surface-2)),var(--surface-2))}
+.osheet .os-pic{width:92px;height:92px;flex:none;border-radius:14px;background:#fff;display:grid;place-items:center;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.osheet .os-pic img{width:100%;height:100%;object-fit:contain}
+.osheet .os-pic span{width:100%;height:100%;display:grid;place-items:center;font-size:40px;font-weight:700;color:#fff;background:var(--grad)}
+.osheet .os-hi{min-width:0;display:flex;flex-direction:column;gap:8px}
+.osheet .os-store{align-self:flex-start;font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--accent);background:var(--accent-soft);
+  border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:99px;padding:3px 10px}
+.osheet .os-store:before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:1px}
+.osheet .os-title{font-size:clamp(15px,4.2vw,18px);font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.osheet .os-line{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.osheet .os-total{font-size:18px}
+.osheet .os-acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.osheet .os-a{--c:var(--accent);display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:8px;border-radius:14px;
+  background:color-mix(in srgb,var(--c) 7%,var(--surface));border:1px solid color-mix(in srgb,var(--c) 26%,var(--line));color:var(--c);
+  font:600 14px/1.1 inherit;text-decoration:none;box-shadow:none;width:100%;margin:0;cursor:pointer;-webkit-user-select:none;user-select:none}
+.osheet .os-a:hover{background:color-mix(in srgb,var(--c) 14%,var(--surface));filter:none;color:var(--c)}
+.osheet .os-a[data-copy]{border-bottom:1px solid color-mix(in srgb,var(--c) 26%,var(--line))}
+.osheet .c-teal{--c:var(--accent)}.osheet .c-blue{--c:var(--blue)}.osheet .c-green{--c:var(--green)}.osheet .c-sky{--c:var(--accent-2)}
+.osheet .c-orange{--c:var(--orange)}.osheet .c-red{--c:var(--red)}
+.osheet .os-del{grid-column:1/-1;margin:0}
+.osheet .os-pop{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0;padding:12px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line-2)}
+.osheet .os-pop[hidden]{display:none}.osheet .os-pop input,.osheet .os-pop select{flex:1;min-width:180px;margin:0}.osheet .os-pop p{flex-basis:100%;margin:0}
+.osheet .os-h{margin:10px 2px 0;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.osheet .os-hrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}.osheet .os-hrow .os-h{margin:0 2px}.osheet .os-hrow form{margin:0}
+.osheet .os-refresh{display:flex;align-items:center;gap:6px;border-radius:99px;padding:7px 14px;margin:0;background:var(--accent-soft);color:var(--accent);
+  border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);box-shadow:none;font-weight:600}
+.osheet .os-kv{margin:0;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}
+.osheet .os-kv>div{display:grid;grid-template-columns:minmax(96px,36%) 1fr;gap:12px;padding:13px 16px;border-top:1px solid var(--line)}
+.osheet .os-kv>div:first-child{border-top:0}
+.osheet .os-kv dt{color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;align-self:center}
+.osheet .os-kv dd{margin:0;overflow-wrap:anywhere}.osheet .os-money{color:var(--green);font-weight:600}
+.osheet .os-items{margin:0;padding:10px 16px;list-style:none;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.osheet .os-items li{display:flex;gap:8px;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)}.osheet .os-items li:first-child{border-top:0}
+.osheet .os-addr{display:flex;gap:14px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);text-decoration:none}
+.osheet .os-pin{width:40px;height:40px;flex:none;border-radius:12px;display:grid;place-items:center;color:var(--accent);background:var(--accent-soft)}
+.osheet .os-tl{border:1px solid var(--line);border-radius:16px;background:var(--surface);padding:14px 16px}
+.osheet .os-tlh{margin:0 0 10px;font-weight:600;letter-spacing:.04em}
+.osheet .os-tl ol{list-style:none;margin:0;padding:0}
+.osheet .os-tl li{position:relative;padding:0 0 16px 26px;display:flex;flex-direction:column;gap:3px}
+.osheet .os-tl li:before{content:"";position:absolute;left:4px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--muted)}
+.osheet .os-tl li:after{content:"";position:absolute;left:8px;top:18px;bottom:0;width:2px;background:var(--line-2)}
+.osheet .os-tl li:last-child:after,.osheet .os-tl li.lastshown:after{display:none}
+.osheet .os-tl li.first:before{background:var(--accent);box-shadow:0 0 10px var(--accent);width:12px;height:12px;left:3px;top:4px}
+.osheet .os-tl li b{font-weight:600}.osheet .os-tl li .muted{font-size:13px}
+.osheet .os-more{display:block;margin:0 auto;background:none;border:0;box-shadow:none;color:var(--muted);font-weight:600}
+.osheet .os-foot{margin:4px 2px 0;font-size:13px}
+.osheet .os-load{padding:60px;text-align:center}
+@media (max-width:700px){
+  body dialog.osheet{width:100vw;max-width:100vw;margin:auto 0 0;max-height:92vh;border-radius:24px 24px 0 0;border-bottom:0}
+  body dialog.osheet[open]{animation:osup .22s ease-out}
+  .osheet .os-head{padding-top:26px}
+  .osheet .os-head:after{content:"";position:absolute;top:9px;left:50%;width:44px;height:5px;margin-left:-22px;border-radius:99px;background:var(--line-2)}
+  .osheet .os-head:before{display:none}
+  .osheet .os-body{padding-bottom:calc(22px + env(safe-area-inset-bottom))}
+  .osheet .os-pic{width:76px;height:76px}.osheet .os-a{font-size:13px;min-height:46px;gap:6px}
+}
+@keyframes osup{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+</style>
+<script>
+(function () {
+  const dlg = document.getElementById('osheet'), wrap = document.getElementById('oswrap');
+  let current = null;
+  function open(id) {
+    current = id;
+    wrap.innerHTML = '<p class="muted os-load">Loading…</p>';
+    if (!dlg.open) dlg.showModal();
+    fetch('/orders/' + id + '/sheet').then(r => r.text()).then(html => {
+      if (current !== id) return;
+      wrap.innerHTML = html;
+      wrap.querySelectorAll('form').forEach(f => {
+        if (!f.querySelector('input[name=back]')) {
+          const b = document.createElement('input'); b.type = 'hidden'; b.name = 'back';
+          b.value = location.pathname + location.search + (f.classList.contains('os-del') ? '' : '#sheet-' + id);  // comes back open
+          f.appendChild(b);
+        }
+      });
+      lastShown();
+      try { history.replaceState(null, '', location.pathname + location.search + '#sheet-' + id); } catch (e) {}
+    }).catch(() => { wrap.innerHTML = '<p class="muted os-load">Couldn\'t open that order.</p>'; });
+  }
+  function lastShown() {
+    const shown = [...wrap.querySelectorAll('.os-tl li:not([hidden])')];
+    wrap.querySelectorAll('.os-tl li').forEach(li => li.classList.remove('lastshown'));
+    if (shown.length && wrap.querySelector('.os-tl li[hidden]')) shown[shown.length - 1].classList.add('lastshown');
+  }
+  function close() {
+    dlg.close(); current = null;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  }
+  document.addEventListener('click', e => {
+    const row = e.target.closest('[data-sheet]');
+    if (!row || dlg.contains(row) || e.target.closest('a,button,select,input,textarea,label,form,summary,details')) return;
+    if (window.getSelection().toString()) return;  // selecting text to copy, not opening
+    open(row.dataset.sheet);
+  });
+  dlg.addEventListener('click', e => {
+    if (e.target === dlg || e.target.closest('[data-os-close]')) return close();
+    const t = e.target.closest('[data-os-toggle]');
+    if (t) {
+      const f = document.getElementById(t.dataset.osToggle);
+      wrap.querySelectorAll('.os-pop').forEach(p => { if (p !== f) p.hidden = true; });
+      f.hidden = !f.hidden;
+      if (!f.hidden) { const i = f.querySelector('input:not([type=hidden]),select'); if (i) i.focus(); }
+      return;
+    }
+    const s = e.target.closest('[data-os-share]');
+    if (s) {
+      const text = s.dataset.osShare;
+      if (navigator.share) navigator.share({text}).catch(() => {});
+      else { s.dataset.copy = text; s.click(); delete s.dataset.copy; }
+      return;
+    }
+    if (e.target.closest('[data-os-more]')) {
+      wrap.querySelectorAll('.os-tl li[hidden]').forEach(li => li.hidden = false);
+      e.target.closest('[data-os-more]').remove(); lastShown();
+    }
+  });
+  dlg.addEventListener('change', e => {
+    if (e.target.name === 'status' && e.target.value === 'not_an_order') {
+      btConfirm('Remove this from Orders? Its emails become examples of what is not an order.').then(ok => { if (!ok) e.target.value = ''; });
+    }
+  });
+  dlg.addEventListener('cancel', e => { e.preventDefault(); close(); });
+  // Swipe the sheet down to close it on a phone.
+  let y0 = null;
+  dlg.addEventListener('touchstart', e => { y0 = dlg.scrollTop <= 0 ? e.touches[0].clientY : null; }, {passive: true});
+  dlg.addEventListener('touchend', e => { if (y0 !== null && e.changedTouches[0].clientY - y0 > 90) close(); y0 = null; });
+  const m = location.hash.match(/^#sheet-(\d+)$/);
+  if (m) open(m[1]);
+  window.openOrderSheet = open;
+})();
+</script>

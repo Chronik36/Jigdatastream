@@ -7,7 +7,7 @@
 <div class="stats">{% for key, title, hint in lanes %}<a class="card lanecard l-{{key}}" href="#lane-{{key}}">{{title}} <b>{{by_lane[key]|length}}</b></a>{% endfor %}
 {% if late %}<div class="card" style="--c:var(--orange)" title="The store's delivery estimate has passed and the package isn't marked delivered">Running late <b style="color:var(--orange)">{{late|length}}</b></div>{% endif %}</div>
 <div class="board">{% for key, title, hint in lanes %}<section class="lane" id="lane-{{key}}"><h3><span class="dotl l-{{key}}"></span>{{title}} <span class="muted">{{by_lane[key]|length}}</span></h3><p class="muted hint">{{hint}}</p>
-{% for o in by_lane[key] %}{% set status = o.shipping_status or "unknown" %}<article class="tcard{{' late' if o.id in late}}" id="order-{{o.id}}">
+{% for o in by_lane[key] %}{% set status = o.shipping_status or "unknown" %}<article class="tcard{{' late' if o.id in late}}" id="order-{{o.id}}" data-sheet="{{o.id}}">
 <div class="trow"><b>{{o.retailer or "Unknown store"}}</b><span class="num">{{o.total|money(o.currency)}}</span></div>
 <div class="muted small">{% if o.order_number %}<span data-copy>{{o.order_number}}</span>{% else %}No order #{% endif %} · {{o.order_date or "no date"}}</div>
 <div class="titems" title="{% for i in o['items'] %}{{i.name}}{% if not loop.last %}; {% endif %}{% endfor %}">{% for i in o["items"] %}{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}{% if not loop.last %}; {% endif %}{% else %}<span class="muted">No items listed</span>{% endfor %}</div>

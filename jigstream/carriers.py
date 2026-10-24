@@ -18,7 +18,7 @@ import urllib.request
 import uuid
 from datetime import datetime, timezone
 
-from . import browsertrack
+from . import browsertrack, ordersheet
 from .extract import carrier_for, status_advances
 from .orderstore import Store
 
@@ -210,6 +210,7 @@ def refresh(con, env, only_id=None):
         checked += 1
         con.execute("UPDATE tracked_orders SET carrier_status=?, carrier_checked_at=? WHERE id=?",
                     (text[:300], now, order["id"]))
+        ordersheet.note_carrier(con, order["id"], text)  # the order's timeline
         if status and status_advances(order["shipping_status"], status):
             con.execute("UPDATE tracked_orders SET shipping_status=? WHERE id=?", (status, order["id"]))
             changed += 1

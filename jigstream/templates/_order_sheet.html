@@ -1,0 +1,80 @@
+{% macro os_icon(name) %}{% set paths = {
+  "receipt": '<path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+  "copy": '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  "open": '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
+  "share": '<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
+  "edit": '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  "pen": '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>',
+  "trash": '<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  "pin": '<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  "refresh": '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>'} %}<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ paths[name]|safe }}</svg>{% endmacro %}
+{# One order's sheet, loaded into the dialog from _order_sheet_js.html (ordersheet.py). #}
+{% set status = o.shipping_status or "unknown" %}{% set url = o|track_url %}
+<div class="os-head">
+  <div class="os-ic">{{ os_icon("receipt") }}</div>
+  <div class="os-ht"><b>{% if o.order_number %}Order #{{o.order_number}}{% else %}{{o.retailer or "Order"}}{% endif %}</b>
+    <span class="muted">{{o.retailer or "Unknown store"}}{% if date %} · {{date}}{% endif %}</span></div>
+  <button type="button" class="x" data-os-close aria-label="Close">×</button>
+</div>
+<div class="os-body">
+<section class="os-hero">
+  <div class="os-pic">{% if image %}<img src="{{image}}" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'{{(o.retailer or '?')[:1]|upper}}'}))">{% else %}<span>{{(o.retailer or "?")[:1]|upper}}</span>{% endif %}</div>
+  <div class="os-hi">
+    <span class="os-store">{{(o.retailer or "Store")|upper}}</span>
+    <div class="os-title">{{title}}{% if o["items"]|length > 1 %} <span class="muted">+{{o["items"]|length - 1}} more</span>{% endif %}</div>
+    <div class="os-line"><span class="pill s-{{status}}">{{status|status_label}}</span><b class="os-total">{{o.total|money(o.currency)}}</b></div>
+  </div>
+</section>
+
+<div class="os-acts">
+  {% if o.order_number %}<button type="button" class="os-a c-teal" data-copy="{{o.order_number}}">{{ os_icon("copy") }}Order #</button>{% endif %}
+  {% if o.tracking_number %}<button type="button" class="os-a c-teal" data-copy="{{o.tracking_number}}">{{ os_icon("copy") }}Tracking</button>{% endif %}
+  {% if url %}<a class="os-a c-blue" href="{{url}}" target="_blank" rel="noopener">{{ os_icon("open") }}Carrier</a>{% endif %}
+  <button type="button" class="os-a c-green" data-os-share="{{o.retailer or ''}} order {{o.order_number or ''}}: {{title}}, {{status|status_label}}{% if o.tracking_number %}, {{o.carrier or 'tracking'}} {{o.tracking_number}}{% endif %}{% if url %} {{url}}{% endif %}">{{ os_icon("share") }}Share</button>
+  <button type="button" class="os-a c-sky" data-os-toggle="os-rename">{{ os_icon("edit") }}Rename</button>
+  <button type="button" class="os-a c-orange" data-os-toggle="os-status">{{ os_icon("pen") }}Status</button>
+  <form method="post" action="{{url_for('ordersheet.delete', order_id=o.id)}}" class="os-del" data-confirm="Delete this order from BotTrack? Undo brings it back.">
+    <button class="os-a c-red">{{ os_icon("trash") }}Delete</button></form>
+</div>
+<form id="os-rename" class="os-pop" method="post" action="{{url_for('ordersheet.rename', order_id=o.id)}}" hidden>
+  <input name="name" value="{{title}}" maxlength="200" required><button>Save name</button></form>
+<form id="os-status" class="os-pop" method="post" action="/orders/{{o.id}}/label" hidden>
+  <input type="hidden" name="back" value="1">
+  <select name="status" required><option value="">Pick the right status…</option>{% for c in choices %}{% if c == "not_an_order" %}<option disabled>──────────</option>{% endif %}<option value="{{c}}" {{"disabled" if c == status}}>{{c|status_label}}</option>{% endfor %}</select>
+  <button>Save status</button>
+  <p class="muted small">The AI also re-reads this order's emails and learns from the fix.</p></form>
+
+<h4 class="os-h">Details</h4>
+<dl class="os-kv">
+  <div><dt>Retailer</dt><dd>{{o.retailer or "-"}}</dd></div>
+  {% if o.order_number %}<div><dt>Order #</dt><dd><span data-copy>{{o.order_number}}</span></dd></div>{% endif %}
+  <div><dt>Order date</dt><dd>{{date or "-"}}</dd></div>
+  {% if qty %}<div><dt>Quantity</dt><dd>{{qty}}</dd></div>{% endif %}
+  <div><dt>Total</dt><dd class="os-money">{{o.total|money(o.currency)}}{% if o.total_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}</dd></div>
+  {% if o.profile_name %}<div><dt>Profile</dt><dd><a href="/profile-orders?profile={{o.profile_name|urlencode}}">{{o.profile_name}}</a></dd></div>{% endif %}
+  {% if o.account %}<div><dt>Account</dt><dd><span data-copy>{{o.recipient_email or o.account}}</span></dd></div>{% endif %}
+</dl>
+{% if o["items"]|length > 1 %}<ul class="os-items">{% for i in o["items"] %}<li>{{i.name}}{% if i.quantity and i.quantity != 1 %} <span class="muted">x{{i.quantity}}</span>{% endif %}{% if i.price %}<span class="muted">{{i.price|money(o.currency) if i.price is number else i.price}}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+
+{% if o.shipping_address or o.shipping_name %}<h4 class="os-h">Ships to</h4>
+{% set al = o|address_label %}
+<a class="os-addr" {% if al %}href="/address?name={{al|urlencode}}"{% endif %} data-private>
+  <span class="os-pin">{{ os_icon("pin") }}</span>
+  <span>{% if o.shipping_name %}{{o.shipping_name}}, {% endif %}{{o.shipping_address or ""}}</span></a>{% endif %}
+
+<div class="os-hrow"><h4 class="os-h">Tracking</h4>
+  <form method="post" action="{{url_for('ordersheet.refresh', order_id=o.id)}}"><button class="os-refresh">{{ os_icon("refresh") }}Refresh</button></form></div>
+<dl class="os-kv">
+  <div><dt>Carrier</dt><dd>{{o.carrier or "-"}}</dd></div>
+  <div><dt>Tracking #</dt><dd>{% if o.tracking_number %}<span data-copy>{{o.tracking_number}}</span>{% else %}<span class="muted">None yet</span>{% endif %}</dd></div>
+  {% if o.estimated_delivery %}<div><dt>Est. delivery</dt><dd>{{eta}}</dd></div>{% endif %}
+  {% if o.carrier_status %}<div><dt>Carrier says</dt><dd>{{o.carrier_status}}</dd></div>{% endif %}
+</dl>
+{% if events %}<section class="os-tl">
+  <div class="muted small os-tlh">Latest events · {{events|length}}</div>
+  <ol>{% for e in events %}<li class="{{'first' if loop.first}}{{' more' if loop.index > shown}}" {{"hidden" if loop.index > shown}}>
+    <b>{{e.text}}</b><span class="muted">{{e.where}} · {{e.when}}</span></li>{% endfor %}</ol>
+  {% if events|length > shown %}<button type="button" class="os-more" data-os-more>+ {{events|length - shown}} more</button>{% endif %}
+</section>{% endif %}
+<p class="os-foot"><a href="/review?src=order&name={{o.id}}">Everything linked to this order ›</a></p>
+</div>
