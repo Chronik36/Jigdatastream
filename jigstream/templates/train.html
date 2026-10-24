@@ -23,5 +23,5 @@
 <button>Save</button></form></section>
 {% else %}<div class="panel muted">Nothing to train. Every webhook has a bot and a kind.</div>{% endfor %}
 {% if more %}<p class="muted">{{more}} more kinds after these.</p>{% endif %}
-{% if taught %}<form method="post" action="/train/forget" onsubmit="return confirm('Forget everything taught here? The webhooks are read again as BotTrack parses them.')"><button class="ghost">Forget what I taught ({{taught}} rule{{"s" if taught != 1}})</button></form>{% endif %}
+{% if taught %}<form method="post" action="/train/forget" data-confirm="Forget everything taught here? The webhooks are read again as BotTrack parses them."><button class="ghost">Forget what I taught ({{taught}} rule{{"s" if taught != 1}})</button></form>{% endif %}
 {% endblock %}

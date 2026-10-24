@@ -1,0 +1,6 @@
+{# What one reviewed item is tied to: checkouts, card charges and emails. Expects `d` (review.detail) and `here`. #}
+<div class="links">
+{% if d.checkouts is defined %}<h4>Checkouts for this order ({{d.checkouts|length}})</h4>{% if d.checkouts %}<ul>{% for c in d.checkouts %}<li><a href="{{here}}&at=c{{c.id}}">{{c.site}} {{c.day}}</a> · {{c.profile or "no profile"}} · {{c.proxy_group or c.proxy or "no proxy"}} · <b>{{outcome_names.get(c.outcome, c.outcome)}}</b> {{ verdict(c) }}</li>{% endfor %}</ul>{% else %}<p class="muted small">No bot checkout matched this order.</p>{% endif %}{% endif %}
+<h4>Card charges ({{d.charges|length}})</h4>{% if d.charges %}<ul>{% for t in d.charges %}<li>{{t.date}} · {{t.description}} · <b>{{t.amount|money}}</b> <span class="muted">{{t.account_name or ""}}{% if t.mask %} ··{{t.mask}}{% endif %}{% if t.match_how %} · matched {{t.match_how}}{% endif %}</span></li>{% endfor %}</ul>{% else %}<p class="muted small">No card charge tied to it. <a href="/expenses/ledger">Match one on the Ledger</a>.</p>{% endif %}
+{% if d.emails is defined %}<h4>Emails ({{d.emails|length}})</h4>{% if d.emails %}<ul>{% for m in d.emails %}<li>{{(m.date or "")[:10]}} · {{m.subject}} <span class="muted" data-private>{{m.sender}}</span></li>{% endfor %}</ul>{% else %}<p class="muted small">Added by hand or from the bank.</p>{% endif %}{% endif %}
+</div>

@@ -38,7 +38,7 @@
     <option value="json" {{'selected' if t.answer == 'json'}}>JSON (fields)</option></select></label>
   <button class="ghost">Save</button>
 </form>
-<form method="post" action="/training/tasks/{{t.id}}/delete" onsubmit="return confirm('Delete this task, its examples and any trained models?')"><button class="danger">Delete task</button></form>
+<form method="post" action="/training/tasks/{{t.id}}/delete" data-confirm="Delete this task, its examples and any trained models?"><button class="danger">Delete task</button></form>
 </div>
 </div>
 

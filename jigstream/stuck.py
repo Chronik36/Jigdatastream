@@ -22,6 +22,7 @@ REFUND_DAYS, REFUND_EXTRA = 60, 0.15
 BEFORE, AFTER = timedelta(days=1), timedelta(days=4)
 # A cancelled order with no order date is dated by its last email, the cancel, which can come weeks after the checkout.
 LATE_CANCEL = timedelta(days=60)
+SITE_VERSION = re.compile(r"(?<=[a-z])[\s_-]*v\d+$")
 SITE_FILLER = re.compile(r"^(www\.)|\.(com|net|co|us|ca|co\.uk)$|\s+(us|usa|store|online|inc)$")
 
 
@@ -36,6 +37,7 @@ def site_key(s):
     s = re.sub(r"^https?://", "", s).split("/")[0]
     for _ in range(3):
         s = SITE_FILLER.sub("", s).strip()
+    s = SITE_VERSION.sub("", s)  # a bot's module version ("amazonv3", "Walmart V2") is the same store
     return re.sub(r"[^a-z0-9]", "", s)
 
 

@@ -1,0 +1,4 @@
+{# Shipping progress under an order: light orange when ordered, light blue on the way, green when delivered.
+   Expects `status`. Cancelled, returned and refunded orders get no bar. #}
+{% set stage = {"ordered": 1, "processing": 1, "shipped": 2, "in_transit": 2, "exception": 2, "out_for_delivery": 3, "delivered": 4}.get(status) %}
+{% if stage %}<div class="stagebar s{{stage}}{{' warn' if status == 'exception'}}" title="{{['Ordered', 'On the way', 'Out for delivery', 'Delivered'][stage - 1]}}{{' (the carrier reported a problem)' if status == 'exception'}}"><i></i></div>{% endif %}

@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"{% if ui_theme == "light" %} data-theme="light"{% endif %}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<!doctype html><html lang="en"{% if ui_theme == "light" %} data-theme="light"{% endif %}{% if ui_reveal %} class="reveal"{% endif %}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BotTrack</title><link rel="icon" href="{{url_for('static', filename='icon.png')}}">
 {% if on_phone %}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#0a1230">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -106,6 +106,10 @@ tr:hover>td{background:#13204c;border-color:var(--line-2)}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
 ul.items{margin:0;padding-left:16px}
 a.track{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:8px;padding:4px 9px;word-break:break-all}
+.stagebar{position:relative;height:6px;border-radius:99px;background:var(--line);margin-top:8px;min-width:90px;overflow:hidden}
+.stagebar i{position:absolute;inset:0;border-radius:99px;background:linear-gradient(90deg,#ffb27a 0%,#ffc79a 18%,#7cc8ff 50%,#5aaefc 70%,#3ddc84 100%);transition:clip-path .3s}
+.stagebar.s1 i{clip-path:inset(0 75% 0 0 round 99px)}.stagebar.s2 i{clip-path:inset(0 45% 0 0 round 99px)}.stagebar.s3 i{clip-path:inset(0 20% 0 0 round 99px)}.stagebar.s4 i{clip-path:none}
+.stagebar.warn i{background:linear-gradient(90deg,#ffb27a,var(--red))}
 a.track:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}a.track .muted{font-family:Inter,sans-serif}
 .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:500;white-space:nowrap;background:var(--surface-2);border:1px solid var(--line-2)}
 .pill[class*=" s-"]:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
@@ -205,6 +209,7 @@ body .fl{color:#7884b3}
   "products": '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
   "stuck": '<path d="M12 17v5"/><path d="M9 3h6l-1 6 4 4v2H6v-2l4-4z"/>',
   "drop": '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/><path d="M9.5 15a2.5 2.5 0 0 0 2.5 2.5"/>',
+  "truck": '<path d="M2 6h11v10H2z"/><path d="M13 9h4l4 4v3h-8z"/><circle cx="6" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
   "chev": '<path d="m15 18-6-6 6-6"/>',
   "menu": '<path d="M4 6h16M4 12h16M4 18h16"/>',
   "proxies": '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>',
@@ -215,7 +220,7 @@ body .fl{color:#7884b3}
 } %}
 {% set sections = [
   ("Overview", [("/", "Dashboard", "dash")]),
-  ("Tracking", [("/orders", "Orders", "orders"), ("/profile-orders", "Profile orders", "profiles"), ("/inbox", "Inbox", "inbox"), ("/expenses", "Expenses", "expenses"), ("/bank", "Bank", "bank"), ("/imports", "Imports", "upload"), ("/training", "Training", "training")]),
+  ("Tracking", [("/orders", "Orders", "orders"), ("/tracking", "Shipping", "truck"), ("/profile-orders", "Profile orders", "profiles"), ("/inbox", "Inbox", "inbox"), ("/expenses", "Expenses", "expenses"), ("/bank", "Bank", "bank"), ("/imports", "Imports", "upload"), ("/training", "Training", "training")]),
   ("Bot tools", [("/drop", "Drops", "drop"), ("/profiles", "Profiles", "profiles"), ("/cards", "Cards", "cards"), ("/emails", "Emails", "emails"), ("/proxies", "Proxies", "proxies"), ("/keywords", "Keywords", "keywords"), ("/products", "Products", "products")]),
 ] %}
 {% set footer = [("/manual", "Manual", "manual"), ("/m/app", "App & updates", "setup")] if on_phone else [("/manual", "Manual", "manual"), ("/logs", "Logs", "logs"), ("/setup", "Setup", "setup")] %}
@@ -290,6 +295,7 @@ function mini() {
 {% with watch_data=path in ("/orders", "/expenses", "/profiles") %}{% if watch_data or on_phone %}{% include "live.html" %}{% endif %}{% endwith %}
 {% include "_responsive.html" %}
 {% include "_privacy.html" %}
+{% include "_confirm.html" %}
 {% include "_theme.html" %}
 {% if whats_new %}{% include "_whats_new.html" %}{% endif %}
 {% if on_phone %}{% include "phone.html" %}{% endif %}

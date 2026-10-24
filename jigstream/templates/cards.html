@@ -28,7 +28,7 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
   {% if ungrouped %}<a href="/cards?group=" class="{{'on' if group == ''}}"><i>No group</i> <span>{{ungrouped}}</span></a>{% endif %}
   <form method="post" action="/cards/groups"><input type="hidden" name="action" value="add"><input name="name" placeholder="New group" required><button>Add</button></form>
   {% if group %}<form method="post" action="/cards/groups"><input type="hidden" name="action" value="rename"><input type="hidden" name="name" value="{{group}}"><input name="new_name" placeholder="Rename {{group}}" required><button class="ghost">Save</button></form>
-  <form method="post" action="/cards/groups" onsubmit="return confirm('Delete the group {{group}}? Its cards are kept.')"><input type="hidden" name="action" value="delete"><input type="hidden" name="name" value="{{group}}"><button class="danger" style="width:100%">Delete group</button></form>{% endif %}
+  <form method="post" action="/cards/groups" data-confirm="Delete the group {{group}}? Its cards are kept."><input type="hidden" name="action" value="delete"><input type="hidden" name="name" value="{{group}}"><button class="danger" style="width:100%">Delete group</button></form>{% endif %}
 </aside>
 <section>
 <form id="bulk" method="post" action="/cards/bulk">
@@ -37,7 +37,7 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
   <select name="group_name"><option value="">Move to…</option>{% for g, n in groups %}<option>{{g}}</option>{% endfor %}<option value="">No group</option></select>
   <input name="new_group" placeholder="or new group" size="12"><button class="ghost" name="action" value="move">Move</button><span class="sep"></span>
   <button class="ghost" name="action" value="active">Active</button><button class="ghost" name="action" value="inactive">Inactive</button><span class="sep"></span>
-  <button class="danger" name="action" value="delete" onclick="return confirm('Delete the ticked cards? Profiles using them lose their card.')">Delete</button>
+  <button class="danger" name="action" value="delete" data-confirm="Delete the ticked cards? Profiles using them lose their card.">Delete</button>
 </div></form>
 <table><thead><tr><th></th><th>Provider</th><th>Profile</th><th>Card name</th><th>Card number</th><th>Expiry</th><th>Type</th><th>Spend limit</th><th>Status</th><th></th></tr></thead><tbody>
 {% for k in cards %}<tr>
@@ -51,7 +51,7 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
 <td>{{k.spend_limit|money if k.spend_limit else "—"}}</td>
 <td><span class="pill status-{{k.status}}">● {{k.status|title}}</span></td>
 <td><div class="acts">{% if k.secret %}<button type="button" title="Show the full number for 20 seconds" onclick="reveal(this, {{k.id}})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>{% endif %}
-<form method="post" action="/cards/bulk" onsubmit="return confirm('Delete this card?')" style="margin:0"><input type="hidden" name="ids" value="{{k.id}}"><button name="action" value="delete" title="Delete" style="color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></form></div></td>
+<form method="post" action="/cards/bulk" data-confirm="Delete this card?" style="margin:0"><input type="hidden" name="ids" value="{{k.id}}"><button name="action" value="delete" title="Delete" style="color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></form></div></td>
 </tr>{% else %}<tr><td colspan="10" class="muted">No cards yet. Press "+ Add cards".</td></tr>{% endfor %}
 </tbody></table>
 <p class="muted" style="font-size:12px">Card numbers and CVVs are encrypted on this Mac with a key kept in your Keychain. Only the last 4 digits are shown unless you press the eye.</p>

@@ -11,7 +11,7 @@
 </div>
 <label>What you bought<br><input name="description" id="x-description" style="width:100%" placeholder="e.g. 10 GB residential proxies"></label>
 <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button>Save</button><span class="grow" style="flex:1"></span>
-<button type="submit" class="danger" id="x-delete" formaction="" formnovalidate onclick="return confirm('Delete this expense?')">Delete</button></div>
+<button type="submit" class="danger" id="x-delete" formaction="" formnovalidate data-confirm="Delete this expense?">Delete</button></div>
 </form></dialog>
 <script>
 const expdlg = document.getElementById('expdlg');

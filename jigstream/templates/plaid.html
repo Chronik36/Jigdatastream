@@ -44,7 +44,7 @@ from the BotTrack window this opens your browser to finish. If nothing opens, <a
 {{("Last synced " ~ i.last_synced_at[:16]|replace("T", " ") ~ " UTC") if i.last_synced_at else "Not synced yet"}}</span>
 {% if i.error %}<br><span class="bad">{{i.error}}</span>{% endif %}</span>
 <button type="button" class="ghost" onclick="startLink('{{i.item_id}}')">Reconnect</button>
-<form method="post" action="/bank/plaid/items/{{i.item_id}}/remove" onsubmit="return confirm('Unlink {{i.institution|e}}? Charges already synced stay unless you tick delete.')">
+<form method="post" action="/bank/plaid/items/{{i.item_id}}/remove" data-confirm="Unlink {{i.institution|e}}? Charges already synced stay unless you tick delete.">
 <label class="muted" style="font-size:12px"><input type="checkbox" name="transactions" value="delete"> delete its charges</label> <button class="danger">Unlink</button></form></div>{% endfor %}
 {% if items %}<form method="post" action="/bank/plaid/sync" style="margin-top:10px"><button {{"disabled" if plaid_state.running}}>Sync now</button></form>
 <p class="muted">{{plaid_state.last or ""}}</p>{% endif %}{% endif %}</div>

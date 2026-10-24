@@ -53,7 +53,7 @@ tr.off td{opacity:.6}
 <button type="button" class="ghost" onclick='openRepeat({{ {"sub": s.id, "vendor": s.vendor, "amount": s.last_amount if s.last_amount is not none else s.amount, "period": s.period, "every_days": s.every_days, "category": s.category, "next_due": s.next_due}|tojson }})'>Edit</button>
 {% if s.status == "active" %}<form method="post" action="/expenses/recurring/{{s.id}}/cancel"><button class="ghost" title="You cancelled it with the vendor">Mark cancelled</button></form>
 {% else %}<form method="post" action="/expenses/recurring/{{s.id}}/reactivate"><button class="ghost">Resume</button></form>{% endif %}
-<form method="post" action="/expenses/recurring/{{s.id}}/delete" onsubmit="return confirm('Stop tracking {{s.vendor|e}}? Its receipts stay in your expenses.')"><button class="ghost" title="Stop tracking">×</button></form>
+<form method="post" action="/expenses/recurring/{{s.id}}/delete" data-confirm="Stop tracking {{s.vendor|e}}? Its receipts stay in your expenses."><button class="ghost" title="Stop tracking">×</button></form>
 </div></td></tr>
 {% else %}<tr><td colspan="7" class="muted">Nothing tracked yet. Track a suggestion above, use Repeats on a Ledger row, or press Track one.</td></tr>{% endfor %}
 </tbody></table></div></div>

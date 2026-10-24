@@ -30,7 +30,7 @@ document.getElementById('ftmsg').textContent=s.progress;const p=document.getElem
 <td><b>{{a.base_model.split('/')[-1]}}</b>{% if a.path == active_path %} <span class="pill s-delivered">In use</span>{% endif %}</td>
 <td>{{a.examples}}</td><td>{{ "%.3f"|format(a.loss) if a.loss is not none else "-" }}</td><td>{{a.created_at[:10]}}</td>
 <td>{% if a.path != active_path %}<form method="post" action="{{use_url}}"><input type="hidden" name="adapter_id" value="{{a.id}}"><button class="ghost">Use this</button></form>{% endif %}
-<form method="post" action="/training/adapters/{{a.id}}/delete" onsubmit="return confirm('Delete this trained model?')"><button class="danger">Delete</button></form></td></tr>
+<form method="post" action="/training/adapters/{{a.id}}/delete" data-confirm="Delete this trained model?"><button class="danger">Delete</button></form></td></tr>
 {% endfor %}</tbody></table>
 {% endif %}
 </div>

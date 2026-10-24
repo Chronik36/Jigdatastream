@@ -170,3 +170,38 @@ def save_address(con, form, prefix="bill_"):
                 [nickname] + [(form.get(prefix + k) or "").strip() for k in ADDRESS_PARTS])
     con.commit()
     return None
+
+
+def rewrite(con, names, field, mode, find, replace, billing=True, shipping=True, save=True, rng=None):
+    """Change one field on each ticked profile with an expression template or a find & replace (see jigexpr).
+    Returns ([(profile, before, after)], error). With save False nothing is written (the page's preview)."""
+    from . import jigexpr
+    if field not in jigexpr.FIELDS or not names:
+        return [], "Pick profiles and a field."
+    if not replace and mode != "regex":
+        return [], "Type what the field should become."
+    if mode == "regex" and not find:
+        return [], "Type what to find."
+    if field in ADDRESS_PARTS and not (billing or shipping):
+        return [], "Tick billing, shipping or both."
+    cols = [p + field for p, on in (("ship_", shipping), ("bill_", billing)) if on] if field in ADDRESS_PARTS else [field]
+    out = []
+    try:
+        for name in names:
+            row = con.execute("SELECT * FROM profiles WHERE name=?", (name,)).fetchone()
+            if not row:
+                continue
+            p = dict(row)
+            values = {f: p.get("ship_" + f) or p.get("bill_" + f) if f in ADDRESS_PARTS else p.get(f) for f in jigexpr.FIELDS}
+            # Billing and shipping each get their own result, from their own current value.
+            for col in cols:
+                before = p.get(col) or ""
+                after = jigexpr.rewrite(before, values, mode, find, replace, rng)
+                out.append((name, before, after))
+                if save and after != before:
+                    con.execute(f"UPDATE profiles SET {col}=? WHERE name=?", (after, name))
+    except jigexpr.ExprError as e:
+        return [], str(e)
+    if save:
+        con.commit()
+    return out, None

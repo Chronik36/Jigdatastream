@@ -273,8 +273,10 @@ def _con():
 @bp.get("/proxies")
 def page():
     con = _con()
+    from . import proxyaccounts
+    proxyaccounts.ensure(con)
     return render_template("proxies.html", groups=groups(con), sites=list(SITES), state=_state,
-                           site=request.args.get("site", ""))
+                           site=request.args.get("site", ""), accounts=proxyaccounts.accounts(con), auths=proxyaccounts.AUTHS)
 
 
 @bp.post("/proxies/add")
@@ -330,8 +332,24 @@ def detail(pid):
     p["exit"] = json.loads(p["exit_geo"]) if p["exit_geo"] else {}
     p["entry"] = json.loads(p["entry_geo"]) if p["entry_geo"] else {}
     tests = {t["site"]: dict(t) for t in con.execute("SELECT * FROM proxy_tests WHERE proxy_id=?", (pid,))}
+    from . import drop
+    from .orderstore import Store
+    Store(con)  # order columns the checkout list reads exist on any database
+    want = f"{p['host']}:{p['port']}"
+    used = sorted((c for c in drop.rows(con) if c["proxy"] == want), key=lambda c: c["ts"] or "", reverse=True)
     return render_template("proxy_detail.html", p=p, tests=tests, sites=list(SITES), place=place, kind=kind,
-                           record=checkout_record(con, p))
+                           record=checkout_record(con, p), used=used, hostport=want)
+
+
+@bp.get("/proxies/find")
+def find():
+    """Open a proxy's page from a checkout's host:port, when it's one of your saved proxies."""
+    host, _, port = request.args.get("hp", "").rpartition(":")
+    row = _con().execute("SELECT id FROM proxies WHERE host = ? AND port = ?", (host, port)).fetchone() if port.isdigit() else None
+    if row:
+        return redirect(url_for("proxies.detail", pid=row["id"]))
+    flash(f"{request.args.get('hp', 'That proxy')} isn't in your saved proxy lists. Paste its list on Proxies to test it.")
+    return redirect(url_for("drop_page", by="proxy", name=request.args.get("hp", "")))
 
 
 @bp.post("/proxies/<int:pid>/locate")

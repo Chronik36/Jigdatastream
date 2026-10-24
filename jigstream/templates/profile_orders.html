@@ -35,6 +35,7 @@ function pickProfiles(sel) {
 <h3 style="margin-top:0">{{p.name}}{% if p.group_name %} <span class="muted" style="font-weight:400">· {{p.group_name}}</span>{% endif %}</h3>
 <p class="muted">{{p.first_name}} {{p.last_name}}{% if p.email %} · {{p.email}}{% endif %}{% if p.ship_address1 %} · {% if pick_address %}<a href="/address?name={{pick_address|urlencode}}" title="Every profile, checkout and order at this address">{{p.ship_address1}}, {{p.ship_city}} {{p.ship_state}} {{p.ship_zip}}</a>{% else %}{{p.ship_address1}}, {{p.ship_city}} {{p.ship_state}} {{p.ship_zip}}{% endif %}{% endif %}
  · <a href="/orders?profile={{p.name|urlencode}}">Show on Orders</a></p>
+<p><a class="btn" href="/review?src=profile&name={{p.name|urlencode}}" title="Step through each order and checkout on this profile and mark whether it's right">Go through {{p.name}}'s orders and checkouts</a></p>
 <div class="stats"><div class="card">Orders <b>{{pick.orders|length}}</b></div><div class="card">Spend <b>{{pick.spend|money}}</b></div>
 <div class="card">On the way <b>{{pick.orders|selectattr("shipping_status", "in", on_way)|list|length}}</b></div>
 <div class="card ok">Delivered <b>{{pick.statuses.get("delivered", 0)}}</b></div></div>
@@ -49,7 +50,7 @@ function pickProfiles(sel) {
 <td>{% if o.tracking_number %}<a class="track" href="{{o|track_url}}" target="_blank" rel="noopener"><span class="muted">{{o.carrier or "Track"}}</span> {{o.tracking_number}} ↗</a>{% else %}<span class="muted">No tracking yet</span>{% endif %}</td>
 <td class="muted">{{o.profile_match or ""}}</td>
 <td>{% set bad = status in ("cancelled", "returned", "refunded") %}<form method="post" action="/orders/{{o.id}}/label" style="margin:0"><input type="hidden" name="back" value="1">
-<select name="status" onchange="if (this.value && (this.value != 'not_an_order' || confirm('Remove this order? Its emails teach the AI to skip emails like it.'))) this.form.submit(); else this.selectedIndex = 0" aria-label="Correct this order" title="Set it right; the AI learns from it">
+<select name="status" onchange="const s = this; if (!s.value) return; if (s.value != 'not_an_order') s.form.submit(); else btConfirm('Remove this order? Its emails teach the AI to skip emails like it.').then(ok => ok ? s.form.submit() : s.selectedIndex = 0)" aria-label="Correct this order" title="Set it right; the AI learns from it">
 <option value="">{{"Bad" if bad else "Good"}} · change…</option>{% if bad %}<option value="ordered">Good (it went through)</option>{% else %}<option value="cancelled">Bad (cancelled)</option>{% endif %}<option value="not_an_order">Not an order</option></select></form></td></tr>
 {% else %}<tr><td colspan="8" class="muted">No order emails matched to this profile yet.</td></tr>{% endfor %}</tbody></table>
 <h3>Checkouts on this profile</h3>{{ checkout_table(pick_checkouts or []) }}

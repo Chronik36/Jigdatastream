@@ -9,9 +9,10 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
+from . import jigexpr
 from . import (analysis, bankpages, cardcheck, cardlocks, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
-               proxies, stock, stuck, tasks, training, updater, wallet, webtrain)
+               proxies, proxyaccounts, review, stock, stuck, tasks, tracking, training, updater, wallet, webtrain)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
@@ -52,19 +53,28 @@ def create_app(db_path=None):
     app.register_blueprint(products.bp)
     app.register_blueprint(proxies.bp)
     app.register_blueprint(cardlocks.bp)
+    app.register_blueprint(tracking.bp)
+    app.register_blueprint(review.bp)
+    app.register_blueprint(proxyaccounts.bp)
 
     @app.context_processor
     def nav_flags():
         return {"update": updater.state,
                 "ai": app.config.get("AI_STATE"), "syncing": app.config["SYNC_STATE"],
                 "whats_new": updater.whats_new_pending() is not None,
-                "ui_theme": os.environ.get("UI_THEME", "dark")}
+                "ui_theme": os.environ.get("UI_THEME", "dark"), "ui_reveal": os.environ.get("UI_REVEAL") == "1"}
 
     @app.post("/prefs/theme")
     def set_theme():
         # Kept in .env as well as the page's own storage: the Mac window forgets its storage when it closes.
         theme = "light" if request.form.get("theme") == "light" else "dark"
         save_env({"UI_THEME": theme})
+        return ("", 204)
+
+    @app.post("/prefs/reveal")
+    def set_reveal():
+        # The "Reveal sensitive info" switch, kept across restarts for the same reason as the theme.
+        save_env({"UI_REVEAL": "1" if request.form.get("reveal") == "1" else "0"})
         return ("", 204)
 
     def con():
@@ -354,6 +364,8 @@ def create_app(db_path=None):
         logger.info("order %s (%s %s) set to %s by hand", order["id"], order["retailer"], order["order_number"], status)
         threading.Thread(target=background_rescan, args=(label_id, order), daemon=True).start()
 
+    app.relabel = relabel
+
     @app.post("/orders/<int:order_id>/label")
     def label_order(order_id):
         status = request.form.get("status", "")
@@ -433,7 +445,7 @@ def create_app(db_path=None):
         addr_labels = {n: lookup.label_of(w) for n, w in drop.profile_addresses(c).items()}
         return render_template("profiles.html", order_counts=order_counts, addr_labels=addr_labels, email_groups=emailbook.groups(c)[0], rows=rows, bots=sorted(export.templates(c)), groups=groups,
                                ungrouped=ungrouped, group=group, site=site, sites=sites, total=c.execute("SELECT COUNT(*) FROM profiles").fetchone()[0],
-                               fields=profilebook.DISTRIBUTE_FIELDS, addresses=profilebook.saved_addresses(c),
+                               fields=profilebook.DISTRIBUTE_FIELDS, expressions=jigexpr.EXPRESSIONS, addresses=profilebook.saved_addresses(c),
                                states=sorted(A.STATE_NAMES.items()), profiles_json=[dict(p) for p, _, _ in rows],
                                cards=wallet.cards(c))
 
@@ -485,6 +497,23 @@ def create_app(db_path=None):
                                               request.form.get("values", "").splitlines(),
                                               bool(request.form.get("billing")), bool(request.form.get("shipping")))
             flash(error or f"Updated {n} profile(s).")
+        return _back_to_profiles()
+
+    @app.post("/profiles/rewrite")
+    def profile_rewrite():
+        """Change a field on the ticked profiles with expressions or find & replace; preview=1 only shows what
+        would change."""
+        f = request.form
+        preview = bool(f.get("preview"))
+        changes, error = profilebook.rewrite(con(), f.getlist("names"), f.get("field", ""), f.get("mode", "template"),
+                                             f.get("find", ""), f.get("replace", ""), bool(f.get("billing")),
+                                             bool(f.get("shipping")), save=not preview)
+        if preview:
+            return jsonify({"error": error, "rows": [{"name": n, "before": b, "after": a} for n, b, a in changes[:8]],
+                            "total": len(changes)})
+        changed = sum(1 for _, b, a in changes if a != b)
+        logger.info("profiles rewritten: %s field %s on %d profile(s)", f.get("mode"), f.get("field"), changed)
+        flash(error or f"Changed {changed} field{'s' if changed != 1 else ''} on {len({n for n, _, _ in changes})} profile(s).")
         return _back_to_profiles()
 
     @app.post("/profiles/clear")
