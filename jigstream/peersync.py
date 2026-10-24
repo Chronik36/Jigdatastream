@@ -605,6 +605,13 @@ def run_once(db_path=None):
         return
     try:
         con = db.connect(db_path)
+        from . import gmaillink
+        if gmaillink.on(con) and gmaillink.due():
+            try:
+                from .config import Config
+                gmaillink.meet(con, Config.from_env())
+            except Exception:
+                logger.exception("looking for computers through Gmail failed")
         if not linked(con):
             return
         install(con)  # tables made since the last time
@@ -653,7 +660,8 @@ def start(app):
 def link_wanted(db_path=None):
     """The link has to be on for the other computer to reach this one."""
     try:
-        return linked(db.connect(db_path))
+        con = db.connect(db_path)
+        return linked(con) or meta(con, "gmail_link") == "1"
     except Exception:
         return False
 
@@ -664,8 +672,20 @@ def _con():
     return db.connect(current_app.config.get("DB_PATH"))
 
 
+_asked_gmail = [0.0]
+
+
 def _peer_for(con, sender):
     row = ensure(con).execute("SELECT * FROM sync_peers WHERE site=?", (sender,)).fetchone()
+    if row is None and sender and meta(con, "gmail_link") == "1" and time.time() - _asked_gmail[0] > 30:
+        _asked_gmail[0] = time.time()  # a computer that just found this one through Gmail: look for its note now
+        from . import gmaillink
+        from .config import Config
+        try:
+            gmaillink.meet(con, Config.from_env())
+        except Exception as e:
+            logger.warning("couldn't look for computers through Gmail: %s", e)
+        row = con.execute("SELECT * FROM sync_peers WHERE site=?", (sender,)).fetchone()
     if row is None:
         abort(403)
     return dict(row)
@@ -714,7 +734,9 @@ def page():
     _local()
     from flask import render_template
     con = _con()
+    from .config import Config
     return render_template("computers.html", peers=peers(con), me=computer_name(), link=my_url(), state=state,
+                           gmail_on=meta(con, "gmail_link") == "1", gmail=[a for a, _ in Config.from_env().accounts],
                            invite=request.args.get("code", ""), backlog=con.execute("SELECT COUNT(*) FROM sync_log").fetchone()[0]
                            if linked(con) else 0)
 
@@ -744,6 +766,27 @@ def join_page():
         return redirect(url_for("peersync.page"))
     threading.Thread(target=run_once, args=(current_app.config.get("DB_PATH"),), daemon=True).start()
     flash(f"Linked with {name}. The first sync can take a few minutes; after that changes show up within a minute.")
+    return redirect(url_for("peersync.page"))
+
+
+@bp.post("/computers/gmail")
+def gmail_page():
+    _local()
+    from . import gmaillink
+    from .config import Config
+    config, enable = Config.from_env(), request.form.get("on") == "1"
+    if enable and not config.accounts:
+        flash("Add a Gmail inbox on the Setup page first. Computers on the same Gmail find each other.")
+        return redirect(url_for("peersync.page"))
+    if enable:
+        _link_on()
+    found = gmaillink.turn(_con(), config, enable)
+    if enable:
+        threading.Thread(target=run_once, args=(current_app.config.get("DB_PATH"),), daemon=True).start()
+        flash(("Linked with " + ", ".join(found) + ". " if found else "") +
+              "Turn this on on your other computer too; they find each other within a few minutes.")
+    else:
+        flash("This computer no longer looks for others through Gmail. Computers already linked stay linked.")
     return redirect(url_for("peersync.page"))
 
 
