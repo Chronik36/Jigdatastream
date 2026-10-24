@@ -1,6 +1,7 @@
 """Pull new emails from each inbox in turn, extract them with the local model, and store the results."""
 
 import logging
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -33,11 +34,42 @@ def search_days(config, state):
     return config.first_sync_days
 
 
-def process(email, store, llm, config, counts, log, examples=(), platforms=()):
+QUIET_AFTER = 3  # a sender whose last emails were all "not relevant" this many times stops going to the model
+# Subjects that always go to the model, whoever sends them.
+TRANSACTIONAL = re.compile(r"\b(order|receipt|invoice|payment|paid|purchase|confirm|confirmation|ship|shipped|shipping|"
+                           r"deliver|delivered|tracking|cancel|cancell?ed|refund|return|renew|renewal|subscription|"
+                           r"charge|charged|billing|bill|sold|payout|sale)\b", re.I)
+ADDRESS = re.compile(r"[\w.+'-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def sender_address(sender):
+    m = ADDRESS.search(sender or "")
+    return m.group(0).lower() if m else (sender or "").strip().lower()
+
+
+def quiet_senders(db):
+    """Senders the model has only ever called "not relevant" (newsletters, sale ads), QUIET_AFTER times or more.
+    Their next ads skip the model; anything with order, receipt, shipping, cancel or payment wording still goes."""
+    useful, other = set(), {}
+    for r in db.execute("SELECT sender, kind FROM emails WHERE kind IN ('other', 'order', 'botting_expense', 'sale')"):
+        a = sender_address(r["sender"])
+        if r["kind"] == "other":
+            other[a] = other.get(a, 0) + 1
+        else:
+            useful.add(a)
+    return {a for a, n in other.items() if n >= QUIET_AFTER and a not in useful}
+
+
+def process(email, store, llm, config, counts, log, examples=(), platforms=(), quiet=()):
     if not looks_like_purchase(email):
         store.record_email(email, "skipped")
         counts["skipped"] += 1
         logger.debug("skipped (no price or tracking): %s | %s", email.sender, email.subject[:80])
+        return
+    if quiet and sender_address(email.sender) in quiet and not TRANSACTIONAL.search(email.subject or ""):
+        store.record_email(email, "skipped")
+        counts["skipped"] += 1
+        logger.debug("skipped (sender only sends ads): %s | %s", email.sender, email.subject[:80])
         return
     started = time.monotonic()
     try:
@@ -83,13 +115,16 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None, sto
     config.search_query = sales.with_terms(config.search_query, sales.custom_platforms(store.db))
     seen = store.seen_ids()
     examples = few_shot(store) if config.use_examples else []
+    quiet = quiet_senders(store.db)
+    if quiet:
+        logger.info("%d sender(s) only send ads; their ads skip the model", len(quiet))
     if examples:
         logger.info("using %d training example(s) in prompts", len(examples))
 
     if emails is not None:
         for email in emails:
             if email.message_id not in seen:
-                process(email, store, llm, config, counts, log, examples, platforms)
+                process(email, store, llm, config, counts, log, examples, platforms, quiet)
         counts.pop("streak", None)
         return counts
 
@@ -116,7 +151,7 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None, sto
                 progress(f"Inbox {n} of {len(config.accounts)} ({address}): email {i} of {total['n']}")
                 if email.message_id in seen:
                     continue
-                process(email, store, llm, config, counts, log, examples, platforms)
+                process(email, store, llm, config, counts, log, examples, platforms, quiet)
                 seen.add(email.message_id)
         except LLMError:
             raise

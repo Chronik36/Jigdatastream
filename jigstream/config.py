@@ -82,7 +82,7 @@ class Config:
     llm_api_key: str = "ollama"
     llm_timeout: int = 300  # a 14B model on a 16 GB Mac can take a while on long emails
     llm_adapter: str = ""  # an email reader trained on the Training page (MLX only)
-    max_body_chars: int = 12000
+    max_body_chars: int = 8000  # head and tail of a long email (extract.trim); every token costs time locally
 
     training_mode: bool = True  # status dropdowns on Orders; corrections become model examples
     use_examples: bool = True  # show saved corrections to the model before each email
