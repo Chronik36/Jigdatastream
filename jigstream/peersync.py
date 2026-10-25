@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS sync_peers (
 LOCAL_TABLES = {"undo_log", "undo_steps", "change_count", "price_recheck", "sqlite_sequence", "ai_adapters"}
 LOCAL_COLUMNS = {"ai_tasks": {"adapter_id"}}
 # Numbers that point at another table's row.
-LINKS = {("ai_task_examples", "task_id"): "ai_tasks", ("bank_transactions", "account_id"): "bank_accounts",
+LINKS = {("ai_task_examples", "task_id"): "ai_tasks", ("bank_transactions", "account_id"): "bank_accounts", ("base_matches", "base_id"): "base_addresses",
          ("checkout_verdicts", "checkout_id"): "checkouts", ("expenses", "subscription_id"): "subscriptions",
          ("labels", "order_id"): "tracked_orders", ("ledger_rejects", "tx_id"): "bank_transactions",
          ("profiles", "card_id"): "cards", ("proxy_settings", "account_id"): "proxy_accounts",

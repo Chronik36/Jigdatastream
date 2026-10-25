@@ -255,12 +255,23 @@ GROUPS = {"group": lambda c: c["proxy_group"] or "No group", "proxy": lambda c: 
           "profile": lambda c: c["profile"] or "No profile", "address": lambda c: c["address"] or "No address"}
 
 
-def report(con, site=None, sort="proxy", day=None, by=None, name=None):
+def report(con, site=None, sort="proxy", day=None, by=None, name=None, base=None):
     """Totals, leaderboards and drops for every checkout, or one site's, one drop day's, and/or one proxy group's,
-    proxy's or profile's (by + name)."""
+    proxy's or profile's (by + name). With base addresses set up, the page opens on the checkouts per base address
+    (base_overview) and base picks one ("none": the unmatched, "all": every one)."""
+    from . import bases
     matched = stuck.cross_reference(con)
     cards = cardcheck.report(con, matched)
     items = rows(con, matched, cards["links"])
+    res = bases.Resolver(con)
+    base_overview, place = None, None
+    if res.bases and base and base != "all":
+        want = None if base == "none" else int(base) if base.isdigit() else -1
+        items = [c for c in items if res.of_checkout(c) == want]
+        b = res.by_id.get(want)
+        place = {"id": base, "name": b["name"] if b else "Not matched to a base", "full": b["full"] if b else ""}
+    elif res.bases and not (base or site or day or by):
+        base_overview = bases.overview(items, res.of_checkout, res.bases, tally)
     by_key = {}
     for c in items:
         if c["site"]:
@@ -286,4 +297,7 @@ def report(con, site=None, sort="proxy", day=None, by=None, name=None):
         "combos": [t for t in leaderboard(items, lambda c: f"{c['proxy_group'] or c['proxy'] or 'No proxy'} + "
                                                          f"{c['profile'] or 'No profile'}") if t["real"]][:10],
         "drops": drops(items, sort, cards),
+        "base_overview": base_overview,
+        "place": place,
+        "has_bases": bool(res.bases),
     }
