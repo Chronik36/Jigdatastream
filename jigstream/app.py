@@ -9,7 +9,7 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import accountkeys, backup, jigexpr, ordersheet, peersync, pricecheck, proxylogin, proxysessions, undo
+from . import accountkeys, backup, bases, jigexpr, ordersheet, peersync, pricecheck, proxylogin, proxysessions, undo
 from . import (analysis, bankpages, cardcheck, cardlocks, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
                packs, proxies, proxyaccounts, review, stock, stuck, tasks, tracking, training, updater, wallet, webtrain)
@@ -58,6 +58,7 @@ def create_app(db_path=None):
     app.register_blueprint(proxies.bp)
     app.register_blueprint(cardlocks.bp)
     app.register_blueprint(tracking.bp)
+    app.register_blueprint(bases.bp)
     app.register_blueprint(review.bp)
     app.register_blueprint(proxyaccounts.bp)
     app.register_blueprint(proxylogin.bp)
@@ -159,6 +160,11 @@ def create_app(db_path=None):
                         recurring.refresh(con())  # new receipts move renewal dates forward
                     except Exception:
                         logger.exception("updating recurring expenses failed")
+                    progress("Matching addresses to your base addresses...")
+                    try:  # new jigs from this sync's orders and profiles; addresses already asked about are skipped
+                        bases.match_with_ai(bases.ensure(con()), llm_for(config), stop=sync_state["stop"].is_set)
+                    except Exception:
+                        logger.exception("matching base addresses failed")
                 except StopSync:
                     pass
                 except Exception as e:
@@ -283,12 +289,13 @@ def create_app(db_path=None):
         site, day, sort = a.get("site") or None, a.get("day") or None, a.get("sort")
         sort = sort if sort in drop.SORTS else "proxy"
         by, name = (a.get("by"), a.get("name")) if a.get("by") in drop.GROUPS and a.get("name") else (None, None)
-        here = {"site": site, "day": day, "by": by, "name": name, "sort": sort}
+        base = a.get("base") or None
+        here = {"site": site, "day": day, "by": by, "name": name, "sort": sort, "base": base}
 
         def link(**change):  # this page's address with some of its choices changed (None drops one)
             return url_for("drop_page", **{k: v for k, v in dict(here, **change).items() if v})
-        return render_template("drop.html", r=drop.report(Store(con()).db, site, sort, day, by, name), site=site,
-                               day=day, sort=sort, by=by, name=name, link=link)
+        return render_template("drop.html", r=drop.report(Store(con()).db, site, sort, day, by, name, base), site=site,
+                               base=base, day=day, sort=sort, by=by, name=name, link=link)
 
     @app.get("/drop/cards")
     def card_check_page():
