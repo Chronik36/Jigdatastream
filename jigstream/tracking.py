@@ -10,7 +10,7 @@ from datetime import date, timedelta
 
 from flask import Blueprint, current_app, render_template, request
 
-from . import carriers, db, profilematch
+from . import bases, carriers, db, profilematch
 from .config import Config
 from .orderstore import Store
 
@@ -89,6 +89,24 @@ def lanes(orders, today=None):
     return out
 
 
+def base_details(con, res, base_id):
+    """The picked base: its name, the profiles that ship there and how their checkouts went."""
+    from .drop import rows, tally
+    b = res.by_id.get(base_id) or {"id": "none", "name": "Not matched to a base", "full": ""}
+    names = sorted((n for n in res.homes if res.of_profile(n) == base_id), key=str.lower)
+    try:
+        here = [c for c in rows(con) if res.of_checkout(c) == base_id]
+    except Exception:
+        here = []
+    per = {}
+    for c in here:
+        if c["profile"]:
+            per.setdefault(c["profile"], []).append(c)
+    profiles = [{"name": n, "tally": tally(per.get(n, []))} for n in names]
+    profiles += [{"name": n, "tally": tally(cs)} for n, cs in per.items() if n not in names]
+    return {"id": b["id"], "name": b["name"], "full": b["full"], "profiles": profiles, "tally": tally(here)}
+
+
 @bp.get("/tracking")
 def page():
     store = Store(db.connect(current_app.config.get("DB_PATH")))
@@ -99,8 +117,29 @@ def page():
     shops = sorted({o["retailer"] for lane in by_lane.values() for o in lane if o["retailer"]})
     if shop:
         by_lane = {k: [o for o in v if o["retailer"] == shop] for k, v in by_lane.items()}
+    today = date.today().isoformat()
     late = [o for o in by_lane["moving"] + by_lane["ordered"]
-            if o["estimated_delivery"] and o["estimated_delivery"] < date.today().isoformat()]
+            if o["estimated_delivery"] and o["estimated_delivery"] < today]
+    # With base addresses, the page opens on how many packages go to each; picking one shows its cards.
+    res = bases.Resolver(store.db)
+    base = request.args.get("base", "")
+    lane_counts = {k: len(v) for k, v in by_lane.items()}
+    overview, place = None, None
+    if res.bases and not base:
+        live = [o for lane in by_lane.values() for o in lane]
+        late_ids = {o["id"] for o in late}
+
+        def count(items):
+            n = {key: sum(1 for o in items if lane_of(o) == key) for key, _, _ in LANES}
+            return dict(n, total=len(items), late=sum(1 for o in items if o["id"] in late_ids),
+                        value=sum(o["total"] or 0 for o in items))
+        overview = bases.overview(live, res.of_order, res.bases, count)
+        by_lane = {k: [] for k in by_lane}
+    elif res.bases and base != "all":
+        want = None if base == "none" else int(base) if base.isdigit() else -1
+        by_lane = {k: [o for o in v if res.of_order(o) == want] for k, v in by_lane.items()}
+        lane_counts = {k: len(v) for k, v in by_lane.items()}
+        place = base_details(store.db, res, want)
     config = Config.from_env()
     from . import products as prod
     try:
@@ -108,7 +147,8 @@ def page():
     except Exception:
         products = []
     cards = {o["id"]: card(store.db, o, products) for lane in by_lane.values() for o in lane}
-    return render_template("tracking.html", cards=cards, shown_events=SHOWN_EVENTS, lanes=LANES, by_lane=by_lane, shops=shops, shop=shop, late={o["id"] for o in late},
+    return render_template("tracking.html", overview=overview, place=place, lane_counts=lane_counts, base=base, has_bases=bool(res.bases),
+                           cards=cards, shown_events=SHOWN_EVENTS, lanes=LANES, by_lane=by_lane, shops=shops, shop=shop, late={o["id"] for o in late},
                            can_check=bool(carriers.available(os.environ)), checking=carriers.state,
                            training=config.training_mode, labels=store.labels(),
                            label_choices=["ordered", "in_transit", "out_for_delivery", "delivered", "cancelled", "returned",

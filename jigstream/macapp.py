@@ -321,6 +321,8 @@ def main():
         tunnel.ensure(port)  # reuses the link left running by an update restart, so its address stays
     else:
         tunnel.stop()
+    from . import bases
+    bases.ensure(db.connect(app.config.get("DB_PATH")))  # its tables exist before the computer sync looks
     peersync.start(app)  # keeps a linked Mac or PC the same as this one
     from . import backup
     backup.start(app)  # a locked backup every day, once a backup password is set

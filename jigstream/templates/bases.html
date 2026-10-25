@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% block body %}
+{% set editing = (r.bases|selectattr("id", "equalto", edit)|first) if edit else None %}
+<h2>Base addresses</h2>
+<p class="muted">The real places your packages go. Add each one once; every jigged address on your profiles and order emails is then tied to its base: by rule when it has the base's ZIP and house number, by the AI when it's less clear, or by you below (your pick always wins). Shipping and Drops open on a list by base address.</p>
+<div class="bgrid">
+<form method="post" action="/bases" class="panel bform"><h3>{{"Change " ~ editing.name if editing else "Add a base address"}}</h3>
+{% if editing %}<input type="hidden" name="id" value="{{editing.id}}">{% endif %}
+<label>Name<input name="name" placeholder="Optional: Home, Mom's, Warehouse" value="{{editing.name if editing else ''}}"></label>
+<label>Street address<input name="line1" required placeholder="123 Main St" value="{{editing.line1 if editing else ''}}" data-private></label>
+<div class="brow"><label>City<input name="city" value="{{editing.city if editing else ''}}" data-private></label><label class="short">State<input name="state" maxlength="20" value="{{editing.state if editing else ''}}"></label><label class="short">ZIP<input name="zip" required inputmode="numeric" maxlength="10" value="{{editing.zip if editing else ''}}" data-private></label></div>
+<div class="bbtns"><button>{{"Save" if editing else "Add base address"}}</button>{% if editing %}<a class="btn ghost" href="/bases">Cancel</a>{% endif %}</div></form>
+<div class="panel"><h3>Matching</h3>
+<p class="muted small">{{matching.last or "The AI looks at unclear addresses after you add a base and after every sync."}}{% if r.waiting %} {{r.waiting}} address{{'es' if r.waiting != 1}} waiting for the AI.{% endif %}</p>
+<form method="post" action="/bases/match"><button class="ghost" {{"disabled" if matching.running or not r.bases}}>{{"Matching..." if matching.running else "Match with the AI now"}}</button></form>
+{% if suggestions %}<h3 style="margin-top:18px">From your profiles</h3><p class="muted small">Places your profiles ship to that aren't a base yet, jigs folded together.</p>
+<ul class="blist">{% for s in suggestions %}<li><div><b data-private>{{s.line1}}</b> <span class="muted">· {{s.zip}}</span><div class="muted small">{{s.profiles}} profile{{'s' if s.profiles != 1}}</div></div>
+<form method="post" action="/bases"><input type="hidden" name="line1" value="{{s.line1}}"><input type="hidden" name="zip" value="{{s.zip}}"><button class="ghost">Add</button></form></li>{% endfor %}</ul>{% endif %}</div>
+</div>
+{% macro move(a, current) %}<form method="post" action="/bases/pick" class="bmove"><input type="hidden" name="full" value="{{a.full}}"><input type="hidden" name="back" value="/bases">
+<select name="base" onchange="this.form.submit()" aria-label="Move to another base" title="Wrong base? Pick the right one; it sticks">
+<option value="" disabled selected>Move to…</option>{% for b in r.bases %}{% if b.id != current %}<option value="{{b.id}}">{{b.name}}</option>{% endif %}{% endfor %}{% if current %}<option value="0">Not a base address</option>{% endif %}</select></form>{% endmacro %}
+{% for b in r.bases %}<section class="panel bbase"><div class="bhead"><div><h3>{{b.name}}</h3><div class="muted" data-private>{{b.full}}</div></div>
+<div class="bbtns"><a class="btn ghost" href="/tracking?base={{b.id}}">Packages ›</a><a class="btn ghost" href="/drop?base={{b.id}}">Checkouts ›</a><a class="btn ghost" href="/bases?edit={{b.id}}">Edit</a>
+<form method="post" action="/bases/{{b.id}}/delete" data-confirm="Remove {{b.name}}? Its addresses are matched again."><button class="ghost danger">Remove</button></form></div></div>
+<p class="muted small">{{b.addresses|length}} address{{'es' if b.addresses|length != 1}} tied to it</p>
+<ul class="blist">{% for a in b.addresses %}<li><div class="baddr"><span data-private>{{a.full}}</span><div class="muted small">{{a.from}} · {{a.how}}</div></div>{{ move(a, b.id) }}</li>{% else %}<li class="muted small">Nothing yet.</li>{% endfor %}</ul></section>
+{% else %}<p class="muted">No base addresses yet. Add one above, or pick one from your profiles.</p>{% endfor %}
+{% if r.loose and r.bases %}<section class="panel bbase"><h3 style="margin-top:0">Not tied to a base</h3><p class="muted small">In a ZIP none of your bases use, or the AI said no. Pick a base if one belongs.</p>
+<ul class="blist">{% for a in r.loose %}<li><div class="baddr"><span data-private>{{a.full}}</span><div class="muted small">{{a.from}} · {{a.how}}</div></div>{{ move(a, None) }}</li>{% endfor %}</ul></section>{% endif %}
+<style>
+.bgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px;align-items:start;margin:14px 0}
+.bform{display:flex;flex-direction:column;gap:10px}.bform h3,.bgrid h3{margin:0 0 4px}.bform label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;min-width:0}
+.bform input{margin:0;width:100%}.brow{display:flex;flex-wrap:wrap;gap:10px}.brow label{flex:2 1 140px}.brow label.short{flex:1 1 80px}
+.bbtns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.bbtns form{margin:0}
+.blist{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column}
+.blist li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;padding:9px 0;border-top:1px solid var(--line)}
+.blist li:first-child{border-top:0}.blist form{margin:0}.baddr{flex:1 1 240px;min-width:0;overflow-wrap:anywhere}
+.bmove select{margin:0;padding:4px 8px;font-size:12px}
+.bbase{margin:14px 0}.bhead{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:flex-start}.bhead h3{margin:0}
+.small{font-size:12px}button.danger{color:var(--red)}
+</style>
+{% endblock %}
