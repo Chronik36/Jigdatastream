@@ -122,3 +122,22 @@ def test_logs_and_ideas_for_the_developer_only(tmp_path, monkeypatch):
     assert "Logs &amp; ideas" in page and page.count(">New<") == 2
     assert "sync stuck" in c.get("/developer/mail/read?account=me@gmail.com&id=<l1@x>").get_json()["body"]
     assert c.get("/developer/mail").get_data(as_text=True).count(">New<") == 1
+
+
+def test_orders_cards_open_their_orders(tmp_path):
+    path = str(tmp_path / "o.db")
+    store = Store(db.connect(path))
+    order(store, 1, "ordered")
+    order(store, 2, "in_transit")
+    order(store, 3, "delivered")
+    order(store, 4, "cancelled")
+    ids = {o["order_number"]: o["id"] for o in store.orders()}
+    c = create_app(path).test_client()
+    page = c.get("/orders").get_data(as_text=True)
+    assert 'href="/orders?show=moving"' in page and 'href="/orders?show=delivered"' in page
+    moving = c.get("/orders?show=moving").get_data(as_text=True)
+    assert f'id="order-{ids["N2"]}"' in moving and f'id="order-{ids["N1"]}"' not in moving and "Show all" in moving
+    spent = c.get("/orders?show=spent").get_data(as_text=True)
+    assert f'id="order-{ids["N4"]}"' not in spent and f'id="order-{ids["N1"]}"' in spent
+    gone = c.get("/orders?show=not_spent").get_data(as_text=True)
+    assert f'id="order-{ids["N4"]}"' in gone and f'id="order-{ids["N3"]}"' not in gone
