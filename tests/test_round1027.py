@@ -157,3 +157,16 @@ def test_every_stat_card_is_a_link(tmp_path):
     assert "Show all" in c.get("/expenses/recurring?show=soon").get_data(as_text=True)
     assert "only ✕" in c.get("/drop?only=decline").get_data(as_text=True)
     assert c.get("/bank?show=orders").status_code == 200
+
+
+def test_orders_filter_by_base_and_product(tmp_path):
+    from jigstream import bases
+    path = str(tmp_path / "f.db")
+    store = Store(db.connect(path))
+    order(store, 1, "in_transit")
+    bases.ensure(store.db)
+    store.db.commit()
+    c = create_app(path).test_client()
+    page = c.get("/orders?status=in_transit&product=thing").get_data(as_text=True)
+    assert 'id="prf"' in page and 'data-items="' in page and 'data-param="status"' in page
+    assert "<option value=\"in_transit\" selected" in page and "<option value=\"thing\" selected" in page
