@@ -61,8 +61,8 @@ tr.off td{opacity:.55}
 {% for s in rows %}<tr class="{{'off' if not s.counted}}">
 <td>{{s.date or "-"}}</td>
 <td><b>{{s.item or "Payout"}}</b>{% if s.size %} <span class="muted">size {{s.size}}</span>{% endif %}<span class="sub">{% if s.order_id %}Bought: {{s.order_retailer}} {{s.order_ref or ""}}{% elif s.item %}No order linked{% else %}A lump payout{% endif %}{% if not s.counted %} · not counted{% endif %}</span></td>
-<td>{{s.platform}}<span class="sub">{{"from your bank" if s.source == "bank" else ("typed in" if s.source == "manual" else "email")}}</span></td>
-<td class="num">{{s.money_in|money(s.currency)}}{% if s.sale_price and s.payout is not none and s.sale_price != s.payout %}<span class="sub">sold {{s.sale_price|money}}</span>{% endif %}</td>
+<td>{{s.platform}}<span class="sub">{{"from your bank" if s.source == "bank" else ("typed in" if s.source == "manual" else ("fixed from an order" if s.source == "fixed" else "email"))}}</span></td>
+<td class="num">{{s.money_in|money(s.currency)}}{% if s.sale_price and s.payout is not none and s.sale_price != s.payout %}<span class="sub">sold {{s.sale_price|money}}{% if s.sale_price > 0 %} · fees {{((s.sale_price - s.payout) / s.sale_price * 100)|round(1)}}%{% endif %}</span>{% endif %}</td>
 <td class="num">{{s.cost|money if s.cost is not none else "-"}}</td>
 <td class="num {{'pos' if s.profit and s.profit > 0 else ('neg' if s.profit and s.profit < 0 else '')}}">{% if s.profit is not none %}{{"+" if s.profit > 0 else ("−" if s.profit < 0 else "")}}{{s.profit|abs|money}}{% else %}-{% endif %}</td>
 <td><div class="acts"><button type="button" class="ghost" onclick='openSale({{ {"id": s.id, "platform": s.platform, "item": s.item, "size": s.size, "sale_price": s.sale_price, "fees": s.fees, "payout": s.payout, "date": s.date, "cost": s.cost, "order_id": s.order_id}|tojson }})'>Edit</button>
@@ -111,7 +111,8 @@ tr.off td{opacity:.55}
 <label>Item<br><input name="item" id="s-item" placeholder="e.g. Dunk Low Panda"></label>
 <label>Size<br><input name="size" id="s-size"></label>
 <label>Sold for<br><input name="sale_price" id="s-sale_price" inputmode="decimal"></label>
-<label>Fees<br><input name="fees" id="s-fees" inputmode="decimal"></label>
+<label>Fee %<br><input name="fee_pct" id="s-fee_pct" inputmode="decimal" placeholder="e.g. 13.25 on eBay"></label>
+<label>Fees + taxes<br><input name="fees" id="s-fees" inputmode="decimal"></label>
 <label>Payout (what you got)<br><input name="payout" id="s-payout" inputmode="decimal"></label>
 <label>Cost <span class="muted">(blank = the order's total)</span><br><input name="cost" id="s-cost" inputmode="decimal" placeholder="What you paid, or MSRP"></label>
 </div>
@@ -122,10 +123,24 @@ tr.off td{opacity:.55}
 <datalist id="plist">{% for pl in platforms %}<option value="{{pl}}">{% endfor %}</datalist>
 <script>
 const goaldlg = document.getElementById('goaldlg'), saledlg = document.getElementById('saledlg');
+const FEE_PCT = {{ fee_pcts|tojson }};
+// Any two of sold for, fee % and payout fill in the rest (fees = sold for - payout).
+document.getElementById('sform').addEventListener('input', e => {
+  const g = k => document.getElementById('s-' + k), n = k => { const v = parseFloat((g(k).value || '').replace(/[^\d.\-]/g, '')); return isNaN(v) ? null : v; };
+  const put = (k, v) => g(k).value = k === 'fee_pct' ? +v.toFixed(2) : v.toFixed(2);
+  const k = e.target.id.slice(2), price = n('sale_price'), pct = n('fee_pct'), fees = n('fees'), pay = n('payout');
+  if (k === 'platform' && FEE_PCT[g('platform').value.toLowerCase()] != null && pct == null) g('fee_pct').value = FEE_PCT[g('platform').value.toLowerCase()];
+  else if (k === 'payout' && pay != null) {
+    if (price != null) { put('fees', price - pay); if (price) put('fee_pct', (price - pay) / price * 100); }
+    else if (pct != null && pct < 100) { const p = pay / (1 - pct / 100); put('sale_price', p); put('fees', p - pay); }
+  } else if (k === 'fees' && fees != null && price != null) { put('payout', price - fees); if (price) put('fee_pct', fees / price * 100); }
+  else if ((k === 'sale_price' || k === 'fee_pct') && price != null && pct != null) { put('fees', price * pct / 100); put('payout', price - price * pct / 100); }
+});
 function openSale(s) {
   s = s || {};
   const set = (k, v) => document.getElementById('s-' + k).value = v == null ? '' : v;
   ['platform', 'item', 'size', 'sale_price', 'fees', 'payout', 'date', 'cost', 'order_id'].forEach(k => set(k, s[k]));
+  set('fee_pct', s.sale_price && s.fees != null ? +(s.fees / s.sale_price * 100).toFixed(2) : (FEE_PCT[(s.platform || '').toLowerCase()] ?? ''));
   if (!s.date) set('date', new Date().toISOString().slice(0, 10));
   document.getElementById('sform').action = s.id ? '/expenses/sales/' + s.id + '/edit' : '/expenses/sales/new';
   document.getElementById('stitle').textContent = s.id ? 'Edit sale' : 'Add sale';

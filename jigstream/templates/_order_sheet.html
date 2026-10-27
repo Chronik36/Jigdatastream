@@ -7,6 +7,7 @@
   "pen": '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>',
   "trash": '<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   "pin": '<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  "tag": '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/>',
   "refresh": '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>'} %}<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ paths[name]|safe }}</svg>{% endmacro %}
 {# One order's sheet, loaded into the dialog from _order_sheet_js.html (ordersheet.py). #}
 {% set status = o.shipping_status or "unknown" %}{% set url = o|track_url %}
@@ -33,6 +34,7 @@
   <button type="button" class="os-a c-green" data-os-share="{{o.retailer or ''}} order {{o.order_number or ''}}: {{title}}, {{status|status_label}}{% if o.tracking_number %}, {{o.carrier or 'tracking'}} {{o.tracking_number}}{% endif %}{% if url %} {{url}}{% endif %}">{{ os_icon("share") }}Share</button>
   <button type="button" class="os-a c-sky" data-os-toggle="os-edit">{{ os_icon("edit") }}Edit</button>
   <a class="os-a c-green" href="/expenses/in-person?order={{o.id}}#ipsale" title="Sold it in person, like at Tradepost or a show">{{ os_icon("receipt") }}Sold it</a>
+  <button type="button" class="os-a c-green" data-os-toggle="os-sale" title="These emails are a sale you made (an eBay &quot;you sold it&quot;), not something you bought">{{ os_icon("tag") }}It's a sale</button>
   <button type="button" class="os-a c-orange" data-os-toggle="os-status">{{ os_icon("pen") }}Status</button>
   <form method="post" action="{{url_for('ordersheet.delete', order_id=o.id)}}" class="os-del" data-confirm="Delete this order from BotTrack? Undo brings it back.">
     <button class="os-a c-red">{{ os_icon("trash") }}Delete</button></form>
@@ -60,6 +62,21 @@
   </div>
   <button>Save</button>
   <p class="muted small wide">Your fixes stick through syncs, and the AI re-reads this order's emails to learn from them.</p></form>
+<form id="os-sale" class="os-pop os-editf" method="post" action="{{url_for('ordersheet.as_sale', order_id=o.id)}}" data-os-sale hidden>
+  <input type="hidden" name="back" value="1">
+  <p class="muted small wide">This is something you <b>sold</b>, like an eBay "you sold it" email. It moves to Sales on Profit goal with these numbers.</p>
+  <label>Sold on<input name="platform" value="{{sale_platform or 'eBay'}}" list="os-plist" required maxlength="40"></label>
+  <label>Sale date<input type="date" name="date" value="{{(o.order_date or (o.last_email_date or ''))[:10]}}"></label>
+  <label class="wide">Item<input name="item" value="{{title if o['items'] else ''}}" maxlength="200"></label>
+  <label>Sold for<input name="sale_price" inputmode="decimal" data-sale="price" value="{{'%.2f'|format(o.total) if o.total is not none else ''}}"></label>
+  <label>Fee %<input name="fee_pct" inputmode="decimal" data-sale="pct" value="{{'%g'|format(fee_pct) if fee_pct is not none else ''}}" placeholder="e.g. 13.25"></label>
+  <label>Fees + taxes ($)<input name="fees" inputmode="decimal" data-sale="fees"></label>
+  <label>You got (payout)<input name="payout" inputmode="decimal" data-sale="payout"></label>
+  <label class="wide">Bought with<select name="bought"><option value="">Find the order I bought it with</option>{% for b in bought %}<option value="{{b.id}}">{{b.label}}</option>{% endfor %}</select></label>
+  <label>Cost <span class="muted">(blank = that order's total)</span><input name="cost" inputmode="decimal" placeholder="What you paid"></label>
+  <button>Save as a sale</button>
+  <p class="muted small wide">Type any two of sold for, fee % and payout; the rest fills in. The AI re-reads these emails as a sale and learns from it.</p>
+  <datalist id="os-plist">{% for pl in sale_platforms %}<option value="{{pl}}">{% endfor %}</datalist></form>
 <form id="os-status" class="os-pop" method="post" action="/orders/{{o.id}}/label" hidden>
   <input type="hidden" name="back" value="1">
   <select name="status" required><option value="">Pick the right status…</option>{% for c in choices %}{% if c == "not_an_order" %}<option disabled>──────────</option>{% endif %}<option value="{{c}}" {{"disabled" if c == status}}>{{c|status_label}}</option>{% endfor %}</select>

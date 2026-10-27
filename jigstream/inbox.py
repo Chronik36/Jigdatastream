@@ -128,8 +128,23 @@ def open_email(config, account, message_id):
     return fetch_by_message_id(config, account, password, message_id) if password else None
 
 
-def label_emails(config, store, llm, picks, label):
-    """picks: [{"account", "message_id", "sender", "subject", "date"}]. Runs in the background."""
+def _sale_fix(email, sale):
+    """The parts of a hand-typed sale this email shows, as the AI should have read them."""
+    from .ordersheet import _shows
+    body = f"{email.subject}\n{email.body}"
+    out = {"platform": sale["platform"]} if sale.get("platform") else {}
+    for k in ("sale_price", "fees", "payout"):
+        if sale.get(k) is not None and _shows(body, "total", sale[k]):
+            out[k] = sale[k]
+    if sale.get("item") and _shows(body, "items", sale["item"]):
+        out["items"] = [{"name": sale["item"]}]
+    return out
+
+
+def label_emails(config, store, llm, picks, label, sale=None):
+    """picks: [{"account", "message_id", "sender", "subject", "date"}]. Runs in the background.
+    sale: a sale you typed for these emails (sales.from_order): {"id", "platform", "item", "sale_price", "fees",
+    "payout"}. The AI learns the platform and every number the email shows, and the emails add no second sale."""
     from . import sales
     examples, platforms = few_shot(store), sales.platforms(store.db)
     for row in picks:
@@ -142,9 +157,13 @@ def label_emails(config, store, llm, picks, label):
             prompt = email_prompt(email, config.max_body_chars, platforms)
             raw, _ = extract_raw(llm, email, config.max_body_chars, examples, platforms)
             corrected = corrected_answer(raw, label)
+            if sale:
+                corrected.update(_sale_fix(email, sale))
             store.add_inbox_example(email, prompt, raw, corrected, label)
             result = normalize(corrected, email)
             store.save(email, result)
+            if sale and result["kind"] == "sale":
+                sales.keep_one(store.db, sale["id"], email.message_id)
             if result["kind"] != "botting_expense":  # e.g. a receipt the AI wrongly filed as an expense
                 store.db.execute("DELETE FROM expenses WHERE message_id = ?", (email.message_id,))
                 store.db.commit()
