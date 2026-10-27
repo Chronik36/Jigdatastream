@@ -196,6 +196,16 @@ def same_site_post():
     return (urlparse(origin).hostname or "") in LOCAL_HOSTS
 
 
+def back_url():
+    """The page this request came from on BotTrack itself (path and query), or None. Compared by host only, since
+    through the phone link the page is https while BotTrack itself sees http."""
+    from urllib.parse import urlparse
+    ref = urlparse(request.referrer or "")
+    if not ref.path or (ref.netloc and ref.netloc != request.host):
+        return None
+    return ref.path + (f"?{ref.query}" if ref.query else "")
+
+
 def secure_headers(resp):
     """No other site may show BotTrack inside a frame, guess file types, or see BotTrack's links in referrers."""
     resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")

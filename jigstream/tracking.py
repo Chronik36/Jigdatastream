@@ -102,9 +102,16 @@ def base_details(con, res, base_id):
     for c in here:
         if c["profile"]:
             per.setdefault(c["profile"], []).append(c)
+    groups = {r["name"]: r["group_name"] or "No group" for r in con.execute("SELECT name, group_name FROM profiles")}
     profiles = [{"name": n, "tally": tally(per.get(n, []))} for n in names]
     profiles += [{"name": n, "tally": tally(cs)} for n, cs in per.items() if n not in names]
-    return {"id": b["id"], "name": b["name"], "full": b["full"], "profiles": profiles, "tally": tally(here)}
+    by_group = {}
+    for p in profiles:  # picked by group, then profile: bots make hundreds of profiles
+        p["group"] = groups.get(p["name"], "No group")
+        by_group.setdefault(p["group"], []).append({"name": p["name"], "real": p["tally"]["real"],
+                                                    "tries": p["tally"]["tries"]})
+    return {"id": b["id"], "name": b["name"], "full": b["full"], "profiles": profiles, "tally": tally(here),
+            "groups": dict(sorted(by_group.items(), key=lambda g: g[0].lower()))}
 
 
 @bp.get("/tracking")
@@ -124,6 +131,13 @@ def page():
     res = bases.Resolver(store.db)
     base = request.args.get("base", "")
     lane_counts = {k: len(v) for k, v in by_lane.items()}
+    # A tapped tile (Ordered, On the way, ..., Running late): only those packages, every base, to check and fix.
+    only = request.args.get("lane", "")
+    if only in by_lane or only == "late":
+        late_ids = {o["id"] for o in late}
+        by_lane = {k: ([o for o in v if o["id"] in late_ids] if only == "late" else v if k == only else [])
+                   for k, v in by_lane.items()}
+        base = base or "all"
     overview, place = None, None
     if res.bases and not base:
         live = [o for lane in by_lane.values() for o in lane]
@@ -147,7 +161,7 @@ def page():
     except Exception:
         products = []
     cards = {o["id"]: card(store.db, o, products) for lane in by_lane.values() for o in lane}
-    return render_template("tracking.html", overview=overview, place=place, lane_counts=lane_counts, base=base, has_bases=bool(res.bases),
+    return render_template("tracking.html", overview=overview, place=place, lane_counts=lane_counts, only=only, base=base, has_bases=bool(res.bases),
                            cards=cards, shown_events=SHOWN_EVENTS, lanes=LANES, by_lane=by_lane, shops=shops, shop=shop, late={o["id"] for o in late},
                            can_check=bool(carriers.available(os.environ)), checking=carriers.state,
                            training=config.training_mode, labels=store.labels(),

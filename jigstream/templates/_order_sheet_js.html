@@ -34,6 +34,11 @@ body dialog.osheet::-webkit-scrollbar{display:none}
 .osheet .c-orange{--c:var(--orange)}.osheet .c-red{--c:var(--red)}
 .osheet .os-del{grid-column:1/-1;margin:0}
 .osheet .os-pop{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0;padding:12px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line-2)}
+.osheet .os-editf{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px;align-items:end}
+.osheet .os-editf .os-orderf{display:contents}.osheet .os-editf.notorder .os-orderf{display:none}
+.osheet .os-editf label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+.osheet .os-editf label input,.osheet .os-editf label select{min-width:0;width:100%;color:var(--text)}
+.osheet .os-editf .wide,.osheet .os-editf>button,.osheet .os-editf>p{grid-column:1/-1}
 .osheet .os-pop[hidden]{display:none}.osheet .os-pop input,.osheet .os-pop select{flex:1;min-width:180px;margin:0}.osheet .os-pop p{flex-basis:100%;margin:0}
 .osheet .os-h{margin:10px 2px 0;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .osheet .os-hrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}.osheet .os-hrow .os-h{margin:0 2px}.osheet .os-hrow form{margin:0}
@@ -107,6 +112,9 @@ body dialog.osheet::-webkit-scrollbar{display:none}
     if (!row || dlg.contains(row) || e.target.closest('a,button,select,input,textarea,label,form,summary,details')) return;
     if (window.getSelection().toString()) return;  // selecting text to copy, not opening
     open(row.dataset.sheet);
+  });
+  dlg.addEventListener('change', e => {
+    if (e.target.matches('[data-os-kind]')) e.target.closest('form').classList.toggle('notorder', e.target.value !== 'order');
   });
   dlg.addEventListener('click', e => {
     if (e.target === dlg || e.target.closest('[data-os-close]')) return close();

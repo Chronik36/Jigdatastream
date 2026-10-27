@@ -31,13 +31,34 @@
   {% if o.tracking_number %}<button type="button" class="os-a c-teal" data-copy="{{o.tracking_number}}">{{ os_icon("copy") }}Tracking</button>{% endif %}
   {% if url %}<a class="os-a c-blue" href="{{url}}" target="_blank" rel="noopener">{{ os_icon("open") }}Carrier</a>{% endif %}
   <button type="button" class="os-a c-green" data-os-share="{{o.retailer or ''}} order {{o.order_number or ''}}: {{title}}, {{status|status_label}}{% if o.tracking_number %}, {{o.carrier or 'tracking'}} {{o.tracking_number}}{% endif %}{% if url %} {{url}}{% endif %}">{{ os_icon("share") }}Share</button>
-  <button type="button" class="os-a c-sky" data-os-toggle="os-rename">{{ os_icon("edit") }}Rename</button>
+  <button type="button" class="os-a c-sky" data-os-toggle="os-edit">{{ os_icon("edit") }}Edit</button>
   <button type="button" class="os-a c-orange" data-os-toggle="os-status">{{ os_icon("pen") }}Status</button>
   <form method="post" action="{{url_for('ordersheet.delete', order_id=o.id)}}" class="os-del" data-confirm="Delete this order from BotTrack? Undo brings it back.">
     <button class="os-a c-red">{{ os_icon("trash") }}Delete</button></form>
 </div>
 <form id="os-rename" class="os-pop" method="post" action="{{url_for('ordersheet.rename', order_id=o.id)}}" hidden>
   <input name="name" value="{{title}}" maxlength="200" required><button>Save name</button></form>
+<form id="os-edit" class="os-pop os-editf" method="post" action="{{url_for('ordersheet.edit', order_id=o.id)}}" hidden>
+  <input type="hidden" name="back" value="1">
+  <label class="wide">What its emails are<select name="email_type" data-os-kind>
+    <option value="order" selected>An order</option><option value="not_an_order">Not an order</option>
+    <option value="expense">A botting expense</option><option value="sale">A sale / payout</option></select></label>
+  <div class="os-orderf">
+  <label class="wide">Product<input name="item_name" value="{{title if o['items'] else ''}}" maxlength="200"></label>
+  <label>Store<input name="retailer" value="{{o.retailer or ''}}"></label>
+  <label>Order #<input name="order_number" value="{{o.order_number or ''}}"></label>
+  <label>Order date<input type="date" name="order_date" value="{{(o.order_date or '')[:10]}}"></label>
+  <label>Total<input name="total" inputmode="decimal" value="{{'%.2f'|format(o.total) if o.total is not none else ''}}"></label>
+  <label>Status<select name="status">{% for c in choices if c != "not_an_order" %}<option value="{{c}}" {{"selected" if c == status}}>{{c|status_label}}</option>{% endfor %}</select></label>
+  <label>Profile<select name="profile"><option value="">No profile</option>{% for g, names in profile_groups.items() %}<optgroup label="{{g}}">{% for n in names %}<option {{"selected" if n == o.profile_name}}>{{n}}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+  <label>Ship to name<input name="shipping_name" value="{{o.shipping_name or ''}}" data-private></label>
+  <label class="wide">Ship to address<input name="shipping_address" value="{{o.shipping_address or ''}}" data-private></label>
+  <label>Carrier<input name="carrier" value="{{o.carrier or ''}}"></label>
+  <label>Tracking #<input name="tracking_number" value="{{o.tracking_number or ''}}"></label>
+  <label>Est. delivery<input type="date" name="estimated_delivery" value="{{(o.estimated_delivery or '')[:10]}}"></label>
+  </div>
+  <button>Save</button>
+  <p class="muted small wide">Your fixes stick through syncs, and the AI re-reads this order's emails to learn from them.</p></form>
 <form id="os-status" class="os-pop" method="post" action="/orders/{{o.id}}/label" hidden>
   <input type="hidden" name="back" value="1">
   <select name="status" required><option value="">Pick the right status…</option>{% for c in choices %}{% if c == "not_an_order" %}<option disabled>──────────</option>{% endif %}<option value="{{c}}" {{"disabled" if c == status}}>{{c|status_label}}</option>{% endfor %}</select>
