@@ -18,7 +18,7 @@ import secrets
 import time
 from email.message import EmailMessage
 
-from . import peersync
+from . import mail, peersync
 
 logger = logging.getLogger("jigstream.gmaillink")
 
@@ -40,7 +40,7 @@ class GmailBox:
 
     def _open(self):
         imap = imaplib.IMAP4_SSL(self.config.imap_host, timeout=30)
-        imap.login(self.address, self.password)
+        mail.login(imap, self.address, self.password)
         imap.create(f'"{LABEL}"')  # an error when it's there already; fine
         imap.select(f'"{LABEL}"')
         return imap

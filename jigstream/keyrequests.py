@@ -25,7 +25,7 @@ from email.utils import parseaddr
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, request, url_for
 
-from . import accountkeys
+from . import accountkeys, mail
 
 logger = logging.getLogger("jigstream.keyrequests")
 bp = Blueprint("keyrequests", __name__)
@@ -70,7 +70,7 @@ def search(config, address, password, subject, since_days=30):
     imap = imaplib.IMAP4_SSL(config.imap_host, timeout=30)
     out = []
     try:
-        imap.login(address, password)
+        mail.login(imap, address, password)
         for folder in FOLDERS:
             try:
                 if imap.select(folder, readonly=True)[0] != "OK":
