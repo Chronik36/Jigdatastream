@@ -452,3 +452,72 @@ def in_person_sale():
     logger.info("in-person sale added")
     flash(f"Added your {f['platform']} sale.")
     return _back()
+
+
+# ---------- Review: go through every expense an email gave, one at a time, and fix it ----------
+
+def _review_rows(c, show):
+    where = "e.message_id NOT LIKE 'manual:%'" + ("" if show == "all" else " AND COALESCE(e.reviewed, 0) = 0")
+    return [dict(r) for r in c.execute(
+        "SELECT e.*, m.subject, m.sender, m.date AS email_date, m.account AS email_account FROM expenses e"
+        " LEFT JOIN emails m ON m.message_id = e.message_id WHERE " + where +
+        " ORDER BY COALESCE(e.date, m.date) DESC, e.id DESC")]
+
+
+@pages.get("/expenses/review")
+def review_page():
+    c = _con()
+    Store(c)  # the reviewed column on older databases
+    show = request.args.get("show", "")
+    rows = _review_rows(c, show)
+    pick = request.args.get("id", type=int)
+    current = next((r for r in rows if r["id"] == pick), None) or \
+        (next((r for r in _review_rows(c, "all") if r["id"] == pick), None) if pick else None) or (rows[0] if rows else None)
+    done = c.execute("SELECT COUNT(*) FROM expenses WHERE message_id NOT LIKE 'manual:%' AND COALESCE(reviewed, 0) = 1"
+                     ).fetchone()[0]
+    return render_template("expense_review.html", tab="review", counts={}, rows=rows, e=current, show=show,
+                           done=done, **_dialogs())
+
+
+def teach_expense(config, expense_id, db_path=None):
+    """An expense fixed or confirmed on Review becomes a training example: its email re-read by the model, with
+    your vendor, amount, category and billing period as the right answer."""
+    from .extract import email_prompt, extract_raw
+    from .training import few_shot
+    store = Store(db.connect(db_path))
+    e = store.expense(expense_id)
+    row = store.db.execute("SELECT account FROM emails WHERE message_id = ?", (e["message_id"],)).fetchone() if e else None
+    if not e or not config.accounts:
+        return False
+    email = inbox.open_email(config, (row["account"] if row else None) or e.get("account"), e["message_id"])
+    if not email:
+        return False
+    raw, _ = extract_raw(llm_for(config), email, config.max_body_chars, few_shot(store))
+    corrected = dict(raw, kind="botting_expense", vendor=e["vendor"], total=e["amount"],
+                     expense_category=e["category"], billing_period=e["billing_period"],
+                     description=e["description"] or raw.get("description"))
+    store.add_inbox_example(email, email_prompt(email, config.max_body_chars), raw, corrected, "expense")
+    logger.info("expense %s reviewed: saved as a training example", expense_id)
+    return True
+
+
+@pages.post("/expenses/<int:expense_id>/review")
+def review_save(expense_id):
+    c = _con()
+    store = Store(c)
+    e = store.expense(expense_id)
+    nxt = request.form.get("next", type=int)
+    if e:
+        f = _form()
+        f["vendor"] = f["vendor"] or e["vendor"]
+        if f["amount"] is None:
+            f.pop("amount")
+        changed = any(f.get(k) != e.get(k) for k in ("vendor", "amount", "category", "billing_period") if k in f)
+        store.update_expense(expense_id, dict(f, reviewed=1))
+        config = Config.from_env()
+        if changed and config.accounts:  # only fixes go back to the AI; a "looks right" just marks it done
+            threading.Thread(target=teach_expense, args=(config, expense_id, current_app.config.get("DB_PATH")),
+                             daemon=True).start()
+        flash(f"Saved {f['vendor']}." + (" The AI learns from your fix." if changed else ""))
+    show = request.form.get("show", "")
+    return redirect(url_for("expenses.review_page", id=nxt, show=show or None))
