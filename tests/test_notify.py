@@ -39,3 +39,26 @@ def test_no_alerts_without_phone_access(monkeypatch):
     monkeypatch.setenv("PHONE_PAIR_TOPIC", "bottrack-abc")
     assert not notify.order_moved({"id": 1, "retailer": "Target"}, "ordered", "delivered",
                                   datetime.now(timezone.utc).isoformat(), post=lambda *a, **k: None)
+
+
+def test_carrier_tracking_alerts_the_phone_and_test_button(tmp_path, monkeypatch):
+    from jigstream import carriers
+    from jigstream.app import create_app
+    from test_carriers import ENV, order
+    moved = []
+    monkeypatch.setattr(notify, "order_moved", lambda o, old, new, when, post=None: moved.append((old, new)))
+    con = db.connect(str(tmp_path / "t.db"))
+    store = Store(con)
+    order(store, "1Z999AA10123456784")
+    monkeypatch.setitem(carriers.TRACKERS, "UPS", lambda number, env: ("out_for_delivery", "Out for Delivery Today"))
+    carriers.refresh(con, ENV)
+    assert moved[-1] == ("shipped", "out_for_delivery")
+
+    monkeypatch.setenv("PHONE_ACCESS", "1")
+    monkeypatch.setenv("PHONE_PAIR_TOPIC", "bottrack-abc")
+    sent = []
+    assert notify.test(post=lambda req, timeout: sent.append(json.loads(req.data)) or
+                       type("R", (), {"close": lambda s: None})()) is None
+    assert sent[0]["topic"] == "bottrack-abc-alerts"
+    monkeypatch.setenv("PHONE_ALERTS", "0")
+    assert "turned off" in notify.test(post=lambda *a, **k: None)

@@ -18,7 +18,7 @@ import urllib.request
 import uuid
 from datetime import datetime, timezone
 
-from . import browsertrack, ordersheet
+from . import browsertrack, notify, ordersheet
 from .extract import carrier_for, status_advances
 from .orderstore import Store
 
@@ -216,6 +216,7 @@ def refresh(con, env, only_id=None):
             changed += 1
             logger.info("order %s: %s says %r, status %s -> %s", order["id"], carrier, text,
                         order["shipping_status"], status)
+            notify.order_moved(dict(order), order["shipping_status"], status, now)  # tell the phone
         con.commit()  # save each order as it's checked, never holding the database across a page load
         if not by_page:
             time.sleep(0.3)  # stay well inside the carriers' free rate limits
