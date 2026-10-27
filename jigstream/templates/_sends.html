@@ -1,0 +1,3 @@
+{% if sends %}<h3>Logs you've sent</h3>
+<p class="muted">The last times Send logs was used here and how it went. If it says sent, the email is also in that Gmail's Sent folder.</p>
+<ul>{% for s in sends %}<li>{{s.when}}: {% if s.result == "sent" %}<b>sent</b> to {{s.to}} from {{s.sender}}{% else %}<b style="color:var(--red)">not sent</b> from {{s.sender}} ({{s.result[8:]}}){% endif %}</li>{% endfor %}</ul>{% endif %}

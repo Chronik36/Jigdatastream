@@ -20,11 +20,14 @@ from pathlib import Path
 from .config import parse_accounts
 
 LOG_DIR = Path(os.environ.get("JIGSTREAM_LOGS", "logs"))
-# Where "Send logs to developer" emails the zip: BOTTRACK_LOGS_TO in .env, else the first connected inbox (the
-# developer's own Mac). No address is written in the code, which is public.
+# Where "Send logs to developer" emails the zip: BOTTRACK_LOGS_TO in .env, else the address the release was built
+# with, else (only on the developer's own computer, the one with the signing key) the first connected inbox.
+# No address is written in the code, which is public.
 DEVELOPER_EMAIL = ""
 SMTP_HOST = "smtp.gmail.com"
 NOTE_MIN_CHARS = 20  # "Send logs" needs a short description of the problem
+SEND_MAX_ZIP = 15_000_000  # Gmail refuses mail over 25 MB, and attachments grow by a third when sent
+SENDS_FILE = "sends.txt"  # one line per Send logs attempt and how it went, shown on the Logs page
 FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
 
@@ -112,13 +115,20 @@ def log_files(log_dir=None):
     return sorted(p.name for p in d.glob("*.log*")) if d.exists() else []
 
 
-def zip_logs(log_dir=None, about=None, note=""):
-    """All log files in one zip, passwords and card numbers masked, for sending to whoever is helping."""
+def zip_logs(log_dir=None, about=None, note="", max_bytes=None):
+    """All log files in one zip, passwords and card numbers masked, for sending to whoever is helping.
+    With max_bytes, the newest files go first and older ones are left out once the zip reaches that size."""
     d = Path(log_dir or LOG_DIR)
     buf = io.BytesIO()
+    left_out = []
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for name in log_files(d):
+        for name in sorted(log_files(d), key=lambda n: -(d / n).stat().st_mtime):
+            if max_bytes and buf.tell() >= max_bytes:
+                left_out.append(name)
+                continue
             z.writestr(name, scrub((d / name).read_text("utf-8", "replace")))
+        if left_out:
+            z.writestr("left-out.txt", "Too big to email, not included: " + ", ".join(left_out) + "\n")
         if note.strip():
             z.writestr("problem.txt", scrub(note.strip()) + "\n")
         if about:
@@ -192,7 +202,8 @@ def _built_in_address():
 
 def developer_email():
     to = (os.environ.get("BOTTRACK_LOGS_TO") or DEVELOPER_EMAIL or _built_in_address()).strip()
-    if not to:
+    # A friend's copy without a built-in address used to email its own inbox, so the logs never reached anyone.
+    if not to and os.environ.get("BOTTRACK_SIGNING_KEY", "").strip():
         accounts = parse_accounts(os.environ.get("GMAIL_ACCOUNTS", ""))
         to = accounts[0][0] if accounts else ""
     return to
@@ -225,7 +236,7 @@ def send_logs(sender, password, note, about_info=None, log_dir=None, to=None, sm
     msg["Subject"] = f"BotTrack logs ({info.get('BotTrack', 'unknown build')})"
     msg["From"], msg["To"], msg["Reply-To"] = sender, to, sender
     msg.set_content(email_body(note, info, log_dir))
-    msg.add_attachment(zip_logs(log_dir, info, note), maintype="application", subtype="zip",
+    msg.add_attachment(zip_logs(log_dir, info, note, SEND_MAX_ZIP), maintype="application", subtype="zip",
                        filename="bottrack-logs.zip")
     if smtp is None:
         smtp = smtplib.SMTP_SSL(SMTP_HOST, 465, context=ssl.create_default_context(), timeout=30)
@@ -233,3 +244,29 @@ def send_logs(sender, password, note, about_info=None, log_dir=None, to=None, sm
         s.login(sender, password)
         s.send_message(msg)
     return to
+
+
+def record_send(sender, to, error=None, log_dir=None):
+    """Note a Send logs attempt and how it went, so the person can see it was sent (or why not)."""
+    d = Path(log_dir or LOG_DIR)
+    line = "\t".join([datetime.now().strftime("%Y-%m-%d %H:%M"), sender or "", to or "",
+                      "failed: " + redact(str(error))[:300].replace("\n", " ") if error else "sent"])
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        with open(d / SENDS_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
+
+
+def recent_sends(n=5, log_dir=None):
+    """The last n Send logs attempts, newest first: [{when, sender, to, result}]."""
+    try:
+        lines = (Path(log_dir or LOG_DIR) / SENDS_FILE).read_text("utf-8", "replace").splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in reversed(lines[-n:]):
+        parts = (line.split("\t") + ["", "", "", ""])[:4]
+        out.append(dict(zip(("when", "sender", "to", "result"), parts)))
+    return out
