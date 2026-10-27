@@ -35,7 +35,7 @@ if __name__ == "__main__":
     hours = float(os.environ.get("SYNC_EVERY_HOURS", 4))
     if hours > 0:
         threading.Thread(target=sync_on_a_timer, args=(app, hours), daemon=True).start()
-    minutes = float(os.environ.get("QUICK_CHECK_MINUTES", 3))
+    minutes = float(os.environ.get("QUICK_CHECK_MINUTES", 1))
     if minutes > 0:
         threading.Thread(target=quick_check_on_a_timer, args=(app, minutes), daemon=True).start()
     update_hours = float(os.environ.get("UPDATE_CHECK_HOURS", 6))

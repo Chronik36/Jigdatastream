@@ -336,6 +336,10 @@ class Store:
                  result.get("recipient_email")),
             )
             self.db.commit()
+            if result["shipping_status"] not in (None, "ordered", "unknown"):
+                from . import notify
+                notify.order_moved(dict(result, id=self.db.execute("SELECT last_insert_rowid()").fetchone()[0]),
+                                   None, result["shipping_status"], email.date)
             return
 
         updates = {}
@@ -379,6 +383,9 @@ class Store:
             cols = ", ".join(f"{k} = ?" for k in updates)
             self.db.execute(f"UPDATE tracked_orders SET {cols} WHERE id = ?", (*updates.values(), row["id"]))
             self.db.commit()
+        if updates.get("shipping_status") and updates["shipping_status"] != old:
+            from . import notify
+            notify.order_moved(dict(dict(row), **updates), old, updates["shipping_status"], email.date)
 
     def repair_cancels(self):
         """Fix orders read before cancel emails were checked by rule: an order whose latest email is a
