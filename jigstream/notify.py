@@ -52,8 +52,37 @@ def message(order, status):
     return title, text
 
 
+def why_off():
+    """Why alerts can't go out from this Mac right now, or None when they can."""
+    if os.environ.get("PHONE_ACCESS") != "1":
+        return "Phone access is off on the Mac (Setup, Phone access)."
+    if os.environ.get("PHONE_ALERTS", "1") == "0":
+        return "Phone alerts are turned off (PHONE_ALERTS=0)."
+    if not os.environ.get("PHONE_PAIR_TOPIC"):
+        return "The Mac has no pairing code yet: turn phone access off and on again on Setup."
+    return None
+
+
+def test(post=None):
+    """Send a test alert now. Returns None when ntfy.sh took it, else what went wrong."""
+    t = topic()
+    if not t:
+        return why_off()
+    body = json.dumps({"topic": t, "title": "BotTrack test alert",
+                       "message": "Shipping alerts reach this phone.", "tags": ["bottrack"], "priority": 3})
+    try:
+        req = urllib.request.Request(NTFY, data=body.encode(), method="POST", headers={"Content-Type": "application/json"})
+        (post or urllib.request.urlopen)(req, timeout=15).close()
+        logger.info("test phone alert sent")
+        return None
+    except Exception as e:
+        logger.warning("couldn't send the test alert: %s", e)
+        return f"Couldn't reach ntfy.sh from the Mac: {e}"
+
+
 def order_moved(order, old, new, email_date, post=None):
-    """Called when an email changes an order's status. Sends the alert in the background; returns True if one goes."""
+    """Called when an email or the carrier's tracking changes an order's status. Sends the alert in the background;
+    returns True if one goes."""
     t = topic()
     if not t or new == old or new not in NEWS or not _recent(email_date):
         return False

@@ -12,7 +12,13 @@
 <p>Version {{app_version}}{% if apk_update %}. <b>Version {{update.apk_version}} is ready.</b>{% else %}, up to date.{% endif %}</p>
 {% if apk_update %}<p><a class="btn" href="{{apk_install_url}}">Update app</a></p>
 <p class="muted">{% if app_version >= 5 %}The app downloads the update and Android asks you to install it. The first time, Android asks you to allow BotTrack to install updates.{% else %}Open the download and tap Install. It replaces this app and keeps you signed in. From then on the app updates itself.{% endif %}</p>{% endif %}
-<p><a href="bottrack://setup">Scan a new QR code</a></p></div>{% endif %}
+<p><a href="bottrack://setup">Scan a new QR code</a></p></div>
+<div class="panel" id="alerts"><h3 style="margin-top:0">Shipping alerts</h3>
+{% if app_version < 6 %}<p><b>This app is too old for alerts.</b> Version 6 and later show a notification when an order ships, is out for delivery, is delivered, runs late or is cancelled.{% if apk_update %} Tap Update app above.{% endif %}</p>
+{% else %}<p class="muted">A notification when an email or the carrier's tracking says an order shipped, is out for delivery, was delivered, is running late or was cancelled.</p>
+<form method="post" action="{{url_for('mobile.alerts_test')}}"><button>Send a test alert</button></form>
+<p class="muted" style="margin-top:10px">No test alert? On the phone: Settings → Apps → BotTrack → Notifications on, and Battery → Unrestricted (so Android doesn't stop it in the background). Then open BotTrack once; a quiet "Watching for shipping updates" note means it's listening.{% if alerts_off %} On the Mac: {{alerts_off}}{% endif %}</p>{% endif %}
+</div>{% endif %}
 <div class="panel"><h3 style="margin-top:0">This phone</h3>
 <p class="muted">Setup, Logs, bank linking and full card numbers only open on your Mac. Everything else works here, and changes show up on every device within a few seconds.</p>
 <p><a class="btn" href="{{url_for('send_logs_page')}}">Send logs to developer</a></p>
