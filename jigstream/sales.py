@@ -388,15 +388,18 @@ def unsold(con, limit=50):
     return out
 
 
-def order_choices(con, limit=300):
+def order_choices(con, limit=300, only=None):
+    """Orders to pick as "bought with" for a sale, newest first; only= one order by id."""
     ensure(con)
     out = []
+    where, args = ("id = ?", (only,)) if only else (
+        "COALESCE(shipping_status, '') NOT IN ('cancelled', 'not_an_order')", ())
     for r in con.execute("SELECT id, retailer, order_number, items, total,"
                          " COALESCE(order_date, substr(last_email_date, 1, 10)) AS day FROM tracked_orders"
-                         " WHERE COALESCE(shipping_status, '') NOT IN ('cancelled', 'not_an_order')"
-                         " ORDER BY day DESC LIMIT ?", (limit,)):
-        names = ", ".join(i.get("name") or "" for i in json.loads(r["items"] or "[]"))[:70]
-        out.append({"id": r["id"], "label": f"{r['day'] or ''} · {r['retailer'] or ''} {r['order_number'] or ''}"
+                         f" WHERE {where} ORDER BY day DESC LIMIT ?", (*args, limit)):
+        items = [i.get("name") for i in json.loads(r["items"] or "[]") if i.get("name")]
+        names = ", ".join(items)[:70]
+        out.append({"id": r["id"], "first": items[0] if items else None, "label": f"{r['day'] or ''} · {r['retailer'] or ''} {r['order_number'] or ''}"
                                             f" · {names or 'items unknown'} · ${r['total'] or 0:,.2f}"})
     return out
 

@@ -93,7 +93,9 @@ tr.off td{opacity:.55}
 <div class="panel"><h4>Where you sell</h4>
 <div class="chips">{% for pl in platforms %}<span class="chip2{{' mine' if pl in custom}}">{{pl}}{% if pl in custom %}<form method="post" action="/expenses/platforms"><input type="hidden" name="remove" value="{{pl}}"><button title="Remove">×</button></form>{% endif %}</span>{% endfor %}</div>
 <form method="post" action="/expenses/platforms" style="display:flex;gap:6px;margin:0"><input name="name" placeholder="Add another, e.g. Depop" style="flex:1;margin:0"><button class="ghost">Add</button></form>
-<p class="muted" style="font-size:12.5px;margin-top:10px">The AI reads sale and payout emails from these and from any other marketplace. If it misses one, find the email on <a href="/inbox">Inbox</a> and label it <b>Sale / payout</b>: it learns from that.</p></div>
+<p class="muted" style="font-size:12.5px;margin-top:10px">The AI reads sale and payout emails from these and from any other marketplace. If it misses one, find the email on <a href="/inbox">Inbox</a> and label it <b>Sale / payout</b>: it learns from that.</p>
+{% set fs = find_state or {} %}<form method="post" action="/expenses/sales/find" style="margin:8px 0 0"><button class="ghost" {{"disabled" if fs.running}}>{{"Finding sales..." if fs.running else "Find sales"}}</button></form>
+<p class="muted" style="font-size:12.5px;margin:6px 0 0">{{fs.progress or fs.last or "Reads the past year of emails from these again, for sales the sync missed."}}</p></div>
 </div>
 
 <dialog id="goaldlg"><div class="dh"><h3>Monthly profit goal</h3><button class="x" type="button" onclick="goaldlg.close()">×</button></div>

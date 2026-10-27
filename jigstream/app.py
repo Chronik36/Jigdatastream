@@ -18,7 +18,7 @@ from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
 from .mail import check_login
 from .orderstore import Store
-from .sync import quick_check as quick_check_inboxes, run_sync, summary
+from .sync import find_sales, quick_check as quick_check_inboxes, run_sync, summary
 
 logger = logging.getLogger("jigstream.app")
 
@@ -845,6 +845,34 @@ def create_app(db_path=None):
         finally:
             mail_lock.release()
 
+    find_state = {"running": False, "last": None, "progress": None}
+
+    def start_find_sales():
+        """Look back a year for sale and payout emails from selling platforms (Profit goal > Find sales)."""
+        config = Config.from_env()
+        if find_state["running"] or sync_state["running"] or not config.accounts:
+            return False
+        find_state.update(running=True, progress="Starting...")
+
+        def work():
+            with mail_lock:
+                try:
+                    counts = find_sales(config, Store(con()), stop=lambda: sync_state["running"],
+                                        progress=lambda t: find_state.update(progress=t))
+                    n = counts.get("sale", 0)
+                    find_state["last"] = (f"Found {n} sale{'s' if n != 1 else ''}. " if n else "No new sales found. ") \
+                        + summary(counts)
+                except Exception as e:
+                    logger.exception("find sales failed")
+                    find_state["last"] = f"Finding sales failed: {e}"
+                finally:
+                    find_state.update(running=False, progress=None)
+
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    app.start_find_sales = start_find_sales
+    app.find_state = find_state
     app.start_sync = start_sync
     app.quick_check = quick_check
     app.stop_sync = stop_sync
