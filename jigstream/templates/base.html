@@ -101,6 +101,8 @@ body .phead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-botto
 .stats .card{--c:var(--accent);margin:0;display:block;position:relative;overflow:hidden;padding:18px 20px;
   background:radial-gradient(160px 90px at 100% 0,color-mix(in srgb,var(--c) 16%,transparent),transparent 70%),linear-gradient(180deg,#12204d,var(--surface));transition:border-color .15s,transform .15s}
 .stats .card:hover{border-color:var(--line-2);transform:translateY(-1px)}
+/* Cards are links into what they count (jacob: every card opens its contents to check and correct). */
+.stats a.card{color:inherit;text-decoration:none;cursor:pointer}.stats a.card.on{border-color:var(--c);box-shadow:0 0 0 1px var(--c)}
 .stats .card:before{content:"";position:absolute;left:20px;top:0;width:28px;height:3px;border-radius:0 0 3px 3px;background:var(--c);box-shadow:0 0 12px var(--c)}
 .stats .card:nth-child(4n+2){--c:var(--green)}.stats .card:nth-child(4n+3){--c:var(--blue)}.stats .card:nth-child(4n+4){--c:var(--orange)}
 .stats .card.ok{--c:var(--green)}.stats .card.bad{--c:var(--red)}

@@ -22,7 +22,7 @@
 <a class="card" href="/orders">Orders <b>{{s.orders}}</b><small>{% if s.orders_dropped %}{{s.orders_dropped}} cancelled or refunded not counted{% else %}orders that stuck{% endif %}</small></a>
 <a class="card ok" href="/drop">Successful checkouts <b>{{s.good}}</b><small>{{s.rate}}% of {{s.checkouts}} checkouts</small></a>
 <a class="card" href="/expenses/profit" title="Payouts from eBay, Mercari, Vinted, StockX, Tradepost and the rest: from payout emails, payout deposits on your statements, or typed in">Sold in {{s.year}} <b>{{s.income|money}}</b><small>{% if s.income %}{{(s.income - s.total_out)|money}} after what you spent{% else %}no sales or payouts yet{% endif %}</small></a>
-<a class="card bad" href="/drop">Failures <b>{{s.failed + s.cancelled}}</b><small>{{s.failed}} declined or failed · {{s.cancelled}} cancelled later</small></a>
+<a class="card bad" href="/drop?only=decline">Failures <b>{{s.failed + s.cancelled}}</b><small>{{s.failed}} declined or failed · {{s.cancelled}} cancelled later</small></a>
 </div>
 <div class="dgrid">
 <div class="panel"><h4>Checkouts by site<span class="sp"></span><a href="/drop">Drops →</a></h4>

@@ -47,16 +47,16 @@ tr.off td{opacity:.55}
 
 <div class="panel"><h4>How it adds up</h4>
 <div class="eq">
-<div><span>Sales and payouts <span class="muted">({{p.sales}})</span></span><span>{{p.income|money}}</span></div>
-<div><span>Cost of the items sold</span><span>−{{p.costs|money}}</span></div>
+<div><span><a href="#sales">Sales and payouts</a> <span class="muted">({{p.sales}})</span></span><span>{{p.income|money}}</span></div>
+<div><span><a href="#sales">Cost of the items sold</a></span><span>−{{p.costs|money}}</span></div>
 <div class="tot"><span>Profit on flips</span><span class="{{'pos' if p.flips >= 0 else 'neg'}}">{{p.flips|money}}</span></div>
-<div><span>Botting expenses{% if p.due %} <span class="muted">+ {{p.due|money}} renewals still due</span>{% endif %}</span><span>{{p.break_even|money}}</span></div>
+<div><span><a href="/expenses/ledger?month={{month}}">Botting expenses</a>{% if p.due %} <span class="muted">+ {{p.due|money}} renewals still due</span>{% endif %}</span><span>{{p.break_even|money}}</span></div>
 <div class="tot"><span>Net profit {{"so far" if p.current else ""}}</span><span class="{{'pos' if p.net >= 0 else 'neg'}}">{{"+" if p.net > 0 else ("−" if p.net < 0 else "")}}{{p.net|abs|money}}</span></div>
-<div><span class="muted">Inventory bought this month</span><span class="muted">{{p.bought|money}}</span></div>
+<div><span class="muted"><a class="muted" href="/orders?show=spent">Inventory bought this month</a></span><span class="muted">{{p.bought|money}}</span></div>
 </div></div>
 </div>
 
-<div class="panel"><h4>Sales and payouts<span class="sp"></span><button type="button" onclick="openSale()">+ Add sale</button></h4>
+<div class="panel" id="sales"><h4>Sales and payouts<span class="sp"></span><button type="button" onclick="openSale()">+ Add sale</button></h4>
 <div><table><thead><tr><th>Date</th><th>Sold</th><th>Where</th><th class="num">Payout</th><th class="num">Cost</th><th class="num">Profit</th><th></th></tr></thead><tbody>
 {% for s in rows %}<tr class="{{'off' if not s.counted}}">
 <td>{{s.date or "-"}}</td>
