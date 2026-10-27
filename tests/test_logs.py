@@ -141,9 +141,50 @@ def test_email_body_has_recent_errors_and_tail(tmp_path, monkeypatch):
     assert next(smtp.sent[0].iter_attachments()).get_filename() == "bottrack-logs.zip"
 
 
-def test_logs_go_to_the_first_inbox_by_default(monkeypatch):
+def test_logs_go_to_the_first_inbox_only_on_the_developers_computer(monkeypatch):
     monkeypatch.delenv("BOTTRACK_LOGS_TO", raising=False)
+    monkeypatch.setattr(logs, "_built_in_address", lambda: "")
     monkeypatch.setenv("GMAIL_ACCOUNTS", "dev@gmail.com:abcd, other@gmail.com:efgh")
+    monkeypatch.delenv("BOTTRACK_SIGNING_KEY", raising=False)
+    assert logs.developer_email() == ""  # a friend's copy never emails its own inbox
+    monkeypatch.setenv("BOTTRACK_SIGNING_KEY", "k")
     assert logs.developer_email() == "dev@gmail.com"
     monkeypatch.setenv("BOTTRACK_LOGS_TO", "someone@example.com")
     assert logs.developer_email() == "someone@example.com"
+
+
+def test_sends_are_recorded_with_their_result(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "environ", dict(os.environ, GMAIL_ACCOUNTS="me@gmail.com:abcdefghijklmnop"))
+    logs.record_send("me@gmail.com", "dev@example.com", log_dir=tmp_path)
+    logs.record_send("me@gmail.com", "dev@example.com", RuntimeError("535 bad login abcdefghijklmnop"), log_dir=tmp_path)
+    sends = logs.recent_sends(log_dir=tmp_path)
+    assert [s["result"][:6] for s in sends] == ["failed", "sent"]
+    assert "abcdefghijklmnop" not in sends[0]["result"] and sends[1]["to"] == "dev@example.com"
+
+
+def test_send_page_records_failures(tmp_path, monkeypatch):
+    from jigstream.app import create_app
+    monkeypatch.setattr(os, "environ", dict(os.environ, GMAIL_ACCOUNTS="me@gmail.com:abcdefghijklmnop",
+                                            BOTTRACK_LOGS_TO="dev@example.com"))
+    monkeypatch.setattr(logs, "LOG_DIR", tmp_path)
+
+    def boom(*a, **k):
+        raise OSError("552 message too big")
+    monkeypatch.setattr(logs, "send_logs", boom)
+    client = create_app(str(tmp_path / "w.db")).test_client()
+    client.post("/logs/send", data={"note": "Target orders never show up after Sync now", "consent": "yes",
+                                    "sender": "me@gmail.com"})
+    page = client.get("/logs").get_data(as_text=True)
+    assert "not sent" in page and "552 message too big" in page
+
+
+def test_big_logs_are_trimmed_for_email(tmp_path):
+    import random
+    import zipfile
+    rnd = random.Random(1)
+    for i in range(3):
+        (tmp_path / f"app.log.{i}").write_text("".join(rnd.choice("abcdefgh ") for _ in range(400_000)))
+        os.utime(tmp_path / f"app.log.{i}", (1000 + i, 1000 + i))
+    data = logs.zip_logs(tmp_path, max_bytes=300_000)
+    names = zipfile.ZipFile(io.BytesIO(data)).namelist()
+    assert "app.log.2" in names and "app.log.0" not in names and "left-out.txt" in names
