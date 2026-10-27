@@ -443,8 +443,17 @@ def home():
 
 @bp.get("/app")
 def app_page():
+    from . import notify
     return render_template("mobile/app.html", version=updater.installed_version(),
-                           can_update=updater.can_self_update())
+                           can_update=updater.can_self_update(), alerts_off=notify.why_off())
+
+
+@bp.post("/alerts/test")
+def alerts_test():
+    from . import notify
+    problem = notify.test()
+    flash(problem or "Test alert sent. It should show on this phone within a few seconds. If it doesn't, see the steps under Shipping alerts.")
+    return redirect(url_for("mobile.app_page") + "#alerts")
 
 
 @bp.post("/update/check")
