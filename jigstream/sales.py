@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS sell_platforms (name TEXT PRIMARY KEY, created_at TEX
 CREATE TABLE IF NOT EXISTS profit_settings (key TEXT PRIMARY KEY, value TEXT);
 """
 # Words too common in product names to tie a sale to an order on their own.
+# Fee percent filled in until you type your own (eBay's final value fee for most categories).
+DEFAULT_FEE_PCT = {"ebay": 13.25}
 COMMON = {"the", "and", "for", "with", "size", "mens", "womens", "men", "women", "kids", "new", "box", "pack",
           "edition", "color", "black", "white", "red", "blue", "grey", "gray", "low", "high", "mid", "retro", "og"}
 
@@ -108,10 +110,11 @@ def _key(s):
 
 
 def save_email(con, email, result):
-    """A sale or payout email. A second email about the same sale (sold, then paid out) fills in the first."""
+    """A sale or payout email. A second email about the same sale (sold, then paid out) fills in the first.
+    A sale you fixed by hand (an order turned into a sale) keeps your numbers: a later read only fills blanks."""
     ensure(con)
-    existing = None
-    if result.get("order_number"):
+    existing = con.execute("SELECT * FROM sales WHERE message_id = ? AND source = 'fixed'", (email.message_id,)).fetchone()
+    if existing is None and result.get("order_number"):
         existing = next((r for r in con.execute("SELECT * FROM sales WHERE order_number IS NOT NULL")
                          if _key(r["order_number"]) == _key(result["order_number"])
                          and _key(r["platform"]) == _key(result["platform"])), None)
@@ -153,6 +156,67 @@ def add(con, fields, source="manual"):
     con.commit()
     link_orders(con)
     return cur.lastrowid
+
+
+def fee_pct(con, platform):
+    """The fee percent last used for a platform (eBay's own rate when never set), or None."""
+    saved = setting(con, f"fee_pct:{_key(platform)}")
+    try:
+        return float(saved) if saved else DEFAULT_FEE_PCT.get(_key(platform))
+    except ValueError:
+        return None
+
+
+def amounts(price, pct=None, fees=None, payout=None):
+    """(sale price, fees, payout) with the missing ones worked out from the rest: fees from the percent, the payout
+    from price minus fees, fees from price minus payout, the price from the payout and percent."""
+    if fees is None and price is not None and payout is not None:
+        fees = round(price - payout, 2)
+    if fees is None and price is not None and pct is not None:
+        fees = round(price * pct / 100, 2)
+    if price is None and payout is not None and pct is not None and pct < 100:
+        price = round(payout / (1 - pct / 100), 2)
+        fees = round(price - payout, 2) if fees is None else fees
+    if payout is None and price is not None:
+        payout = round(price - (fees or 0), 2)
+    return price, fees, payout
+
+
+def from_order(con, order, fields):
+    """An order that was really a sale (say an eBay "you sold" email read as a purchase) becomes a sale with the
+    numbers you typed. It keeps the order's first email, so the AI's later reads of that email only fill blanks.
+    fields: platform, item, size, date, sale_price, fees, payout, fee_pct, order_id (what you bought it with,
+    None to find it). Returns the sale id."""
+    ensure(con)
+    price, fees, payout = amounts(fields.get("sale_price"), fields.get("fee_pct"), fields.get("fees"),
+                                  fields.get("payout"))
+    platform = fields.get("platform") or "eBay"
+    if fields.get("fee_pct") is not None:
+        set_setting(con, f"fee_pct:{_key(platform)}", str(fields["fee_pct"]))
+    ids = [m for m in order.get("message_ids") or [] if m and not m.startswith("manual:")]
+    mid = ids[0] if ids else f"fixed:{uuid.uuid4().hex}"
+    if ids:  # a sale the AI already saved from these emails is replaced by this one
+        con.execute("DELETE FROM sales WHERE message_id IN (%s)" % ",".join("?" * len(ids)), ids)
+    bought = fields.get("order_id")
+    cost = fields.get("cost")
+    if bought and cost is None:
+        r = con.execute("SELECT total FROM tracked_orders WHERE id = ?", (bought,)).fetchone()
+        cost = r[0] if r else None
+    cur = con.execute(
+        "INSERT INTO sales (message_id, platform, item, size, sale_price, fees, payout, currency, date, order_number,"
+        " account, order_id, cost, link_manual, counted, source, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'fixed',?)",
+        (mid, platform, fields.get("item"), fields.get("size"), price, fees, payout, order.get("currency") or "USD",
+         fields.get("date") or order.get("order_date") or (order.get("last_email_date") or "")[:10] or None,
+         order.get("order_number"), order.get("account"), bought, cost, 1 if bought else 0, _now()))
+    con.commit()
+    link_orders(con)
+    return cur.lastrowid
+
+
+def keep_one(con, sale_id, message_id):
+    """Another email about a sale you fixed by hand (sold, then paid out) adds no second sale."""
+    con.execute("DELETE FROM sales WHERE message_id = ? AND id != ?", (message_id, sale_id))
+    con.commit()
 
 
 def update(con, sale_id, fields):

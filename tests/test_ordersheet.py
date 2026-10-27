@@ -80,3 +80,56 @@ def test_older_orders_get_their_pictures_once(tmp_path):
     assert ordersheet.backfill_pictures(Config(), store, fetch=fetch) == 1
     assert store.order(oid)["items"][0]["image"].endswith("GUEST_123")
     assert ordersheet.backfill_pictures(Config(), store, fetch=fetch) == 0 and opened == ["<a>"]
+
+
+def test_an_ebay_sale_read_as_an_order_becomes_a_sale(tmp_path):
+    from jigstream import sales
+    app = create_app(str(tmp_path / "e.db"))
+    con = Store(db.connect(str(tmp_path / "e.db"))).db
+    bought = _order(con, merge_key="target:2", order_number="2001", order_date="2026-10-01", total=49.99,
+                    message_ids=json.dumps(["<b>"]))
+    oid = _order(con, merge_key="ebay:9", retailer="eBay", order_number="12-345", order_date="2026-10-20",
+                 items=json.dumps([{"name": ETB}]), total=120.0, message_ids=json.dumps(["<sold>"]))
+    sales.ensure(con).execute("INSERT INTO sales (message_id, platform, item, payout, source) VALUES ('<sold>', 'eBay', 'x', 5, 'email')")
+    con.commit()
+    c = app.test_client()
+    html = c.get(f"/orders/{oid}/sheet").get_data(as_text=True)
+    assert "It's a sale" in html and 'value="eBay"' in html and 'value="13.25"' in html
+    r = c.post(f"/orders/{oid}/sale", data={"platform": "eBay", "item": ETB, "sale_price": "120", "fee_pct": "13.25",
+                                            "bought": str(bought), "back": "/shipping"})
+    assert r.status_code == 302 and r.headers["Location"].endswith("/shipping")  # stays on the page
+    assert con.execute("SELECT 1 FROM tracked_orders WHERE id = ?", (oid,)).fetchone() is None
+    [s] = [dict(x) for x in con.execute("SELECT * FROM sales")]  # the AI's earlier read is replaced, not doubled
+    assert (s["message_id"], s["sale_price"], s["fees"], s["payout"]) == ("<sold>", 120, 15.9, 104.1)
+    assert (s["order_id"], s["cost"], s["link_manual"], s["source"]) == (bought, 49.99, 1, "fixed")
+    assert sales.fee_pct(con, "ebay") == 13.25
+    # a later read of the same email only fills blanks
+    email = Email(message_id="<sold>", account="me@gmail.com", sender="eBay", subject="You sold it", date=None, body="")
+    sales.save_email(con, email, {"platform": "eBay", "item": "Wrong", "sale_price": 1, "payout": 1, "size": "M"})
+    s2 = dict(con.execute("SELECT * FROM sales").fetchone())
+    assert (s2["item"], s2["payout"], s2["size"]) == (ETB, 104.1, "M")
+    # a second email about the same sale adds no second sale
+    sales.save_email(con, Email(message_id="<paid>", account="a", sender="eBay", subject="Payout", date=None, body=""),
+                     {"platform": "eBay", "item": "Other thing", "payout": 104.1})
+    sales.keep_one(con, s["id"], "<paid>")
+    assert con.execute("SELECT COUNT(*) FROM sales").fetchone()[0] == 1
+
+
+def test_sale_amounts_fill_in():
+    from jigstream.sales import amounts
+    assert amounts(100, 13.25) == (100, 13.25, 86.75)
+    assert amounts(100, None, None, 80) == (100, 20, 80)
+    assert amounts(None, 20, None, 80) == (100, 20, 80)
+    assert amounts(100, 10, 5) == (100, 5, 95)  # typed fees win over the percent
+    assert amounts(None, None, None, 50) == (None, None, 50)
+
+
+def test_the_teaching_example_gets_the_typed_sale(monkeypatch):
+    from jigstream import inbox
+    email = Email(message_id="<s>", account="a", sender="eBay", subject="You made the sale for Elite Trainer Box",
+                  date=None, body="Sold for $120.00. Fees $15.90. Your earnings: $104.10")
+    fix = inbox._sale_fix(email, {"platform": "eBay", "item": "Elite Trainer Box", "sale_price": 120.0, "fees": 15.9,
+                                  "payout": 104.1})
+    assert fix == {"platform": "eBay", "sale_price": 120.0, "fees": 15.9, "payout": 104.1,
+                   "items": [{"name": "Elite Trainer Box"}]}
+    assert inbox._sale_fix(email, {"platform": "eBay", "payout": 99.0}) == {"platform": "eBay"}

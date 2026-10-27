@@ -114,7 +114,31 @@ body dialog.osheet::-webkit-scrollbar{display:none}
     open(row.dataset.sheet);
   });
   dlg.addEventListener('change', e => {
-    if (e.target.matches('[data-os-kind]')) e.target.closest('form').classList.toggle('notorder', e.target.value !== 'order');
+    if (!e.target.matches('[data-os-kind]')) return;
+    if (e.target.value === 'sale' && wrap.querySelector('[data-os-sale]')) {  // a sale has its own form, with the numbers
+      e.target.value = 'order'; e.target.closest('form').hidden = true;
+      const f = wrap.querySelector('[data-os-sale]'); f.hidden = false; saleFill(f, 'price'); f.querySelector('[data-sale=price]').focus();
+      return;
+    }
+    e.target.closest('form').classList.toggle('notorder', e.target.value !== 'order');
+  });
+  // It's a sale: any two of sold for, fee % and payout fill in the rest (fees = sold for - payout).
+  const num = i => { const v = parseFloat((i.value || '').replace(/[^\d.\-]/g, '')); return isNaN(v) ? null : v; };
+  function saleFill(f, from) {
+    const g = k => f.querySelector('[data-sale=' + k + ']'), put = (k, v) => { g(k).value = v == null ? '' : (k === 'pct' ? +v.toFixed(2) : v.toFixed(2)); };
+    const price = num(g('price')), pct = num(g('pct')), fees = num(g('fees')), pay = num(g('payout'));
+    if (from === 'payout' && pay != null) {
+      if (price != null) { put('fees', price - pay); if (price) put('pct', (price - pay) / price * 100); }
+      else if (pct != null && pct < 100) { const p = pay / (1 - pct / 100); put('price', p); put('fees', p - pay); }
+    } else if (from === 'fees' && fees != null && price != null) {
+      put('payout', price - fees); if (price) put('pct', fees / price * 100);
+    } else if ((from === 'price' || from === 'pct') && price != null && pct != null) {
+      put('fees', price * pct / 100); put('payout', price - price * pct / 100);
+    }
+  }
+  dlg.addEventListener('input', e => {
+    const k = e.target.dataset && e.target.dataset.sale;
+    if (k) saleFill(e.target.closest('form'), k);
   });
   dlg.addEventListener('click', e => {
     if (e.target === dlg || e.target.closest('[data-os-close]')) return close();
@@ -123,6 +147,7 @@ body dialog.osheet::-webkit-scrollbar{display:none}
       const f = document.getElementById(t.dataset.osToggle);
       wrap.querySelectorAll('.os-pop').forEach(p => { if (p !== f) p.hidden = true; });
       f.hidden = !f.hidden;
+      if (!f.hidden && f.matches('[data-os-sale]')) saleFill(f, 'price');
       if (!f.hidden) { const i = f.querySelector('input:not([type=hidden]),select'); if (i) i.focus(); }
       return;
     }
