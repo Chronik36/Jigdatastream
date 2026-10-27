@@ -118,3 +118,30 @@ def test_inbox_pages_reuse_one_sign_in_and_search(monkeypatch):
     assert logins == ["keep@gmail.com"]  # signed in once for both pages
     assert [box for box, _ in FakeIMAP.searches].count('"[Gmail]/All Mail"') == 1  # page two used the saved UIDs
     mail._sessions.clear()
+
+
+def test_too_many_connections_waits_and_signs_in_again():
+    import imaplib
+    tries = []
+
+    class Busy:
+        def login(self, a, p):
+            tries.append(a)
+            if len(tries) < 3:
+                raise imaplib.IMAP4.error("[ALERT] Too many simultaneous connections. (Failure)")
+            return "OK", []
+
+    assert mail.login(Busy(), "me@gmail.com", "pw", waits=(0, 0, 0)) == ("OK", [])
+    assert len(tries) == 3
+
+    class Wrong:
+        def login(self, a, p):
+            tries.append(a)
+            raise imaplib.IMAP4.error("Invalid credentials")
+
+    tries.clear()
+    try:
+        mail.login(Wrong(), "me@gmail.com", "pw", waits=(0, 0))
+    except imaplib.IMAP4.error:
+        pass
+    assert len(tries) == 1  # a wrong password isn't tried again

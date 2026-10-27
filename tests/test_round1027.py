@@ -170,3 +170,15 @@ def test_orders_filter_by_base_and_product(tmp_path):
     page = c.get("/orders?status=in_transit&product=thing").get_data(as_text=True)
     assert 'id="prf"' in page and 'data-items="' in page and 'data-param="status"' in page
     assert "<option value=\"in_transit\" selected" in page and "<option value=\"thing\" selected" in page
+
+
+def test_model_replies_cut_off_or_in_prose_are_saved():
+    from jigstream.llm import LLMClient
+    replies = ['{"kind": "order", "retailer": "Target", "items": [{"name": "A"}, {"name": "B CUT', ]
+    c = LLMClient("http://x", "huihui_ai/qwen3-abliterated:8b")
+    c._chat = lambda *a, **k: replies.pop(0)
+    assert c.chat_json("s", "u") == {"kind": "order", "retailer": "Target", "items": [{"name": "A"}]}
+    asked = []
+    replies[:] = ["Okay, let's see. The user wants me to extract...", '{"kind": "other"}']
+    c._chat = lambda system, user, *a, **k: asked.append(user) or replies.pop(0)
+    assert c.chat_json("s", "u") == {"kind": "other"} and "JSON object only" in asked[1]

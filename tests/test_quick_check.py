@@ -52,7 +52,7 @@ class QuickCheckTests(unittest.TestCase):
             store.record_email(email(f"Order {u}", mid=f"<m{u}@x>"), "order")
         store.db.commit()
         fake = {}
-        with mock.patch.object(mail.imaplib, "IMAP4_SSL", lambda host: fake.setdefault("imap", FakeIMAP(host))):
+        with mock.patch.object(mail.imaplib, "IMAP4_SSL", lambda host, timeout=None: fake.setdefault("imap", FakeIMAP(host))):
             got = list(mail.newest_emails(Config(), "me@gmail.com", "pw", 3,
                                           lambda ids: {i for i in ids if i in ("<m8@x>", "<m6@x>")}))
         self.assertEqual([e.message_id for e in got], ["<m7@x>"])  # 8, 7, 6 are the newest three
