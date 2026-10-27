@@ -17,10 +17,11 @@
 <form method="post" action="/expenses/in-person/sale" class="ipf" id="ipsale">
 <label>Where<input name="place" list="ipplaces" required placeholder="Tradepost"></label>
 <label>Date<input type="date" name="date" value="{{today}}"></label>
-<label class="wide">What you sold<input name="item" placeholder="e.g. Focused Fighters booster box"></label>
+<label class="wide">What you sold<input name="item" placeholder="e.g. Focused Fighters booster box" value="{{picked.item or '' if picked else ''}}"></label>
 <label>Sold for<input name="sale_price" inputmode="decimal" placeholder="0.00"></label>
 <label>Fees<input name="fees" inputmode="decimal" placeholder="0.00"></label>
-<label class="wide">Bought with<select name="order_id" id="iporder"><option value="">No order (type the cost)</option>{% for b in buys %}<option value="{{b.id}}">{{b.order_date}} · {{b.retailer}} · {{(b["items"][0].name if b["items"] else "")[:50]}} · {{b.total|money}}</option>{% endfor %}{% for o in orders %}<option value="{{o.id}}">{{o.label}}</option>{% endfor %}</select></label>
+<label class="wide">Find the order you bought it in<input type="search" id="ipfind" placeholder="Type a product, store or order #" autocomplete="off"></label>
+<label class="wide">Bought with<select name="order_id" id="iporder">{% if picked %}<option value="{{picked.id}}" selected>{{picked.label}}</option>{% endif %}<option value="">No order (type the cost)</option>{% for b in buys %}<option value="{{b.id}}">{{b.order_date}} · {{b.retailer}} · {{(b["items"][0].name if b["items"] else "")[:50]}} · {{b.total|money}}</option>{% endfor %}{% for o in orders %}{% if not picked or o.id != picked.id %}<option value="{{o.id}}">{{o.label}}</option>{% endif %}{% endfor %}</select></label>
 <label>Cost <span class="muted">(blank = the buy's total)</span><input name="cost" inputmode="decimal"></label>
 <div class="wide"><button>Add sale</button></div></form></section>
 </div>
@@ -34,5 +35,26 @@
 {% for s in sold %}<tr><td>{{s.date}}</td><td><b>{{s.platform}}</b></td><td>{{s.item or "-"}}</td><td class="num">{{s.money_in|money}}</td><td class="num">{{(s.cost|money) if s.cost is not none else "-"}}</td>
 <td class="num {{'ok' if s.profit and s.profit > 0 else ('bad' if s.profit and s.profit < 0)}}">{{(s.profit|money) if s.profit is not none else "-"}}</td></tr>
 {% else %}<tr><td colspan="6" class="muted">No in-person sales yet.</td></tr>{% endfor %}</tbody></table></section>
+<script>
+(() => {
+  const find = document.getElementById('ipfind'), sel = document.getElementById('iporder');
+  const all = [...sel.options].slice(1).map(o => [o, o.textContent.toLowerCase()]);
+  find.addEventListener('input', () => {
+    const words = find.value.toLowerCase().split(/\s+/).filter(Boolean);
+    let first = null;
+    for (const [o, text] of all) {
+      const hit = words.every(w => text.includes(w));
+      o.hidden = o.disabled = !hit;
+      if (hit && !first) first = o;
+    }
+    const cur = sel.selectedOptions[0];
+    if (words.length && first && (!cur || !cur.value || cur.hidden)) sel.value = first.value;
+  });
+  sel.addEventListener('change', () => {
+    const item = document.querySelector('#ipsale [name=item]'), o = sel.selectedOptions[0];
+    if (o && o.value && !item.value) item.value = (o.textContent.split(' · ')[2] || '').split(',')[0].trim();
+  });
+})();
+</script>
 {% include "_expense_dialog.html" %}
 {% endblock %}

@@ -204,6 +204,7 @@ def profit_page():
                            rows=sales.rows(c, month), hist=sales.history(c, width=380), deposits=sales.deposits(c),
                            unsold=sales.unsold(c, 8), platforms=sales.platforms(c), custom=sales.custom_platforms(c),
                            orders=sales.order_choices(c), prev=budget.shift(month, -1),
+                           find_state=getattr(current_app, "find_state", None),
                            next=budget.shift(month, 1) if month < this else None, **_dialogs())
 
 
@@ -234,6 +235,16 @@ def sale_new():
     sales.add(c, f)
     logger.info("sale added by hand")
     flash(f"Added your {f['platform']} sale.")
+    return _back()
+
+
+@pages.post("/expenses/sales/find")
+def sale_find():
+    if current_app.start_find_sales():
+        flash("Looking through the past year of emails from Tradepost, StockX, eBay and your other selling apps. "
+              "Sales show up here as they're found.")
+    else:
+        flash("A sync is running or no inbox is set up; try again when it's done.")
     return _back()
 
 
@@ -413,9 +424,13 @@ def in_person_page():
     for b in buys:
         b["items"] = json.loads(b["items"] or "[]")
     sold = [s for s in sales.rows(c) if s["source"] == "in_person"]
-    return render_template("expense_in_person.html", tab="in_person", counts={}, buys=buys, sold=sold,
+    pick = request.args.get("order", type=int)
+    picked = next((o for o in sales.order_choices(c, only=pick)), None) if pick else None
+    if picked:
+        picked["item"] = picked.pop("first", None)
+    return render_template("expense_in_person.html", tab="in_person", counts={}, buys=buys, sold=sold, picked=picked,
                            stores=STORES, places=SELL_PLACES + [p for p in sales.platforms(c) if p not in SELL_PLACES],
-                           orders=sales.order_choices(c), today=date.today().isoformat(), **_dialogs())
+                           orders=sales.order_choices(c, limit=2000), today=date.today().isoformat(), **_dialogs())
 
 
 @pages.post("/expenses/in-person/buy")

@@ -25,6 +25,8 @@ BILLING_PERIODS = ["one_time", "weekly", "monthly", "yearly"]
 # Where people resell. Only a hint for the model: a sale from any other marketplace counts too, and you
 # can add your own on the Profit goal tab or teach it with the Inbox's "Sale / payout" label.
 SELL_PLATFORMS = ["StockX", "GOAT", "eBay", "Tradepost", "Mercari", "Vinted", "Alias"]
+# Other ways a platform's name is written in senders and subjects ("Trade Post", tradepostapp.com).
+SELL_ALIASES = {"Tradepost": r"trade[\s-]?post\w*"}
 
 # Words that point at botting tools in general. There is deliberately no vendor list:
 # new proxy and bot sellers appear all the time, so the model judges from content.
@@ -37,7 +39,8 @@ MONEY = re.compile(r"(?:[$\u00a3\u20ac]\s?\d[\d,]*(?:\.\d{2})?|\b\d[\d,]*\.\d{2}
 PURCHASE_WORDS = re.compile(
     r"\b(order|receipt|invoice|payment|paid|charged?|subscription|renew(al|ed)?|purchase[ds]?|"
     r"total|billing|shipped|shipping|delivered|delivery|tracking|cancel+ed|refund(ed)?|return(ed)?|"
-    r"sold|payouts?|paid out|earnings|cash ?out)\b",
+    r"sold|payouts?|paid out|earnings|cash ?out|trade[- ]?ins?|buylist|offer accepted|deposit(ed)?|"
+    r"transfer(red)?|store credit)\b",
     re.I,
 )
 
@@ -46,7 +49,7 @@ SYSTEM_PROMPT = f"""You read one email and extract purchase data as JSON. Reply 
 Decide "kind":
 - "order": a purchase of physical goods from a store (order confirmation, shipping notice, delivery notice, cancellation, refund, return).
 - "botting_expense": a receipt for tools used for retail botting or reselling automation. Judge from what was bought, not who sent it, because new sellers appear all the time. Examples: proxies (residential, ISP, datacenter, per-GB data plans), bot software licenses, keys or renewals, cook group or Discord memberships (often sold through whop.com), captcha solving credits, servers/VPS, ACO (auto-checkout) services, aged or generated accounts.
-- "sale": you SOLD something on a resale marketplace or selling app ({", ".join(SELL_PLATFORMS)}, or any other) and are being paid: "you sold", "you made the sale", "your item sold", "payout sent", "you've been paid", "cash out". Buying on eBay or similar is an "order", not a sale.
+- "sale": you SOLD something on a resale marketplace or selling app ({", ".join(SELL_PLATFORMS)}, or any other) and are being paid: "you sold", "you made the sale", "your item sold", "payout sent", "you've been paid", "cash out". Selling or trading in to a buyback app or shop is a sale too (Tradepost, a card shop's buylist): "trade-in complete", "offer accepted", "we received your cards", "payment sent", "store credit added"; the amount you get is the payout. Buying on eBay or similar is an "order", not a sale.
 - "other": anything else: marketing, newsletters, account notices, receipts unrelated to retail or botting. Payment reminders, unpaid or upcoming invoices and "your plan will renew" notices are "other": only money actually charged counts.
 
 For orders, a cancellation email ("your order was cancelled", "we couldn't process your order") is kind "order" with shipping_status "cancelled", and its order_number is the order it cancels. Copy the order number exactly as written.
@@ -413,7 +416,7 @@ def platforms_named(email, platforms=()):
     """Selling platforms named in the sender or subject, from the built-in list and your own."""
     head = f"{email.sender}\n{email.subject}"
     return [p for p in dict.fromkeys([*SELL_PLATFORMS, *platforms])
-            if p and re.search(rf"(?<![a-z0-9]){re.escape(p)}(?![a-z0-9])", head, re.I)]
+            if p and re.search(rf"(?<![a-z0-9])(?:{SELL_ALIASES.get(p, re.escape(p))})(?![a-z0-9])", head, re.I)]
 
 
 FOOTER = re.compile(r"\bunsubscribe\b|\bprivacy (policy|notice)\b|\bmanage (your )?(email )?preferences\b|"

@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timezone
 
 from . import sales
-from .extract import extract, looks_like_purchase
+from .extract import MONEY, extract, looks_like_purchase, platforms_named
 from .llm import LLMError, from_config as llm_for
 from .mail import fetch_emails, newest_emails
 from . import packs
@@ -62,7 +62,10 @@ def quiet_senders(db):
 
 
 def process(email, store, llm, config, counts, log, examples=(), platforms=(), quiet=()):
-    if not looks_like_purchase(email):
+    seller = bool(platforms_named(email, platforms))  # a selling app's payout or trade-in reads differently
+    if seller and MONEY.search(f"{email.subject}\n{email.body[:20000]}"):
+        quiet = ()
+    elif not looks_like_purchase(email):
         store.record_email(email, "skipped")
         counts["skipped"] += 1
         logger.debug("skipped (no price or tracking): %s | %s", email.sender, email.subject[:80])
@@ -213,6 +216,54 @@ def quick_check(config, store, llm=None, newest=5, stop=None, fetch=None):
     counts.pop("streak", None)
     if picked:
         logger.info("quick check: %s", summary(counts))
+    return counts
+
+
+def sale_query(platforms):
+    """A Gmail search for every email naming a selling platform."""
+    words = [f'"{p}"' if " " in p else p for p in platforms]
+    if "Tradepost" in platforms:
+        words.append('"trade post"')
+    return f"({' OR '.join(dict.fromkeys(words))} OR buylist OR \"trade-in\") -in:trash"
+
+
+def find_sales(config, store, llm=None, days=365, stop=None, progress=None, fetch=None):
+    """Go back over a year of mail from selling platforms (Tradepost, StockX, eBay...) and read again every one
+    not already saved as a sale, order or expense, so payouts the sync skipped or called "not relevant" are found.
+    Returns the counts, like run_sync."""
+    import dataclasses
+    stop, progress, fetch = stop or (lambda: False), progress or (lambda text: None), fetch or fetch_emails
+    platforms = sales.platforms(store.db)
+    search = dataclasses.replace(config, search_query=sale_query(platforms))
+    counts = {"order": 0, "botting_expense": 0, "sale": 0, "other": 0, "skipped": 0, "error": 0, "failed_inboxes": []}
+    done = {r[0] for r in store.db.execute(
+        "SELECT message_id FROM emails WHERE kind IN ('order', 'botting_expense', 'sale') AND error IS NULL")}
+    done |= {r[0] for r in store.db.execute("SELECT message_id FROM sales")}
+    llm = llm or llm_for(config)
+    examples = packs.picker(store, few_shot(store)) if config.use_examples else []
+
+    def log(message, file=None):
+        (logger.warning if file is sys.stderr else logger.info)(message.strip())
+
+    for n, (address, password) in enumerate(config.accounts, 1):
+        if stop():
+            break
+        try:
+            for i, email in enumerate(fetch(search, address, password, days, done), 1):
+                if stop():
+                    break
+                progress(f"Looking for sales in inbox {n} of {len(config.accounts)}: email {i}")
+                if email.message_id in done:
+                    continue
+                process(email, store, llm, config, counts, log, examples, platforms)
+                done.add(email.message_id)
+        except LLMError:
+            raise
+        except Exception as e:
+            counts["failed_inboxes"].append(address)
+            logger.warning("finding sales in %s failed: %s", address, e)
+    counts.pop("streak", None)
+    logger.info("find sales: %s", summary(counts))
     return counts
 
 
