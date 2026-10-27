@@ -73,6 +73,10 @@ tr.pg-more{display:none !important}
       btn.textContent = 'Show more (' + (rows.length - shown) + ' left)';
     }
     btn.onclick = function () { shown += PAGE; draw(); };
+    t.btShowRow = function (row) {  // "stay in place" opens enough pages to show the row you were at
+      var i = Array.prototype.indexOf.call(rows, row);
+      if (i >= shown) { shown = Math.ceil((i + 1) / PAGE) * PAGE; draw(); }
+    };
     t.after(btn); draw();
     // Searching or filtering looks through every row, not just the ones shown.
     document.querySelectorAll('main input[type=search], main #q, main select#f, main [data-filter]').forEach(function (el) {

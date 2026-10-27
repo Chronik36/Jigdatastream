@@ -336,23 +336,49 @@ document.addEventListener('keydown', e => {
 </script>
 <script>
 // Stay in place: after a fix (a form sent, then the page comes back) or a live refresh, the page opens where you were,
-// with the same dropdowns open, instead of at the top.
+// with the same dropdowns open, instead of at the top. It remembers the order (or other row) at the top of the screen
+// and puts it back at the same height, so a long list that grew or shrank by a row still lands on the same spot.
+// A "#sheet-N" (the order sheet coming back open) doesn't stop it; other links to a spot on the page do.
 (function () {
-  var k = 'bt-place', here = location.pathname + location.search;
+  var k = 'bt-place', here = location.pathname + location.search;  // as the page opened: filters may change it later
+  var ROWS = '[data-sheet][id], [id^="order-"], tr[id], .scard[id]';
+  function anchor() {
+    var els = document.querySelectorAll(ROWS);
+    for (var i = 0; i < els.length; i++) {
+      var r = els[i].getBoundingClientRect();
+      if (r.height && r.bottom > 60) return {id: els[i].id, top: r.top};
+    }
+    return null;
+  }
   function save() {
     try {
-      sessionStorage.setItem(k, JSON.stringify({u: here, y: window.scrollY, t: Date.now(),
+      sessionStorage.setItem(k, JSON.stringify({u: location.pathname + location.search, y: window.scrollY, t: Date.now(), a: anchor(),
         open: Array.prototype.map.call(document.querySelectorAll('details[open][id]'), function (d) { return d.id; })}));
     } catch (e) {}
   }
   document.addEventListener('submit', save, true);
   window.addEventListener('pagehide', save);
+  var placed = null;
+  function restore(p) {
+    if (placed !== null && Math.abs(window.scrollY - placed) > 2) return;  // you've scrolled since: leave it
+    var el = p.a && document.getElementById(p.a.id);
+    if (el) {
+      var t = el.closest('table');
+      if (t && t.btShowRow) t.btShowRow(el.closest('tr') || el);  // the phone shows long lists 40 rows at a time
+      window.scrollTo(0, window.scrollY + el.getBoundingClientRect().top - p.a.top);
+    } else {
+      window.scrollTo(0, p.y);
+    }
+    placed = window.scrollY;
+  }
   try {
     var p = JSON.parse(sessionStorage.getItem(k) || 'null');
-    if (p && p.u === here && Date.now() - p.t < 120000 && !location.hash) {
+    if (p && p.u === here && Date.now() - p.t < 300000 && (!location.hash || /^#sheet-\d+$/.test(location.hash))) {
       (p.open || []).forEach(function (id) { var d = document.getElementById(id); if (d) d.open = true; });
       if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-      requestAnimationFrame(function () { window.scrollTo(0, p.y); });
+      restore(p);
+      requestAnimationFrame(function () { restore(p); });
+      window.addEventListener('load', function () { restore(p); });  // again once pictures have their size
     }
   } catch (e) {}
 })();
