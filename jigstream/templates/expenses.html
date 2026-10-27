@@ -26,14 +26,14 @@
 {% if not amounts.running and missing %}<button type="submit">Find missing amounts</button>{% endif %}</form>{% endif %}
 {% set look = (counts.charge_only or 0) + (counts.receipt_only or 0) + (counts.close or 0) %}
 <div class="stats">
-<div class="card{{' bad' if month.state == 'over'}}">Spent in {{o.month_name}} <b>{{o.this_month|money}}</b>
-{% if month.budget %}<div class="meter"><span class="{{month.state}}" style="width:{{[month.pct, 100]|min}}%"></span></div><small class="mtext">{{"%.0f"|format(month.pct)}}% of your {{month.budget|money}} budget</small>{% endif %}</div>
-<div class="card">Last month <b>{{o.last_month|money}}</b></div>
-<div class="card">Recurring per month <b>{{rec.per_month|money}}</b></div>
-<div class="card">Renewing next 30 days <b>{{rec.next30|money}}</b></div>
-<div class="card{{' ok' if profit.net >= 0 and profit.sales else (' bad' if profit.net < 0 else '')}}">Profit in {{o.month_name}} <b>{{"+" if profit.net > 0 else ("−" if profit.net < 0 else "")}}{{profit.net|abs|money}}</b>
-<small class="mtext">{{profit.sales}} sale{{"" if profit.sales == 1 else "s"}} minus costs and expenses</small></div>
-<div class="card{{' bad' if look}}">Needs a look <b>{{look}}</b></div>
+<a class="card{{' bad' if month.state == 'over'}}" href="/expenses/ledger?month={{o.month}}" title="See this month's expenses and fix any of them">Spent in {{o.month_name}} <b>{{o.this_month|money}}</b>
+{% if month.budget %}<div class="meter"><span class="{{month.state}}" style="width:{{[month.pct, 100]|min}}%"></span></div><small class="mtext">{{"%.0f"|format(month.pct)}}% of your {{month.budget|money}} budget</small>{% endif %}</a>
+<a class="card" href="/expenses/ledger?month={{prev_month}}">Last month <b>{{o.last_month|money}}</b></a>
+<a class="card" href="/expenses/recurring">Recurring per month <b>{{rec.per_month|money}}</b></a>
+<a class="card" href="/expenses/recurring?show=soon#subs">Renewing next 30 days <b>{{rec.next30|money}}</b></a>
+<a class="card{{' ok' if profit.net >= 0 and profit.sales else (' bad' if profit.net < 0 else '')}}" href="/expenses/profit">Profit in {{o.month_name}} <b>{{"+" if profit.net > 0 else ("−" if profit.net < 0 else "")}}{{profit.net|abs|money}}</b>
+<small class="mtext">{{profit.sales}} sale{{"" if profit.sales == 1 else "s"}} minus costs and expenses</small></a>
+<a class="card{{' bad' if look}}" href="/expenses/ledger?show=look">Needs a look <b>{{look}}</b></a>
 </div>
 
 <div class="xgrid">

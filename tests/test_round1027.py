@@ -141,3 +141,19 @@ def test_orders_cards_open_their_orders(tmp_path):
     assert f'id="order-{ids["N4"]}"' not in spent and f'id="order-{ids["N1"]}"' in spent
     gone = c.get("/orders?show=not_spent").get_data(as_text=True)
     assert f'id="order-{ids["N4"]}"' in gone and f'id="order-{ids["N3"]}"' not in gone
+
+
+def test_every_stat_card_is_a_link(tmp_path):
+    import re
+    path = str(tmp_path / "c.db")
+    store = Store(db.connect(path))
+    order(store, 1, "in_transit")
+    c = create_app(path).test_client()
+    for page in ("/", "/orders", "/drop", "/drop?base=all", "/stuck", "/drop/cards", "/expenses", "/expenses/budget",
+                 "/expenses/recurring", "/bank", "/tracking", "/training/share"):
+        html = c.get(page).get_data(as_text=True)
+        for block in re.findall(r'<div class="stats[^"]*">(.*?)</div>\s*(?:<|$)', html, re.S):
+            assert '<div class="card' not in block, page  # every card opens what it counts
+    assert "Show all" in c.get("/expenses/recurring?show=soon").get_data(as_text=True)
+    assert "only ✕" in c.get("/drop?only=decline").get_data(as_text=True)
+    assert c.get("/bank?show=orders").status_code == 200

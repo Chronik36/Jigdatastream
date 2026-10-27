@@ -21,11 +21,12 @@ tr.off td{opacity:.6}
 </style>
 {% include "_expense_tabs.html" %}
 <div class="stats">
-<div class="card">Recurring per month <b>{{totals.per_month|money}}</b></div>
-<div class="card">Per year <b>{{totals.per_year|money}}</b></div>
-<div class="card">Renewing next 30 days <b>{{totals.next30|money}}</b></div>
-<div class="card{{' bad' if totals.alerts}}">Needs a look <b>{{totals.alerts}}</b></div>
+<a class="card{{' on' if not show}}" href="/expenses/recurring#subs">Recurring per month <b>{{totals.per_month|money}}</b></a>
+<a class="card" href="/expenses/recurring#subs">Per year <b>{{totals.per_year|money}}</b></a>
+<a class="card{{' on' if show == 'soon'}}" href="/expenses/recurring{{'' if show == 'soon' else '?show=soon'}}#subs">Renewing next 30 days <b>{{totals.next30|money}}</b></a>
+<a class="card{{' bad' if totals.alerts}}{{' on' if show == 'alerts'}}" href="/expenses/recurring{{'' if show == 'alerts' else '?show=alerts'}}#subs">Needs a look <b>{{totals.alerts}}</b></a>
 </div>
+{% if show %}<p><b>{{"Renewing in the next 30 days" if show == "soon" else "Needs a look"}}</b> · {{subs|length}} · <a href="/expenses/recurring">Show all</a></p>{% endif %}
 
 {% for i in ideas %}<div class="idea"><div class="t"><b>Looks like {{i.label|lower}}:</b> {{i.name}}, {{i.amount|money}}
 {%- if i.count > 1 %} on {{i.dates|join(", ")}}{% else %} (the receipt says it renews {{i.label|lower}}){% endif %}
@@ -40,7 +41,7 @@ tr.off td{opacity:.6}
 </div>{% endfor %}
 
 <div class="xgrid">
-<div class="panel"><h4>Subscriptions<span class="sp"></span><button type="button" class="ghost" onclick="openRepeat()" style="padding:5px 12px;font-size:12.5px">+ Track one</button></h4>
+<div class="panel" id="subs"><h4>Subscriptions<span class="sp"></span><button type="button" class="ghost" onclick="openRepeat()" style="padding:5px 12px;font-size:12.5px">+ Track one</button></h4>
 <div><table><thead><tr><th>Vendor</th><th>Repeats</th><th>Next renewal</th><th class="num">Amount</th><th class="num">Per month</th><th>Status</th><th></th></tr></thead><tbody>
 {% for s in subs %}<tr class="{{'off' if s.status == 'cancelled'}}">
 <td><b>{{s.vendor}}</b><span class="sub"><span class="cdot" style="background:{{s.color}}"></span>{{s.category|replace("_", " ")|capitalize}} · {{s.payments}} payment{{"" if s.payments == 1 else "s"}}{% if s.last_paid %}, last {{s.last_paid}}{% endif %}</span></td>

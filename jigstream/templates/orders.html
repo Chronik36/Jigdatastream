@@ -1,11 +1,10 @@
 {% extends "base.html" %}{% block body %}
-<h2>Orders</h2><div class="stats ostats">{% macro tile(key, cls="") %}<a class="card {{cls}}{{' on' if show == key}}" href="/orders{{'?show=' ~ key if key and show != key else ''}}" title="{{'Show every order' if not key or show == key else 'Show these orders: tap one to change anything about it'}}">{{ caller() }}</a>{% endmacro %}
+<h2>Orders</h2><div class="stats ostats">{% macro tile(key, cls="") %}<a class="card {{cls}}{{' on' if show == key}}" href="/orders?{{'show=' ~ key ~ '&' if key and show != key else ''}}{{'profile=' ~ request.args.get('profile')|urlencode if request.args.get('profile') else ''}}" title="{{'Show every order' if not key or show == key else 'Show these orders: tap one to change anything about it'}}">{{ caller() }}</a>{% endmacro %}
 {% call tile("") %}Orders <b>{{stats.order_count}}</b>{% endcall %}
 {% call tile("spent") %}Spend <b>{{stats.order_total|money}}</b>{% if stats.not_spent %}<span class="muted ns" data-href="/orders?show=not_spent">{{stats.not_spent}} cancelled or refunded not counted</span>{% endif %}{% endcall %}
 {% call tile("moving") %}On the way <b>{{stats.in_flight}}</b>{% endcall %}{% call tile("delivered", "ok") %}Delivered <b>{{stats.by_status.get("delivered", 0)}}</b>{% endcall %}</div>
 {% if show %}<p class="oshow"><b>{{ {"spent": "Orders counted in Spend", "not_spent": "Cancelled, refunded and returned orders", "moving": "On the way", "delivered": "Delivered"}[show] }}</b> · {{rows|length}} · tap an order to change anything about it, it stays on this list · <a href="/orders">Show all</a></p>{% endif %}
-<style>.ostats a.card{color:inherit;text-decoration:none;cursor:pointer}.ostats a.card.on{border-color:var(--c);box-shadow:0 0 0 1px var(--c)}
-.ostats .ns{font-size:12px;text-transform:none;letter-spacing:0;text-decoration:underline dotted}.oshow{margin:-8px 0 14px}</style>
+<style>.ostats .ns{font-size:12px;text-transform:none;letter-spacing:0;text-decoration:underline dotted}.oshow{margin:-8px 0 14px}</style>
 <script>document.querySelectorAll('.ostats .ns').forEach(n => n.addEventListener('click', e => { e.preventDefault(); location.href = n.dataset.href; }));</script>
 {% if not configured %}<div class="flash">No Gmail inbox connected yet. <a href="/setup">Add one on the Setup page</a> to start finding orders.</div>{% endif %}
 {% include "sync.html" %}

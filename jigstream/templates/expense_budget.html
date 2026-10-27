@@ -25,11 +25,11 @@
 <button type="button" onclick="budgetdlg.showModal()">Edit budgets</button></div>
 
 <div class="stats">
-<div class="card">Budget for {{m.name.split()[0]}} <b>{{m.budget|money if m.budget else "Not set"}}</b></div>
-<div class="card{{' bad' if m.state == 'over'}}">Spent {{"so far" if m.current else ""}} <b>{{m.spent|money}}</b></div>
-{% if m.current %}<div class="card">Still to renew this month <b>{{m.to_renew|money}}</b></div>
-<div class="card{{' bad' if m.state == 'over'}}">Projected month end <b>{{m.projected|money}}</b></div>
-{% elif m.budget %}<div class="card{{' bad' if m.spent > m.budget}}">{{"Over budget" if m.spent > m.budget else "Under budget"}} <b>{{(m.spent - m.budget)|abs|money}}</b></div>{% endif %}
+<a class="card" href="#" onclick="budgetdlg.showModal();return false" title="Change your budgets">Budget for {{m.name.split()[0]}} <b>{{m.budget|money if m.budget else "Not set"}}</b></a>
+<a class="card{{' bad' if m.state == 'over'}}" href="/expenses/ledger?month={{m.month}}" title="See and fix this month's expenses">Spent {{"so far" if m.current else ""}} <b>{{m.spent|money}}</b></a>
+{% if m.current %}<a class="card" href="/expenses/recurring?show=soon#subs">Still to renew this month <b>{{m.to_renew|money}}</b></a>
+<a class="card{{' bad' if m.state == 'over'}}" href="/expenses/ledger?month={{m.month}}">Projected month end <b>{{m.projected|money}}</b></a>
+{% elif m.budget %}<a class="card{{' bad' if m.spent > m.budget}}" href="/expenses/ledger?month={{m.month}}">{{"Over budget" if m.spent > m.budget else "Under budget"}} <b>{{(m.spent - m.budget)|abs|money}}</b></a>{% endif %}
 </div>
 {% if m.current %}<p class="muted">Day {{m.day}} of {{m.days}} ({{"%.0f"|format(m.day / m.days * 100)}}% of the month).{% if m.budget %} {% if m.left >= 0 %}{{m.left|money}} left after the renewals still due{% else %}{{(-m.left)|money}} over once the renewals still due are paid{% endif %}.{% endif %}</p>{% endif %}
 
