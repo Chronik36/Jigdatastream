@@ -306,7 +306,7 @@ def create_app(db_path=None):
         verdict = request.form.get("verdict", "")
         store = Store(con())
         row = next((c for c in stuck.cross_reference(store.db) if c["id"] == checkout_id), None)
-        back = request.referrer if (request.referrer or "").startswith(request.host_url) else url_for("drop_page")
+        back = mobile.back_url() or url_for("drop_page")
         if row is None or verdict not in ("good", "cancelled", "not_order", "auto"):
             flash("Couldn't save that.")
             return redirect(back)
@@ -411,7 +411,7 @@ def create_app(db_path=None):
         status = request.form.get("status", "")
         store = Store(con())
         # The Profile orders page sends back=1 to stay where it was.
-        back = request.referrer if request.form.get("back") and (request.referrer or "").startswith(request.host_url) else None
+        back = mobile.back_url()  # stays on the page the fix was made on
         order = store.order(order_id)
         if order and status == "not_an_order":
             mails = store.dismiss_order(order_id)

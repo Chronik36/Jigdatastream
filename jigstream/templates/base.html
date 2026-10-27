@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"{% if ui_theme == "light" %} data-theme="light"{% endif %}{% if ui_reveal %} class="reveal"{% endif %}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BotTrack</title><link rel="icon" href="{{url_for('static', filename='icon.png')}}">
-{% if on_phone %}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="{{'#ffffff' if ui_theme == 'light' else '#0a1230'}}">
+{% if on_phone %}<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><meta name="theme-color" content="{{'#ffffff' if ui_theme == 'light' else '#0a1230'}}">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="BotTrack"><link rel="manifest" href="{{url_for('mobile.manifest')}}" crossorigin="use-credentials"><link rel="apple-touch-icon" href="{{url_for('static', filename='icon.png')}}">
 <meta name="csrf" content="{{csrf_token()}}">{% endif %}
@@ -77,6 +77,10 @@ html.mini .collapse svg{transform:rotate(180deg)}
 @media (max-width:700px){.top .undo .lbl,.top .undo small{display:none}.top .undo button{padding:7px}}
 .top .syncall button{min-height:0;padding:5px 12px;font-size:12.5px;border-radius:999px}.top .syncall svg.i{width:15px;height:15px}
 @media (max-width:700px){.top .syncall .lbl{display:none}.top .syncall button{padding:7px}}
+/* Phones: the top bar fits the screen (page name only, no labels), so nothing pushes the page sideways */
+@media (max-width:700px){.top{gap:8px}.top .grow{flex:1 1 0;min-width:0}.crumb{min-width:0;overflow:hidden;white-space:nowrap}
+  .crumb>svg,.crumb>span{display:none}.crumb b{overflow:hidden;text-overflow:ellipsis}.privsw .lbl{display:none}}
+html,body{overflow-x:clip;overscroll-behavior-x:none;max-width:100%}
 .top .chip{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);border:1px solid var(--line-2);border-radius:999px;padding:5px 11px;white-space:nowrap}
 .top .chip i{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
 .top .chip.upd{color:var(--orange);border-color:rgba(255,138,61,.4)}.top .chip.upd i{background:var(--orange);box-shadow:0 0 8px var(--orange)}
@@ -326,5 +330,28 @@ document.addEventListener('keydown', e => {
   const f = document.getElementById(e.shiftKey ? 'redoform' : 'undoform'), b = f && f.querySelector('button');
   if (b && !b.disabled) { e.preventDefault(); f.requestSubmit(); }
 });
+</script>
+<script>
+// Stay in place: after a fix (a form sent, then the page comes back) or a live refresh, the page opens where you were,
+// with the same dropdowns open, instead of at the top.
+(function () {
+  var k = 'bt-place', here = location.pathname + location.search;
+  function save() {
+    try {
+      sessionStorage.setItem(k, JSON.stringify({u: here, y: window.scrollY, t: Date.now(),
+        open: Array.prototype.map.call(document.querySelectorAll('details[open][id]'), function (d) { return d.id; })}));
+    } catch (e) {}
+  }
+  document.addEventListener('submit', save, true);
+  window.addEventListener('pagehide', save);
+  try {
+    var p = JSON.parse(sessionStorage.getItem(k) || 'null');
+    if (p && p.u === here && Date.now() - p.t < 120000 && !location.hash) {
+      (p.open || []).forEach(function (id) { var d = document.getElementById(id); if (d) d.open = true; });
+      if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+      requestAnimationFrame(function () { window.scrollTo(0, p.y); });
+    }
+  } catch (e) {}
+})();
 </script>
 </body></html>
