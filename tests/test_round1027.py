@@ -46,3 +46,25 @@ def test_shipping_tiles_open_their_packages(tmp_path):
     assert f'id="order-{ids["N2"]}"' in page and f'id="order-{ids["N1"]}"' not in page
     page = c.get("/tracking?lane=late").get_data(as_text=True)
     assert f'id="order-{ids["N2"]}"' in page and "Running late" in page and f'id="order-{ids["N1"]}"' not in page
+
+
+def test_go_through_expense_emails_one_by_one(tmp_path):
+    path = str(tmp_path / "x.db")
+    store = Store(db.connect(path))
+    def from_email(mid, vendor, amount, category, day):
+        return store.db.execute("INSERT INTO expenses (message_id, account, vendor, amount, category, date)"
+                                " VALUES (?, 'me@gmail.com', ?, ?, ?, ?)", (mid, vendor, amount, category, day)).lastrowid
+    a = from_email("<a@x>", "Webshare", 30.0, "proxy", "2026-10-20")
+    b = from_email("<b@x>", "Shell", 4.5, "other", "2026-10-19")
+    store.add_expense({"vendor": "Typed", "amount": 1.0, "category": "other"})
+    store.db.commit()
+    c = create_app(path).test_client()
+    page = c.get("/expenses/review").get_data(as_text=True)
+    assert "Webshare" in page and "Typed" not in page and 'value="gas"' in page and 'value="shipping"' in page
+    r = c.post(f"/expenses/{b}/review", data={"vendor": "Shell", "amount": "45.00", "category": "gas",
+                                              "next": str(a), "show": ""})
+    assert r.status_code == 302 and f"id={a}" in r.headers["Location"]
+    e = Store(db.connect(path)).expense(b)
+    assert (e["amount"], e["category"], e["reviewed"]) == (45.0, "gas", 1)
+    page = c.get("/expenses/review").get_data(as_text=True)
+    assert "1</b> left to go through" in page and "1 done" in page
