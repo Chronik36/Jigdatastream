@@ -30,7 +30,8 @@ QUICK_FILTERS = {
     "Purchases": "(order OR receipt OR invoice OR shipped OR delivered OR cancelled OR subscription)",
     "Shipping": "(shipped OR tracking OR \"in transit\" OR \"out for delivery\" OR delivered)",
     "Cancellations": "(cancelled OR canceled OR cancellation OR refund)",
-    "Sales": "(sold OR payout OR \"paid out\" OR \"you made the sale\")",
+    "Sales": "(sold OR payout OR \"paid out\" OR \"you made the sale\" OR tradepost OR \"trade post\" OR buylist"
+             " OR \"trade-in\" OR \"offer accepted\")",
     "Spam": "in:spam",
     "Everything": "",
     "AI skipped": None,  # read from BotTrack's own records, not a Gmail search

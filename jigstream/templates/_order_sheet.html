@@ -32,6 +32,7 @@
   {% if url %}<a class="os-a c-blue" href="{{url}}" target="_blank" rel="noopener">{{ os_icon("open") }}Carrier</a>{% endif %}
   <button type="button" class="os-a c-green" data-os-share="{{o.retailer or ''}} order {{o.order_number or ''}}: {{title}}, {{status|status_label}}{% if o.tracking_number %}, {{o.carrier or 'tracking'}} {{o.tracking_number}}{% endif %}{% if url %} {{url}}{% endif %}">{{ os_icon("share") }}Share</button>
   <button type="button" class="os-a c-sky" data-os-toggle="os-edit">{{ os_icon("edit") }}Edit</button>
+  <a class="os-a c-green" href="/expenses/in-person?order={{o.id}}#ipsale" title="Sold it in person, like at Tradepost or a show">{{ os_icon("receipt") }}Sold it</a>
   <button type="button" class="os-a c-orange" data-os-toggle="os-status">{{ os_icon("pen") }}Status</button>
   <form method="post" action="{{url_for('ordersheet.delete', order_id=o.id)}}" class="os-del" data-confirm="Delete this order from BotTrack? Undo brings it back.">
     <button class="os-a c-red">{{ os_icon("trash") }}Delete</button></form>
