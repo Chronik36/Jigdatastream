@@ -1205,7 +1205,7 @@ def create_app(db_path=None):
         name = request.args.get("file", "app.log")
         if name not in files:
             name = files[0] if files else "app.log"
-        return render_template("logs.html", files=files, name=name, text=logs.tail(name, 400))
+        return render_template("logs.html", files=files, name=name, text=logs.tail(name, 400), sends=logs.recent_sends())
 
     @app.get("/logs/download")
     def download_logs():
@@ -1221,7 +1221,7 @@ def create_app(db_path=None):
         files = logs.log_files()
         sizes = {f: (logs.LOG_DIR / f).stat().st_size for f in files if (logs.LOG_DIR / f).exists()}
         return render_template("logs_send.html", files=files, sizes=sizes, about=logs_about(), note=note, error=error,
-                               min_chars=logs.NOTE_MIN_CHARS, to=logs.developer_email(),
+                               min_chars=logs.NOTE_MIN_CHARS, to=logs.developer_email(), sends=logs.recent_sends(),
                                accounts=[a for a, _ in Config.from_env().accounts])
 
     @app.post("/logs/send")
@@ -1242,10 +1242,12 @@ def create_app(db_path=None):
             to = logs.send_logs(sender, accounts[sender], note, logs_about())
         except Exception as e:  # SMTP errors and the like; never include the password
             logger.warning("sending logs failed: %s", logs.redact(str(e)))
+            logs.record_send(sender, logs.developer_email(), e)
             return send_logs_page(note, f"Couldn't send the logs: {logs.redact(str(e))}. "
                                         "You can download them and send them yourself.")
-        logger.info("logs sent to the developer from %s", sender)
-        flash(f"Logs sent to {to}. Thanks, that helps fix things faster.")
+        logger.info("logs sent to the developer (%s) from %s", to, sender)
+        logs.record_send(sender, to)
+        flash(f"Logs sent to {to} from {sender}. A copy is in that Gmail's Sent folder. Thanks, that helps fix things faster.")
         return redirect(url_for("show_logs") if mobile.from_this_mac() else url_for("mobile.app_page"))
 
     @app.post("/update/check")
