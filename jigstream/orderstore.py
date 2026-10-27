@@ -68,7 +68,8 @@ MIGRATIONS = [("tracked_orders", "status_manual", "INTEGER DEFAULT 0"),
               ("tracked_orders", "profile_candidates", "TEXT"), ("tracked_orders", "profile_manual", "INTEGER DEFAULT 0"),
               ("expenses", "refunded", "REAL"),
               # a price changed by hand (pricecheck.py): never changed by a sync or the price re-check
-              ("tracked_orders", "total_manual", "INTEGER DEFAULT 0"), ("expenses", "amount_manual", "INTEGER DEFAULT 0")]
+              ("tracked_orders", "total_manual", "INTEGER DEFAULT 0"), ("expenses", "amount_manual", "INTEGER DEFAULT 0"),
+              ("expenses", "reviewed", "INTEGER DEFAULT 0")]  # gone through on Expenses > Review
 
 LABEL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS labels (
