@@ -342,7 +342,21 @@ def create_app(db_path=None):
                 "delivered": lambda s: s == "delivered"}.get(show)
         if keep:
             rows = [o for o in rows if keep(o["shipping_status"] or "unknown")]
+        # Filters by base address and product (status, profile and search are there too), all on this page.
+        res = bases.Resolver(store.db)
+        base_of = {o["id"]: res.of_order(o) for o in rows} if res.bases else {}
+        products = {}
+        for o in rows:
+            for i in o["items"] or []:
+                n = (i.get("name") or "").strip()
+                if n:
+                    products[n] = products.get(n, 0) + 1
+        base_counts = {}
+        for b in base_of.values():
+            base_counts[b] = base_counts.get(b, 0) + 1
         return render_template("orders.html", rows=rows, stats=stats, sync=sync_state, show=show if keep else "",
+                               bases=res.bases, base_of=base_of, base_counts=base_counts,
+                               products=sorted(products.items(), key=lambda p: (-p[1], p[0].lower()))[:300],
                                profile_names=[r[0] for r in store.db.execute("SELECT name FROM profiles ORDER BY name")],
                                profile_counts=_profile_counts(rows),
                                accounts=store.accounts(), configured=bool(config.accounts),
