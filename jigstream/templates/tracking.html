@@ -4,8 +4,8 @@
 {% if can_check %}<form method="post" action="/tracking/check"><button class="ghost" title="Ask each carrier where every open package is">{{"Checking…" if checking.running else "Check carriers now"}}</button></form>
 {% else %}<a class="btn ghost" href="/setup#tracking" title="Key-free tracking reads the carriers' own pages on this Mac">Turn on live carrier checks</a>{% endif %}</div></div>
 {% if checking.last %}<p class="muted" style="margin-top:-6px">{{checking.last}}</p>{% endif %}
-<div class="stats">{% for key, title, hint in lanes %}<a class="card lanecard l-{{key}}" href="{{'?base=all' if overview is not none}}#lane-{{key}}">{{title}} <b>{{lane_counts[key]}}</b></a>{% endfor %}
-{% if late %}<div class="card" style="--c:var(--orange)" title="The store's delivery estimate has passed and the package isn't marked delivered">Running late <b style="color:var(--orange)">{{late|length}}</b></div>{% endif %}</div>
+<div class="stats">{% for key, title, hint in lanes %}<a class="card lanecard l-{{key}}{{' on' if only == key}}" href="?lane={{key}}{{'&store=' ~ shop|urlencode if shop}}" title="See and fix these packages">{{title}} <b>{{lane_counts[key]}}</b></a>{% endfor %}
+{% if late %}<a class="card lanecard{{' on' if only == 'late'}}" style="--c:var(--orange)" href="?lane=late{{'&store=' ~ shop|urlencode if shop}}" title="The store's delivery estimate has passed and the package isn't marked delivered. Tap to see and fix them">Running late <b style="color:var(--orange)">{{late|length}}</b></a>{% endif %}</div>
 {% if overview is not none %}
 <div class="thead" style="margin:22px 0 10px"><h3 style="margin:0">By base address</h3><div class="tact"><a class="btn ghost" href="/bases">Base addresses</a><a class="btn ghost" href="?base=all">Every package ›</a></div></div>
 <div class="bover">{% for b in overview %}<a class="bcard" href="?base={{b.id}}{{'&store=' ~ shop|urlencode if shop}}" title="See these packages">
@@ -17,9 +17,23 @@
 <div class="bplace panel"><div class="thead"><div><a class="small" href="/tracking{{'?store=' ~ shop|urlencode if shop}}">‹ All base addresses</a><h3 style="margin:4px 0 0">{{place.name}}</h3>{% if place.full %}<div class="muted small" data-private>{{place.full}}</div>{% endif %}</div>
 <div class="tact"><a class="btn ghost" href="/drop?base={{place.id}}">Checkouts here ›</a>{% if place.id != "none" %}<a class="btn ghost" href="/bases">Edit bases</a>{% endif %}</div></div>
 <p class="small" style="margin:10px 0 6px">Checkouts here: <b class="ok">{{place.tally.real}} real</b> of {{place.tally.tries}} tries{% if place.tally.cancelled %} · <span class="bad">{{place.tally.cancelled}} cancelled</span>{% endif %}{% if place.tally.declines %} · {{place.tally.declines}} declined{% endif %}</p>
-{% if place.profiles %}<div class="bprofs">{% for p in place.profiles %}<a class="pill" href="/profile-orders?profile={{p.name|urlencode}}" title="{{p.tally.real}} real checkouts of {{p.tally.tries}}">{{p.name}} <span class="muted">{{p.tally.real}}/{{p.tally.tries}}</span></a>{% endfor %}</div>{% else %}<p class="muted small">No profiles ship here.</p>{% endif %}</div>
+{% if place.profiles %}<div class="bprofs"><label><span class="muted small">Profile group</span><select id="pgroup" aria-label="Profile group"><option value="">Pick a group… ({{place.groups|length}})</option>{% for g, ps in place.groups.items() %}<option value="{{g}}">{{g}} · {{ps|length}} profile{{'s' if ps|length != 1}}</option>{% endfor %}</select></label>
+<label><span class="muted small">Profile</span><select id="pprof" aria-label="Profile" disabled><option value="">Pick a group first</option></select></label></div>
+<script>
+(function () {
+  const groups = {{ place.groups|tojson }}, g = document.getElementById('pgroup'), p = document.getElementById('pprof');
+  g.addEventListener('change', () => {
+    const list = groups[g.value] || [];
+    p.innerHTML = '<option value="">' + (g.value ? 'Pick a profile… (' + list.length + ')' : 'Pick a group first') + '</option>';
+    list.forEach(x => { const o = document.createElement('option'); o.value = x.name; o.textContent = x.name + ' · ' + x.real + '/' + x.tries + ' real'; p.appendChild(o); });
+    p.disabled = !g.value;
+  });
+  p.addEventListener('change', () => { if (p.value) location.href = '/profile-orders?profile=' + encodeURIComponent(p.value); });
+})();
+</script>{% else %}<p class="muted small">No profiles ship here.</p>{% endif %}</div>
+{% elif only %}<div class="thead" style="margin:18px 0 0"><div><a class="small" href="/tracking">‹ Shipping</a><h3 style="margin:4px 0 0">{{ {"ordered": "Ordered", "moving": "On the way", "out": "Out for delivery", "delivered": "Delivered", "late": "Running late"}[only] }}</h3><p class="muted small" style="margin:2px 0 0">Tap a price or status to fix it, or a card to change anything else. Every fix teaches the AI.</p></div></div>
 {% elif base == "all" and has_bases %}<p><a class="small" href="/tracking">‹ All base addresses</a></p>{% endif %}
-<div class="board">{% for key, title, hint in lanes %}{% if by_lane[key] or key != "out" %}<section class="lane" id="lane-{{key}}"><h3><span class="dotl l-{{key}}"></span>{{title}} <span class="muted">{{by_lane[key]|length}}</span></h3><p class="muted hint">{{hint}}</p>
+<div class="board">{% for key, title, hint in lanes %}{% if by_lane[key] or (key != "out" and not only) %}<section class="lane" id="lane-{{key}}"><h3><span class="dotl l-{{key}}"></span>{{title}} <span class="muted">{{by_lane[key]|length}}</span></h3><p class="muted hint">{{hint}}</p>
 <div class="sgrid">{% for o in by_lane[key] %}{% set status = o.shipping_status or "unknown" %}{% set c = cards[o.id] %}{% set late_o = o.id in late %}
 {% set stage = {"ordered": 1, "processing": 1, "unknown": 1, "shipped": 2, "in_transit": 3, "exception": 3, "out_for_delivery": 3, "delivered": 4}.get(status, 1) %}
 <article class="scard{{' late' if late_o}}{{' done' if stage == 4}}" id="order-{{o.id}}" data-sheet="{{o.id}}">
@@ -31,7 +45,7 @@
 <div class="ssteps">{% for name in ["Ordered", "Shipped", "In transit", "Delivered"] %}<span class="{{'on' if loop.index <= stage}}">{{name}}</span>{% endfor %}</div></div>
 <div class="sarrive{{' warn' if late_o or status == 'exception'}}"><svg viewBox="0 0 24 24"><path d="M5 17h14M6 17V9l2-4h8l2 4v8M6 9h12"/><circle cx="8" cy="17" r="1.6"/><circle cx="16" cy="17" r="1.6"/></svg>{{c.arrives}}</div>
 {% if c.day %}<div class="srow"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span class="slabel">{{"Delivered" if stage == 4 else "Expected delivery"}}</span><b>{{c.day}}</b></div>{% endif %}
-{% if c.events %}<details class="sev"><summary><svg viewBox="0 0 24 24"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>Latest events <span class="cnt">{{c.events|length}}</span><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+{% if c.events %}<details class="sev" id="ev-{{o.id}}"><summary><svg viewBox="0 0 24 24"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>Latest events <span class="cnt">{{c.events|length}}</span><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
 <ol class="tl">{% for e in c.events %}<li class="{{'first' if loop.first}}"{% if loop.index > shown_events %} hidden{% endif %}><b>{{e.text}}</b><span class="muted">{{e.when}}{% if e.where %} · {{e.where}}{% endif %}</span></li>{% endfor %}</ol>
 {% if c.events|length > shown_events %}<button type="button" class="smore">+ {{c.events|length - shown_events}} more</button>{% endif %}</details>{% endif %}
 <div class="sfoot"><span class="num" data-edit-price="{{o.id}}" data-value="{{o.total if o.total is not none else ''}}">{{o.total|money(o.currency)}}</span>
@@ -47,7 +61,7 @@
 <style>
 .thead{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}.thead h2{margin:0}
 .tact{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.tact form{margin:0}.tact select{margin:0}
-.lanecard{text-decoration:none;color:inherit}.l-ordered,.stats .card.l-ordered{--c:#ffb27a}.l-moving,.stats .card.l-moving{--c:#7cc8ff}.l-out,.stats .card.l-out{--c:#5aaefc}.l-delivered,.stats .card.l-delivered{--c:#3ddc84}
+.lanecard{text-decoration:none;color:inherit}.lanecard.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}.l-ordered,.stats .card.l-ordered{--c:#ffb27a}.l-moving,.stats .card.l-moving{--c:#7cc8ff}.l-out,.stats .card.l-out{--c:#5aaefc}.l-delivered,.stats .card.l-delivered{--c:#3ddc84}
 .board{display:flex;flex-direction:column;gap:22px;margin-top:14px}
 .lane h3{margin:0;display:flex;align-items:center;gap:8px}.lane .hint{margin:2px 0 10px;font-size:12px}
 .dotl{width:10px;height:10px;border-radius:50%;background:var(--c)}
@@ -99,7 +113,7 @@
 .bclanes{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12.5px;color:var(--muted)}
 .bclanes span{display:flex;align-items:center;gap:7px}.bclanes i{width:8px;height:8px;border-radius:50%;background:var(--c)}.bclanes b{margin-left:auto;color:var(--text)}
 .bcfoot{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12.5px;align-items:center}.bcgo{margin-left:auto;color:var(--accent);font-weight:600}
-.bplace{margin:18px 0 0}.bprofs{display:flex;flex-wrap:wrap;gap:6px}
+.bplace{margin:18px 0 0}.bprofs{display:flex;flex-wrap:wrap;gap:10px}.bprofs label{display:flex;flex-direction:column;gap:4px;flex:1 1 220px;min-width:0}.bprofs select{margin:0;width:100%}
 </style>
 <script>
 document.addEventListener('click', e => {

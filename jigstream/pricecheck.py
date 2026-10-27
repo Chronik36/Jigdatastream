@@ -209,7 +209,8 @@ def _learn_later(app, kind, row_id, value):
 @bp.post("/prices/<kind>/<int:row_id>")
 def change(kind, row_id):
     from .orderstore import Store
-    back = request.form.get("back") or (request.referrer if (request.referrer or "").startswith(request.host_url) else None)
+    from .mobile import back_url
+    back = request.form.get("back") or back_url()
     if kind not in ("order", "expense"):
         return redirect(back or url_for("orders"))
     try:
