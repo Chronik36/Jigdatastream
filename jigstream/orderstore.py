@@ -466,7 +466,7 @@ class Store:
         status = fields.pop("shipping_status", None)
         if "items" in fields:
             fields["items"] = json.dumps(fields["items"])
-        if fields.get("tracking_number") != row["tracking_number"]:
+        if "tracking_number" in fields and fields["tracking_number"] != row["tracking_number"]:
             fields["tracking_url"] = None  # a link from the email only fits the old number
         if "total" in fields and fields["total"] != row["total"]:
             fields["total_manual"] = 1  # typed in: the price re-check leaves it alone
