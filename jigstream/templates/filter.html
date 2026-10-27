@@ -1,5 +1,6 @@
 <script>
 const q = document.getElementById('q'), f = document.getElementById('f'), pf = document.getElementById('pf');
+const bf = document.getElementById('bf'), prf = document.getElementById('prf');
 const rows = Array.from(document.querySelectorAll('tbody tr[data-f]'));
 // What search matches in each row: its text without the options of the dropdowns in it. Read once.
 let texts = null;
@@ -11,15 +12,25 @@ function rowText(tr) {
 }
 function apply() {
   const text = q.value.toLowerCase(), want = f.value, prof = pf ? pf.value : '';
+  const base = bf ? bf.value : '', product = prf ? prf.value : '';
   if (text && !texts) texts = rows.map(rowText);
   rows.forEach((tr, i) => {
     const show = (!text || texts[i].includes(text)) && (!want || tr.dataset.f === want)
-      && (!prof || tr.dataset.p === (prof === '__none__' ? '' : prof));
+      && (!prof || tr.dataset.p === (prof === '__none__' ? '' : prof))
+      && (!base || tr.dataset.b === base)
+      && (!product || (tr.dataset.items || '').split('|').includes(product));
     const display = show ? '' : 'none';
     if (tr.style.display !== display) tr.style.display = display;
   });
 }
+// The filters live in the address too, so a fix (the page coming back) or a reload keeps them.
+function remember() {
+  const u = new URL(location.href);
+  document.querySelectorAll('[data-param]').forEach(el => { if (el.value) u.searchParams.set(el.dataset.param, el.value); else u.searchParams.delete(el.dataset.param); });
+  try { history.replaceState(null, '', u.pathname + u.search + location.hash); } catch (e) {}
+}
 let typing;
-q.addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(apply, 120); }); f.addEventListener('change', apply);
-if (pf) { pf.addEventListener('change', apply); if (pf.value) apply(); }
+q.addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(() => { apply(); remember(); }, 120); });
+[f, pf, bf, prf].forEach(el => el && el.addEventListener('change', () => { apply(); remember(); }));
+if (q.value || f.value || (pf && pf.value) || (bf && bf.value) || (prf && prf.value)) apply();
 </script>
