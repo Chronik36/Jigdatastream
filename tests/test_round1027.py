@@ -99,3 +99,26 @@ def test_sold_in_person_from_an_order(tmp_path):
     assert f"/expenses/in-person?order={oid}" in c.get(f"/orders/{oid}/sheet").get_data(as_text=True)
     page = c.get(f"/expenses/in-person?order={oid}").get_data(as_text=True)
     assert f'<option value="{oid}" selected>' in page and 'id="ipfind"' in page
+
+
+def test_logs_and_ideas_for_the_developer_only(tmp_path, monkeypatch):
+    from jigstream import inbox
+    path = str(tmp_path / "d.db")
+    Store(db.connect(path))
+    rows = [{"message_id": "<l1@x>", "subject": "BotTrack logs (build 120)", "sender": "Friend <f@gmail.com>",
+             "date": "2026-10-27T10:00:00", "account": "me@gmail.com"},
+            {"message_id": "<s1@x>", "subject": "BotTrack provider suggestion: Oculus", "sender": "me@gmail.com",
+             "date": "2026-10-26T10:00:00", "account": "me@gmail.com"}]
+    monkeypatch.setattr(inbox, "search", lambda config, q, limit=50, after=None: (rows, [], None))
+    monkeypatch.setattr(inbox, "open_email", lambda config, a, mid: type("E", (), {
+        "subject": "BotTrack logs", "sender": "f@gmail.com", "date": "", "body": "What went wrong: sync stuck"})())
+    monkeypatch.setenv("GMAIL_ACCOUNTS", "me@gmail.com:pw")
+    c = create_app(path).test_client()
+    monkeypatch.delenv("BOTTRACK_SIGNING_KEY", raising=False)
+    assert c.get("/developer/mail").status_code == 404
+    monkeypatch.setenv("BOTTRACK_SIGNING_KEY", "k")
+    page = c.get("/developer/mail").get_data(as_text=True)
+    assert "BotTrack logs (build 120)" in page and "Provider ideas · 1" in page and "from your own copy" in page
+    assert "Logs &amp; ideas" in page and page.count(">New<") == 2
+    assert "sync stuck" in c.get("/developer/mail/read?account=me@gmail.com&id=<l1@x>").get_json()["body"]
+    assert c.get("/developer/mail").get_data(as_text=True).count(">New<") == 1
