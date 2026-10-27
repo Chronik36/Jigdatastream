@@ -68,3 +68,34 @@ def test_go_through_expense_emails_one_by_one(tmp_path):
     assert (e["amount"], e["category"], e["reviewed"]) == (45.0, "gas", 1)
     page = c.get("/expenses/review").get_data(as_text=True)
     assert "1</b> left to go through" in page and "1 done" in page
+
+
+def test_tradepost_trade_ins_are_read_as_sales():
+    from jigstream.config import Config
+    from jigstream.extract import email_prompt, looks_like_purchase, platforms_named
+    from jigstream.sync import find_sales, sale_query
+    from test_orders import FakeLLM, mail as email
+    e = email("Your trade-in is complete", sender="Trade Post <hello@tradepostapp.com>",
+              body="We received your cards. $84.50 has been sent to your account.", mid="<tp1@x>")
+    assert platforms_named(e) == ["Tradepost"] and looks_like_purchase(e)
+    assert "selling platform: Tradepost" in email_prompt(e)
+    assert '"trade post"' in sale_query(["StockX", "Tradepost"])
+    store = Store(db.connect(":memory:"))
+    store.record_email(e, "other")  # an older sync called it not relevant
+    store.db.commit()
+    llm = FakeLLM({"Your trade-in is complete": {"kind": "sale", "platform": "Tradepost", "payout": 84.5}})
+    counts = find_sales(Config(accounts=[("me@gmail.com", "pw")], use_examples=False), store, llm=llm,
+                        fetch=lambda config, a, p, days, skip: iter([e]))
+    assert counts["sale"] == 1
+    assert [(r["platform"], r["payout"]) for r in store.db.execute("SELECT * FROM sales")] == [("Tradepost", 84.5)]
+
+
+def test_sold_in_person_from_an_order(tmp_path):
+    path = str(tmp_path / "s.db")
+    store = Store(db.connect(path))
+    order(store, 1, "delivered")
+    oid = store.orders()[0]["id"]
+    c = create_app(path).test_client()
+    assert f"/expenses/in-person?order={oid}" in c.get(f"/orders/{oid}/sheet").get_data(as_text=True)
+    page = c.get(f"/expenses/in-person?order={oid}").get_data(as_text=True)
+    assert f'<option value="{oid}" selected>' in page and 'id="ipfind"' in page
