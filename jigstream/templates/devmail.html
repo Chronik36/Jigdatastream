@@ -1,0 +1,38 @@
+{% extends "base.html" %}{% block body %}
+<h2>Logs &amp; ideas</h2>
+<p class="muted">Logs, provider ideas, training packs, shared steps and access requests people send from their BotTrack, newest first, from your inboxes. Tap one to read it. Nothing here changes BotTrack by itself.</p>
+<div class="dmchips"><a class="pill{{' s-shipped' if not show}}" href="/developer/mail">All</a>
+{% for k, label, _ in kinds %}<a class="pill{{' s-shipped' if show == k}}" href="/developer/mail?kind={{k}}">{{label}}{% if counts.get(k) %} · {{counts[k]}}{% endif %}</a>{% endfor %}</div>
+{% for e in errors %}<p class="muted">Couldn't look in {{e}}</p>{% endfor %}
+{% if not configured %}<p class="muted">Connect a Gmail inbox on Setup first.</p>{% endif %}
+<section class="panel dm">{% for r in rows %}
+<details class="dmrow{{' new' if r.new}}" data-account="{{r.account}}" data-id="{{r.message_id}}">
+<summary><span class="dmdot" aria-hidden="true"></span><span class="dmmain"><b>{{r.subject}}</b>
+<span class="muted small"><span data-private>{{r.sender}}</span> · {{(r.date or "")[:16]|replace("T", " ")}}{% if r.mine %} · from your own copy{% endif %}</span></span>
+{% if r.new %}<span class="pill s-ordered">New</span>{% endif %}</summary>
+<div class="dmbody muted">Loading…</div></details>
+{% else %}<p class="muted" style="margin:0">Nothing yet.</p>{% endfor %}</section>
+<style>
+.dmchips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.dm{padding:4px 16px}.dmrow{border-top:1px solid var(--line)}.dmrow:first-child{border-top:0}
+.dmrow summary{display:flex;align-items:center;gap:10px;padding:12px 0;cursor:pointer;list-style:none;min-width:0}
+.dmrow summary::-webkit-details-marker{display:none}
+.dmmain{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;overflow-wrap:anywhere}
+.dmdot{width:8px;height:8px;border-radius:50%;flex:none;background:transparent}.dmrow.new .dmdot{background:var(--accent)}
+.dmbody{white-space:pre-wrap;font:12.5px/1.5 ui-monospace,Menlo,monospace;padding:10px;margin:0 0 12px;border-radius:10px;background:var(--surface-2);overflow-wrap:anywhere;max-height:60vh;overflow-y:auto}
+.small{font-size:12px}
+</style>
+<script>
+document.querySelectorAll('.dmrow').forEach(d => d.addEventListener('toggle', () => {
+  if (!d.open || d.dataset.loaded) return;
+  d.dataset.loaded = 1;
+  const box = d.querySelector('.dmbody');
+  fetch('/developer/mail/read?account=' + encodeURIComponent(d.dataset.account) + '&id=' + encodeURIComponent(d.dataset.id))
+    .then(r => r.json()).then(j => {
+      box.textContent = j.body || j.error || 'Empty email.';
+      d.classList.remove('new');
+      const pill = d.querySelector('.pill'); if (pill) pill.remove();
+    }).catch(() => { box.textContent = "Couldn't open the email."; });
+}));
+</script>
+{% endblock %}

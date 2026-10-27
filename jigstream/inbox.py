@@ -61,10 +61,28 @@ def corrected_answer(raw, label):
     return out
 
 
+_first_pages = {}  # (query, inboxes, limit) -> (time, result): coming back to Inbox shows it at once
+FIRST_PAGE_SECONDS = 45
+
+
 def search(config, query, limit=50, after=None):
     """One page of header rows from every inbox for a Gmail search, newest first.
     after is the cursor from the previous page: {address: {"f", "u"}} where each inbox left off, or
     "done" once it has nothing more. Returns (rows, errors, next cursor or None at the end)."""
+    import time
+    key = (query, tuple(a for a, _ in config.accounts), limit)
+    if not after:
+        hit = _first_pages.get(key)
+        if hit and time.monotonic() - hit[0] < FIRST_PAGE_SECONDS:
+            return hit[1]
+        result = _search(config, query, limit, None)
+        if not result[1]:
+            _first_pages[key] = (time.monotonic(), result)
+        return result
+    return _search(config, query, limit, after)
+
+
+def _search(config, query, limit, after):
     from concurrent.futures import ThreadPoolExecutor
     after = after or {}
     accounts = [a for a in config.accounts if after.get(a[0]) != "done"]

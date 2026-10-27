@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Environment;
+import android.content.pm.PackageManager;
 import android.provider.Settings;
 import android.widget.Toast;
 import android.content.Intent;
@@ -78,8 +79,34 @@ public class MainActivity extends Activity {
             // Saved by version 2 for Tailscale, which BotTrack no longer uses.
             showSetup("BotTrack now connects with a QR code instead of Tailscale. Scan the one on your Mac's Setup page, Phone access.");
         } else {
-            showWeb(firstPage());
+            String open = getIntent().getStringExtra("open");
+            showWeb(open != null ? address() + open : firstPage());
+            alerts();
         }
+    }
+
+    /** A tapped shipping alert while the app is open: go to that order. */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        String open = intent.getStringExtra("open");
+        if (open != null && !address().isEmpty()) showWeb(address() + open);
+    }
+
+    /** Ask once for permission to show notifications (Android 13+), then start listening for shipping alerts. */
+    private void alerts() {
+        if (prefs.getString("topic", "").isEmpty()) return;
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED
+                && !prefs.getBoolean("asked_alerts", false)) {
+            prefs.edit().putBoolean("asked_alerts", true).apply();
+            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 7);
+        }
+        AlertService.start(this);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
+        if (code == 7) AlertService.start(this);
     }
 
     /** The Mac's address ending in "/", e.g. "https://quiet-words.trycloudflare.com/". */
@@ -122,6 +149,7 @@ public class MainActivity extends Activity {
                     if (use(code.getRawValue())) {
                         lookedForNewLink = false;
                         showWeb(firstPage());
+                        alerts();
                     } else {
                         showSetup("That isn't BotTrack's QR code. Scan the one on your Mac's Setup page, Phone access.");
                     }
@@ -176,6 +204,7 @@ public class MainActivity extends Activity {
             }
             lookedForNewLink = false;
             showWeb(firstPage());
+            alerts();
         });
         web = null;
         setContentView(box);

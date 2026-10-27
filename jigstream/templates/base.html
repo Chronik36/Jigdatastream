@@ -238,6 +238,7 @@ body .fl{color:#7884b3}
   ("Bot tools", [("/drop", "Drops", "drop"), ("/profiles", "Profiles", "profiles"), ("/cards", "Cards", "cards"), ("/emails", "Emails", "emails"), ("/proxies", "Proxies", "proxies"), ("/keywords", "Keywords", "keywords"), ("/products", "Products", "products")]),
 ] %}
 {% set footer = [("/manual", "Manual", "manual"), ("/m/app", "App & updates", "setup")] if on_phone else [("/manual", "Manual", "manual"), ("/logs", "Logs", "logs"), ("/setup", "Setup", "setup")] %}
+{% if dev_mail %}{% set footer = [("/developer/mail", "Logs & ideas", "inbox")] + footer %}{% endif %}
 {% set update_url = "/m/update" if on_phone else "/update/install" %}
 {% macro icon(name) %}<svg class="i" viewBox="0 0 24 24" aria-hidden="true">{{ icons[name]|safe }}</svg>{% endmacro %}
 {% macro item(href, label, ic) %}<a class="it{{' on' if (path == href if href == '/' else path.startswith(href))}}" href="{{href}}" title="{{label}}">{{ icon(ic) }}<span class="lbl">{{label}}</span>
