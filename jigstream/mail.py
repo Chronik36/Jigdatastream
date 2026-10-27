@@ -244,6 +244,23 @@ def _batches(items, size):
         yield items[i : i + size]
 
 
+TOO_MANY = "simultaneous connections"
+LOGIN_WAITS = (5, 15, 30)  # seconds to wait before signing in again when Gmail says too many are open
+
+
+def login(imap, address, password, waits=LOGIN_WAITS):
+    """Sign in, waiting and trying again when Gmail says the inbox already has too many connections open
+    (it allows 15 per account, shared with phones and mail apps). Other errors go straight back."""
+    for wait in (*waits, None):
+        try:
+            return imap.login(address, password)
+        except imaplib.IMAP4.error as e:
+            if wait is None or TOO_MANY not in str(e).lower():
+                raise
+            logger.warning("Gmail says %s has too many connections open; trying again in %ss", address, wait)
+            time.sleep(wait)
+
+
 def check_login(config, address, password):
     """Try an IMAP login; return None if it works, else a message to show."""
     try:
@@ -251,7 +268,7 @@ def check_login(config, address, password):
     except OSError as e:
         return f"Could not reach Gmail: {e}"
     try:
-        imap.login(address, password)
+        login(imap, address, password)
         return None
     except imaplib.IMAP4.error as e:
         logger.warning("login check failed for %s: %s", address, e)
@@ -316,10 +333,10 @@ def fetch_emails(config, address, password, days=None, skip_ids=(), on_total=Non
     are never downloaded, which is what makes an interrupted backfill resumable.
     """
     since = f" newer_than:{days}d" if days else ""
-    imap = imaplib.IMAP4_SSL(config.imap_host)
+    imap = imaplib.IMAP4_SSL(config.imap_host, timeout=120)
     try:
         try:
-            imap.login(address, password)
+            login(imap, address, password)
         except imaplib.IMAP4.error as e:
             logger.error("Gmail login failed for %s: %s", address, e)
             raise RuntimeError(f"Gmail login failed for {address}: check the app password ({e})") from e
@@ -370,10 +387,10 @@ def fetch_emails(config, address, password, days=None, skip_ids=(), on_total=Non
 def newest_emails(config, address, password, n=5, known=lambda ids: set()):
     """The n newest matching emails of the last two days in All Mail and in Spam, minus the ones known(ids)
     says were already read. Only their headers are looked at until one is new, so a quiet inbox costs one login."""
-    imap = imaplib.IMAP4_SSL(config.imap_host)
+    imap = imaplib.IMAP4_SSL(config.imap_host, timeout=60)
     try:
         try:
-            imap.login(address, password)
+            login(imap, address, password)
         except imaplib.IMAP4.error as e:
             raise RuntimeError(f"Gmail login failed for {address}: check the app password ({e})") from e
         folders = [(config.mailbox, config.search_query + " newer_than:2d"),
@@ -462,7 +479,7 @@ def session(config, address, password):
             _close(s["imap"])
             imap = imaplib.IMAP4_SSL(config.imap_host, timeout=30)
             try:
-                imap.login(address, password)
+                login(imap, address, password)
             except Exception:
                 _close(imap)
                 s["imap"] = None
@@ -545,7 +562,7 @@ def fetch_many(config, address, password, message_ids):
     """Several emails by Message-ID from one inbox over one sign-in: yields (message_id, Email or None)."""
     imap = imaplib.IMAP4_SSL(config.imap_host, timeout=30)
     try:
-        imap.login(address, password)
+        login(imap, address, password)
         folders = [config.mailbox, spam_folder(imap)]
         for message_id in message_ids:
             found = None

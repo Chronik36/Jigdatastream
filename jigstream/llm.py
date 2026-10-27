@@ -29,6 +29,43 @@ def parse_json(text):
         raise
 
 
+def salvage_json(text):
+    """A reply cut off part way (it hit the length cap, say after a long list of items): keep every value that
+    finished, close what was left open, and return that object. None when there's nothing to keep."""
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
+    start = text.find("{")
+    if start == -1:
+        return None
+    stack, cuts, in_str, esc = [], [], False, False
+    for i, ch in enumerate(text[start:], start):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+            if not stack:
+                return json.loads(text[start:i + 1])
+            cuts.append((i + 1, list(stack)))
+        elif ch == ",":
+            cuts.append((i, list(stack)))
+    for end, open_ in reversed(cuts[-60:]):
+        try:
+            return json.loads(text[start:end] + "".join(reversed(open_)))
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
 class LLMClient:
     def __init__(self, base_url, model, api_key="ollama", timeout=180, adapter=None, max_tokens=None):
         self.max_tokens = max_tokens  # caps each reply; None leaves it to the engine
@@ -43,7 +80,22 @@ class LLMClient:
         content = self._chat(system, user, examples, json_mode=True)
         try:
             return parse_json(content)
+        except json.JSONDecodeError:
+            pass
+        kept = salvage_json(content)
+        if kept is not None:  # cut off part way: what it got through is still right
+            logger.info("model %s reply was cut off; kept the part that finished", self.model)
+            return kept
+        # Empty (it spent the reply thinking) or prose instead of JSON: ask once more, plainly.
+        logger.warning("model %s returned unusable output, asking again: %s", self.model, content[:500])
+        content = self._chat(system, user + "\n\nReply with the JSON object only: no explanation, no thinking.",
+                             examples, json_mode=True)
+        try:
+            return parse_json(content)
         except json.JSONDecodeError as e:
+            kept = salvage_json(content)
+            if kept is not None:
+                return kept
             logger.warning("model %s returned unusable output: %s", self.model, content[:2000])
             raise LLMError(f"Model did not return JSON: {content[:300]}") from e
 

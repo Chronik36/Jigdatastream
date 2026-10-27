@@ -283,6 +283,7 @@ def test_computers_on_the_same_gmail_link_by_themselves(tmp_path, monkeypatch):
     label = {}
     with a as con:
         assert gmaillink.turn(con, None, True, [FakeBox(label)]) == []  # first one: nobody else yet
+    time.sleep(0.01)  # "since" is to the millisecond: started in the same one, the tie goes to either computer
     with b as con:
         assert len(gmaillink.turn(con, None, True, [FakeBox(label)])) == 1  # found the first
     with a as con:
