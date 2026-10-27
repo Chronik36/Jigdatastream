@@ -335,7 +335,7 @@ def main():
         sync_every = float(os.environ.get("SYNC_EVERY_HOURS", 4)) * 3600
         check_every = float(os.environ.get("UPDATE_CHECK_HOURS", 6)) * 3600
         track_every = float(os.environ.get("TRACK_EVERY_HOURS", 3)) * 3600
-        quick_every = float(os.environ.get("QUICK_CHECK_MINUTES", 3)) * 60  # newest few emails of each inbox
+        quick_every = float(os.environ.get("QUICK_CHECK_MINUTES", 1)) * 60  # newest few emails of each inbox
         last_sync = last_check = last_track = 0
         last_quick = time.time()
         time.sleep(30)
