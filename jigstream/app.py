@@ -333,7 +333,15 @@ def create_app(db_path=None):
         config = Config.from_env()
         rows = store.orders()
         stats = store.stats(orders=rows)
-        return render_template("orders.html", rows=rows, stats=stats, sync=sync_state,
+        # The cards at the top open their orders: ?show=spent|not_spent|moving|delivered.
+        show = request.args.get("show", "")
+        from .orderstore import NOT_SPENT
+        keep = {"spent": lambda s: s not in NOT_SPENT, "not_spent": lambda s: s in NOT_SPENT,
+                "moving": lambda s: s in ("shipped", "in_transit", "out_for_delivery"),
+                "delivered": lambda s: s == "delivered"}.get(show)
+        if keep:
+            rows = [o for o in rows if keep(o["shipping_status"] or "unknown")]
+        return render_template("orders.html", rows=rows, stats=stats, sync=sync_state, show=show if keep else "",
                                profile_names=[r[0] for r in store.db.execute("SELECT name FROM profiles ORDER BY name")],
                                profile_counts=_profile_counts(rows),
                                accounts=store.accounts(), configured=bool(config.accounts),
