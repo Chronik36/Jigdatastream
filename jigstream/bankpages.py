@@ -67,7 +67,7 @@ def _back():
 def bank_page():
     c = _con()
     show = request.args.get("show", "all")
-    show = show if show in SHOW else "all"
+    show = show if show in SHOW or show in ("orders", "receipts") else "all"  # the last two from the cards
     account = request.args.get("account", type=int)
     return render_template("bank.html", rows=bank.transactions(c, show, account), stats=bank.stats(c), show=show,
                            shows=SHOW, account=account, accounts=bank.accounts(c), plaid=plaid.settings(c),

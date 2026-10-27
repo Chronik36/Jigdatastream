@@ -3,10 +3,10 @@
 <p class="muted">Every correction you make teaches your own BotTrack. Sharing them teaches everyone's: packs from all users are
 merged and ship with updates, and each copy shows its model the shared examples closest to each email, next to its own.
 They're plain email text and answers, so they help whichever model size you run (4B, 8B or 14B).</p>
-<div class="stats"><div class="card">Your corrections <b>{{own}}</b></div><div class="card">Ready to share <b>{{pack.examples|length}}</b></div>
-<div class="card">Shared examples in use <b>{{shared_n}}</b></div></div>
+<div class="stats"><a class="card" href="/training">Your corrections <b>{{own}}</b></a><a class="card" href="#t-share">Ready to share <b>{{pack.examples|length}}</b></a>
+<a class="card" href="#t-shared">Shared examples in use <b>{{shared_n}}</b></a></div>
 
-<section class="panel"><h3 style="margin-top:0">Share your corrections</h3>
+<section class="panel" id="t-share"><h3 style="margin-top:0">Share your corrections</h3>
 <p style="font-size:13.5px">Before anything leaves this Mac, each example is scrubbed: names, email addresses, phone numbers, street addresses,
 card numbers and links are swapped for made-up ones, and order and tracking numbers for look-alikes.
 {% if pack.left_out %}<b>{{pack.left_out}}</b> example{{"s" if pack.left_out != 1}} still held one of your names, addresses or inboxes after that, so {{"they're" if pack.left_out != 1 else "it's"}} left out.{% endif %}
@@ -22,7 +22,7 @@ It's sent from your Gmail to the developer{% if not to %}, but this copy has no 
 {% else %}<p class="muted">Sharing turns on in builds that have a developer address.</p>{% endif %}
 </section>
 
-<section class="panel" style="margin-top:16px"><h3 style="margin-top:0">Shared examples on this Mac</h3>
+<section class="panel" style="margin-top:16px" id="t-shared"><h3 style="margin-top:0">Shared examples on this Mac</h3>
 <p class="muted" style="font-size:13px">{{built_in_n}} came with this update{% if sources %}; the rest you added below{% endif %}.</p>
 {% if sources %}<table class="nocard"><tbody>{% for s in sources %}<tr><td>{{s.source}}</td><td class="num">{{s.n}}</td><td style="text-align:right"><form method="post" action="/training/share/forget" style="margin:0" data-confirm="Stop using the {{s.n}} examples from {{s.source}}?"><input type="hidden" name="source" value="{{s.source}}"><button class="ghost sm">Remove</button></form></td></tr>{% endfor %}</tbody></table>{% endif %}
 <form method="post" action="/training/share/import" enctype="multipart/form-data" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">

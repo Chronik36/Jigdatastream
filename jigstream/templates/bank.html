@@ -15,11 +15,11 @@ dialog .db{padding:16px 22px;max-height:60vh;overflow:auto}dialog form{display:b
 </style>
 <div class="phead"><h2>Bank &amp; card charges</h2><a href="/expenses" class="muted">← Expenses</a></div>
 <div class="stats">
-<div class="card">Charges <b>{{stats.charges}}</b></div>
-<div class="card ok">Matched to orders <b>{{stats.orders}}</b></div>
-<div class="card ok">Matched to receipts <b>{{stats.expenses}}</b></div>
-<div class="card{{' bad' if stats.unmatched}}">Not matched <b>{{stats.unmatched}}</b></div>
-<div class="card">Total spent <b>{{stats.spent|money}}</b></div></div>
+<a class="card{{' on' if show == 'all'}}" href="/bank#charges">Charges <b>{{stats.charges}}</b></a>
+<a class="card ok{{' on' if show == 'orders'}}" href="/bank?show=orders#charges">Matched to orders <b>{{stats.orders}}</b></a>
+<a class="card ok{{' on' if show == 'receipts'}}" href="/bank?show=receipts#charges">Matched to receipts <b>{{stats.expenses}}</b></a>
+<a class="card{{' bad' if stats.unmatched}}{{' on' if show == 'unmatched'}}" href="/bank?show=unmatched#charges">Not matched <b>{{stats.unmatched}}</b></a>
+<a class="card" href="/bank#charges">Total spent <b>{{stats.spent|money}}</b></a></div>
 
 <div class="cols">
 <div class="panel"><h3>Import statement files</h3>
@@ -53,7 +53,7 @@ instead of you downloading files. It takes about 10 minutes to set up.</p>
 <a href="/bank/plaid">Set up live sync →</a>{% endif %}</div>
 </div>
 
-<div class="phead" style="margin-top:8px"><div class="tabs">{% for s in shows %}
+<div class="phead" style="margin-top:8px" id="charges"><div class="tabs">{% if show in ("orders", "receipts") %}<a class="on" href="/bank?show={{show}}">Matched to {{show}}</a>{% endif %}{% for s in shows %}
 <a href="/bank?show={{s}}{{('&account=' ~ account) if account}}" class="{{'on' if show == s}}">{{s|title}}</a>{% endfor %}
 {% if account %}<a href="/bank?show={{show}}">All accounts ✕</a>{% endif %}</div>
 <input id="q" placeholder="Search description or store" size="30" style="margin:0">

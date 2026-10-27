@@ -21,7 +21,7 @@ td{vertical-align:middle}.m{font-size:12.5px}.sub{display:block;font-size:12.5px
 <a href="/expenses/ledger{{'' if f == 'all' else '?show=' ~ f}}" class="{{'on' if show == f}}{{' warn' if f in ('charge_only', 'receipt_only', 'close') and counts[f]}}">{{"Everything" if f == "all" else states[f]}}<em>{{counts[f] or 0}}</em></a>{% endfor %}</div>
 <div class="lbar"><input id="q" placeholder="Search vendor, charge or description" size="32">
 <select id="f"><option value="">All categories</option>{% for c in categories %}<option value="{{c}}">{{c|replace("_", " ")|capitalize}}</option>{% endfor %}<option value="__order">Orders</option><option value="__none">Not sorted yet</option></select>
-<select id="mf"><option value="">All months</option>{% for m in months %}<option value="{{m}}">{{m}}</option>{% endfor %}</select>
+<select id="mf"><option value="">All months</option>{% for m in months %}<option value="{{m}}" {{"selected" if m == month}}>{{m}}</option>{% endfor %}</select>
 <span class="grow" style="flex:1"></span><span class="muted m" id="sum"></span></div>
 <p class="muted m">{% if first %}Your imported statements cover {{first}} to {{last}}. Receipts outside those dates aren't flagged as missing a charge.{% else %}No card or bank statements yet. <a href="/bank">Import one</a> to check every receipt against what was actually charged.{% endif %}</p>
 <table><thead><tr><th>Date</th><th>What</th><th>Receipt or order</th><th>Card charge</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>

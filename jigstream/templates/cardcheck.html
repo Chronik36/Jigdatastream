@@ -6,8 +6,9 @@ A refund of the same amount on the same card takes one away, so <b>went through<
 A charge is only tied to one checkout when that's certain: the bank gave the charge a time within {{minutes}} minutes of the checkout, it paid that checkout's order email, or it's the only charge and the only checkout. Otherwise you see counts, not which one is which.
 A tied charge that wasn't refunded turns an Unsure checkout Good on <a href="/drop">By date</a>; a refunded one turns it Cancelled. Bank data stays on this Mac.</p>
 {% if not r.cards %}<p class="muted">Nothing to check yet. Import a card statement or link your bank on the <a href="/bank">Bank</a> page, and add your bot webhooks. Only charges at stores your bots or order emails name are counted, and a profile's card is known from its last 4 digits.</p>{% else %}
-<div class="stats"><div class="card ok">Went through <b>{{r.total.went_through}}</b></div><div class="card">Charged <b>{{r.total.charged}}</b></div>
-<div class="card bad">Refunded <b>{{r.total.refunded}}</b></div><div class="card">Bot checkouts <b>{{r.total.bot}}</b></div><div class="card" style="--c:var(--orange)">Never charged <b style="color:var(--orange)">{{r.total.never_charged}}</b></div></div>
+<div class="stats"><a class="card ok" href="#cards">Went through <b>{{r.total.went_through}}</b></a><a class="card" href="/bank?show=matched#charges" title="The charges, where any match can be fixed">Charged <b>{{r.total.charged}}</b></a>
+<a class="card bad" href="/bank?show=refunds#charges">Refunded <b>{{r.total.refunded}}</b></a><a class="card" href="/drop?base=all">Bot checkouts <b>{{r.total.bot}}</b></a><a class="card" style="--c:var(--orange)" href="/drop?only=no_email">Never charged <b style="color:var(--orange)">{{r.total.never_charged}}</b></a></div>
+<div id="cards"></div>
 {% for a in r.cards %}<section class="panel" style="margin:14px 0">
 <h3 style="margin-top:0">{{a.name}}{% if a.last4 %} <span class="muted">•••• {{a.last4}}</span>{% endif %} <span class="muted" style="font-weight:400;font-size:14px">· {{a.spent|money}} kept</span></h3>
 <p style="margin:6px 0">{{ sums(a) }}{% if a.profiles %}<span class="muted"> · profiles on this card: {{a.profiles|join(", ")}}</span>{% elif not a.last4 %}<span class="muted"> · this card has no last 4 digits, so any profile's checkouts can count here</span>{% endif %}</p>
