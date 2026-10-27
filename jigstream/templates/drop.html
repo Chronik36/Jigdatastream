@@ -14,8 +14,9 @@
 <p class="muted">Every checkout webhook by retail site and drop date. Click a drop to open every checkout in it with the proxy and profile each ran on, then click a proxy group, proxy, profile or address to see just those (addresses are grouped by street, with jigged units and prefixes removed):
 <span class="ok">Good</span> (an order email or the bot's follow-up confirmed it), <span style="color:var(--orange)">Unsure</span> (checked out and nothing cancelled it, but no order email matched yet), <span class="bad">Cancelled</span> (a cancel email, bank refund or the bot's follow-up said so) or Declined.
 If one is wrong, pick Good, Bad or Not an order next to it: it sticks, and when the checkout has an order email the AI learns from it. Good and unsure count as real checkouts. Sync your inboxes first. Proxy logins and passwords are never shown, only the host.</p>
-<div class="stats"><div class="card">Webhooks <b>{{r.tally.tries}}</b></div><div class="card ok">Good <b>{{r.tally.confirmed}}</b></div>
-<div class="card" style="--c:var(--orange)">Unsure <b style="color:var(--orange)">{{r.tally.no_email}}</b></div><div class="card bad">Cancelled <b>{{r.tally.cancelled}}</b></div><div class="card bad">Declined <b>{{r.tally.declines}}</b></div></div>
+{% macro tile(key, label, n, cls="", style="") %}<a class="card {{cls}}{{' on' if only == key}}" style="{{style}}" href="{{ link(only=key if only != key else None) }}" title="{{'Show every checkout' if not key or only == key else 'Show these checkouts: correct any of them, the AI learns from it'}}">{{label}} <b{% if 'orange' in style %} style="color:var(--orange)"{% endif %}>{{n}}</b></a>{% endmacro %}
+<div class="stats tiles">{{ tile(None, "Webhooks", r.tally.tries) }}{{ tile("confirmed", "Good", r.tally.confirmed, "ok") }}
+{{ tile("no_email", "Unsure", r.tally.no_email, "", "--c:var(--orange)") }}{{ tile("cancelled", "Cancelled", r.tally.cancelled, "bad") }}{{ tile("decline", "Declined", r.tally.declines, "bad") }}</div>
 {% if r.place %}<div class="panel" style="margin:14px 0;display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center"><div><a style="font-size:12px" href="/drop">‹ All base addresses</a><h3 style="margin:4px 0 0">{{r.place.name}}</h3>{% if r.place.full %}<div class="muted" style="font-size:12px" data-private>{{r.place.full}}</div>{% endif %}</div>
 <a class="btn ghost" href="/tracking?base={{r.place.id}}">Packages here ›</a></div>
 {% elif base == "all" and r.has_bases %}<p><a style="font-size:12px" href="/drop">‹ All base addresses</a></p>{% endif %}
@@ -32,8 +33,9 @@ If one is wrong, pick Good, Bad or Not an order next to it: it sticks, and when 
 .bclanes{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12.5px;color:var(--muted)}.bclanes span{display:flex;align-items:center;gap:7px}.bclanes i{width:8px;height:8px;border-radius:50%}.bclanes b{margin-left:auto;color:var(--text)}
 .bcfoot{display:flex;gap:12px;font-size:12.5px}.bcgo{margin-left:auto;color:var(--accent);font-weight:600}</style>
 <h3>Best proxies and profiles</h3>
-{% elif day or by %}
-<div class="toolbar"><a class="pill" href="{{ link(day=None, by=None, name=None) }}">← All dates</a><b style="margin:0 8px">{{day or "Every date"}}</b>
+{% elif day or by or only %}
+<div class="toolbar"><a class="pill" href="{{ link(day=None, by=None, name=None, only=None) }}">← All dates</a><b style="margin:0 8px">{{day or "Every date"}}</b>
+{% if only %}<a class="pill s-shipped" href="{{ link(only=None) }}" title="Show every result">{{ {"confirmed": "Good", "no_email": "Unsure", "cancelled": "Cancelled", "decline": "Declined"}[only] }} only ✕</a>{% endif %}
 {% if by %}<a class="pill s-shipped" href="{{ link(by=None, name=None) }}" title="Show every checkout{{' on ' ~ day if day}}">{{kinds[by]}}: {{name}} ✕</a>{% if by == "profile" %} <a class="pill" href="/profile-orders?profile={{name|urlencode}}">Open profile ›</a>{% elif by == "address" %} <a class="pill" href="/address?name={{name|urlencode}}">Everything at this address ›</a>{% endif %}{% endif %}
 <span class="muted">Sort by</span><a class="pill{{' s-shipped' if sort == 'proxy'}}" href="{{ link(sort='proxy') }}">Proxy</a><a class="pill{{' s-shipped' if sort == 'profile'}}" href="{{ link(sort='profile') }}">Profile</a><a class="pill{{' s-shipped' if sort == 'address'}}" href="{{ link(sort='address') }}">Address</a></div>
 <div class="panel pickers" style="margin:14px 0"><div class="pick-row">{% for kind, label in [("group", "Proxy group"), ("proxy", "Proxy"), ("profile", "Profile"), ("address", "Address")] %}

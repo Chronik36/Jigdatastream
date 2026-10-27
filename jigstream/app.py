@@ -291,12 +291,13 @@ def create_app(db_path=None):
         sort = sort if sort in drop.SORTS else "proxy"
         by, name = (a.get("by"), a.get("name")) if a.get("by") in drop.GROUPS and a.get("name") else (None, None)
         base = a.get("base") or None
-        here = {"site": site, "day": day, "by": by, "name": name, "sort": sort, "base": base}
+        only = a.get("only") if a.get("only") in drop.OUTCOMES else None
+        here = {"site": site, "day": day, "by": by, "name": name, "sort": sort, "base": base, "only": only}
 
         def link(**change):  # this page's address with some of its choices changed (None drops one)
             return url_for("drop_page", **{k: v for k, v in dict(here, **change).items() if v})
-        return render_template("drop.html", r=drop.report(Store(con()).db, site, sort, day, by, name, base), site=site,
-                               base=base, day=day, sort=sort, by=by, name=name, link=link)
+        return render_template("drop.html", r=drop.report(Store(con()).db, site, sort, day, by, name, base, only),
+                               site=site, base=base, day=day, sort=sort, by=by, name=name, only=only, link=link)
 
     @app.get("/drop/cards")
     def card_check_page():

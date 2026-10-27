@@ -36,9 +36,10 @@ function pickProfiles(sel) {
 <p class="muted">{{p.first_name}} {{p.last_name}}{% if p.email %} · {{p.email}}{% endif %}{% if p.ship_address1 %} · {% if pick_address %}<a href="/address?name={{pick_address|urlencode}}" title="Every profile, checkout and order at this address">{{p.ship_address1}}, {{p.ship_city}} {{p.ship_state}} {{p.ship_zip}}</a>{% else %}{{p.ship_address1}}, {{p.ship_city}} {{p.ship_state}} {{p.ship_zip}}{% endif %}{% endif %}
  · <a href="/orders?profile={{p.name|urlencode}}">Show on Orders</a></p>
 <p><a class="btn" href="/review?src=profile&name={{p.name|urlencode}}" title="Step through each order and checkout on this profile and mark whether it's right">Go through {{p.name}}'s orders and checkouts</a></p>
-<div class="stats"><div class="card">Orders <b>{{pick.orders|length}}</b></div><div class="card">Spend <b>{{pick.spend|money}}</b></div>
-<div class="card">On the way <b>{{pick.orders|selectattr("shipping_status", "in", on_way)|list|length}}</b></div>
-<div class="card ok">Delivered <b>{{pick.statuses.get("delivered", 0)}}</b></div></div>
+{% set pq = "profile=" ~ pick_name|urlencode %}
+<div class="stats"><a class="card" href="/orders?{{pq}}" title="Open these orders: tap one to change anything about it">Orders <b>{{pick.orders|length}}</b></a><a class="card" href="/orders?show=spent&{{pq}}">Spend <b>{{pick.spend|money}}</b></a>
+<a class="card" href="/orders?show=moving&{{pq}}">On the way <b>{{pick.orders|selectattr("shipping_status", "in", on_way)|list|length}}</b></a>
+<a class="card ok" href="/orders?show=delivered&{{pq}}">Delivered <b>{{pick.statuses.get("delivered", 0)}}</b></a></div>
 <div class="lbl muted" style="font-size:11px;font-weight:600;letter-spacing:.07em">CHECKED OUT ON</div>
 <div class="sites">{% for site, n in pick.sites|dictsort(by="value", reverse=true) %}<span class="{{'bot' if not n}}" title="{{'From your bot checkouts; no order email yet' if not n else ''}}">{{site}}{% if n %}<b>{{n}}</b>{% endif %}</span>{% else %}<span class="bot">No checkouts yet</span>{% endfor %}</div>
 <table><thead><tr><th>Date</th><th>Site / order #</th><th>Items</th><th>Total</th><th>Status</th><th>Tracking</th><th>Matched on</th><th>Correct it</th></tr></thead><tbody>

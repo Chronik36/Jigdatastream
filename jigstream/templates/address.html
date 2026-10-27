@@ -4,10 +4,11 @@
 <p><a href="javascript:history.back()">← Back</a></p>
 <h2 style="margin:6px 0" data-private>{{r.label}}</h2>
 <p class="muted">Everything at this address, whatever the jig: the profiles that ship here, the checkouts sent here and the order emails that shipped here. Click a profile or checkout to go further.</p>
-<div class="stats"><div class="card">Profiles <b>{{r.profiles|length}}</b></div><div class="card">Checkouts <b>{{r.tally.tries}}</b></div>
-<div class="card ok">Real <b>{{r.tally.real}}</b></div><div class="card bad">Cancelled <b>{{r.tally.cancelled}}</b></div>
-<div class="card">Orders <b>{{r.orders|length}}</b></div><div class="card">Spend <b>{{r.spend|money}}</b></div></div>
-<section class="panel" style="margin:14px 0"><h3 style="margin-top:0">Profiles here</h3>
+{% set dq = "/drop?by=address&name=" ~ r.label|urlencode %}
+<div class="stats"><a class="card" href="#a-profiles">Profiles <b>{{r.profiles|length}}</b></a><a class="card" href="{{dq}}">Checkouts <b>{{r.tally.tries}}</b></a>
+<a class="card ok" href="{{dq}}&only=confirmed">Real <b>{{r.tally.real}}</b></a><a class="card bad" href="{{dq}}&only=cancelled">Cancelled <b>{{r.tally.cancelled}}</b></a>
+<a class="card" href="#a-orders">Orders <b>{{r.orders|length}}</b></a><a class="card" href="#a-orders">Spend <b>{{r.spend|money}}</b></a></div>
+<section class="panel" style="margin:14px 0" id="a-profiles"><h3 style="margin-top:0">Profiles here</h3>
 <table><thead><tr><th>Profile</th><th>Site / group</th><th>Address as written</th><th class="num">Checkouts</th><th class="num">Orders</th></tr></thead><tbody>
 {% for p in r.profiles %}<tr><td><a href="/profile-orders?profile={{p.name|urlencode}}"><b>{{p.name}}</b></a></td><td class="muted">{{p.site or "-"}}{% if p.group_name %} · {{p.group_name}}{% endif %}</td>
 <td data-private>{{p.full or "-"}}</td><td class="num">{{p.checkouts}}</td><td class="num">{{p.orders}}</td></tr>
@@ -16,7 +17,7 @@
 <table class="nocard"><thead><tr><th>Address as used</th><th>Real / tries</th><th>Profiles</th></tr></thead><tbody>
 {% for u in r.full_addresses %}<tr><td data-private>{{u.full}}</td><td><b class="{{'ok' if u.real}}">{{u.real}}</b>/{{u.tries}}</td><td>{% for p in u.profiles %}<a href="/profile-orders?profile={{p|urlencode}}">{{p}}</a>{{", " if not loop.last}}{% endfor %}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
 <section class="panel" style="margin:14px 0"><h3 style="margin-top:0">Checkouts</h3>{{ checkout_table(r.checkouts) }}</section>
-<section class="panel" style="margin:14px 0"><h3 style="margin-top:0">Order emails</h3>
+<section class="panel" style="margin:14px 0" id="a-orders"><h3 style="margin-top:0">Order emails</h3>
 <table><thead><tr><th>Date</th><th>Site / order #</th><th>Total</th><th>Status</th><th>Profile</th></tr></thead><tbody>
 {% for o in r.orders %}{% set status = o.shipping_status or "unknown" %}<tr><td>{{o.order_date or "-"}}</td><td><a href="/orders#order-{{o.id}}"><b>{{o.retailer or "-"}}</b></a>{% if o.order_number %}<div class="muted"><span data-copy>{{o.order_number}}</span></div>{% endif %}</td>
 <td class="num"><span data-edit-price="{{o.id}}" data-value="{{o.total if o.total is not none else ''}}">{{o.total|money(o.currency)}}</span></td><td><span class="pill s-{{status}}" data-edit-status="{{o.id}}" data-status="{{status}}">{{status|status_label}}</span></td>

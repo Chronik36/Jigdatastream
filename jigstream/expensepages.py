@@ -66,6 +66,7 @@ def overview():
                            missing=sum(1 for r in items if r["kind"] == "expense" and r["amount"] is None),
                            rec=recurring.totals(subs), soon=recurring.upcoming(subs)[:6], sync=_sync(),
                            month=budget.month_view(c, budget.month_of(date.today())),
+                           prev_month=budget.shift(budget.month_of(date.today()), -1),
                            profit=sales.month_numbers(c, budget.month_of(date.today())),
                            **_dialogs())
 
@@ -76,11 +77,13 @@ def ledger_page():
     bank.fill_amounts_from_charges(c)
     items = ledger.rows(c)
     show = request.args.get("show", "all")
-    show = show if show in ledger.FILTERS else "all"
+    show = show if show in ledger.FILTERS or show == "look" else "all"  # "look": every kind that needs a look
     months = sorted({(r["date"] or "")[:7] for r in items if r["date"]}, reverse=True)
     first, last = ledger.coverage(c)
     return render_template("expense_ledger.html", tab="ledger", rows=[r for r in items if show == "all"
-                                                                      or r["state"] == show],
+                                                                      or r["state"] == show
+                                                                      or (show == "look" and r["state"] in ledger.NEEDS_LOOK)],
+                           month=request.args.get("month", ""),
                            counts=ledger.counts(items), show=show, filters=ledger.FILTERS, states=ledger.STATES,
                            months=months, first=first, last=last, methods=ledger.PAY_METHODS,
                            colors=ledger.CATEGORY_COLORS, subs={s["id"]: s for s in recurring.subscriptions(c)},
@@ -97,8 +100,18 @@ def recurring_page():
     c = _con()
     recurring.refresh(c)
     items, subs = ledger.rows(c), recurring.subscriptions(c)
+    totals = recurring.totals(subs)
+    # The cards open their subscriptions: ?show=soon (renewing in 30 days) or alerts (needs a look).
+    show = request.args.get("show", "")
+    if show == "soon":
+        soon = {s["id"] for _, s in recurring.upcoming(subs, date.today(), 30)}
+        subs = [s for s in subs if s["id"] in soon]
+    elif show == "alerts":
+        subs = [s for s in subs if s["state"] in ("bad", "warn")]
+    else:
+        show = ""
     return render_template("expense_recurring.html", tab="recurring", counts=ledger.counts(items), subs=subs,
-                           totals=recurring.totals(subs), weeks=recurring.calendar_weeks(subs),
+                           totals=totals, show=show, weeks=recurring.calendar_weeks(subs),
                            ideas=recurring.suggestions(c), today=date.today(), **_dialogs())
 
 
@@ -204,7 +217,7 @@ def profit_page():
                            rows=sales.rows(c, month), hist=sales.history(c, width=380), deposits=sales.deposits(c),
                            unsold=sales.unsold(c, 8), platforms=sales.platforms(c), custom=sales.custom_platforms(c),
                            orders=sales.order_choices(c), prev=budget.shift(month, -1),
-                           find_state=getattr(current_app, "find_state", None),
+                           find_state=getattr(current_app, "find_state", None), month=month,
                            next=budget.shift(month, 1) if month < this else None, **_dialogs())
 
 

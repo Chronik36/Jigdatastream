@@ -515,6 +515,7 @@ def transactions(con, show="all", account_id=None, limit=2000):
         where.append("t.account_id = ?")
         args.append(account_id)
     where.append({"matched": "t.match_kind IS NOT NULL",
+                  "orders": "t.match_kind = 'order'", "receipts": "t.match_kind = 'expense'",
                   "unmatched": "t.match_kind IS NULL AND COALESCE(t.match_how, '') != 'ignored' AND t.amount > 0",
                   "ignored": "t.match_how = 'ignored'",
                   "refunds": "t.amount < 0"}.get(show, "1"))
