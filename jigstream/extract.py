@@ -18,7 +18,9 @@ def status_advances(old, new):
     if old in (None, "unknown") or new not in PROGRESS or old not in PROGRESS:
         return True
     return PROGRESS.index(new) > PROGRESS.index(old)
-EXPENSE_CATEGORIES = ["proxy", "bot", "cook_group", "captcha", "server", "aco_service", "account", "other"]
+# shipping: postage, labels, boxes; supplies: sleeves, toploaders, tape; gas: driving to stores and shows
+EXPENSE_CATEGORIES = ["proxy", "bot", "cook_group", "captcha", "server", "aco_service", "account", "shipping", "supplies",
+                      "gas", "other"]
 BILLING_PERIODS = ["one_time", "weekly", "monthly", "yearly"]
 # Where people resell. Only a hint for the model: a sale from any other marketplace counts too, and you
 # can add your own on the Profit goal tab or teach it with the Inbox's "Sale / payout" label.

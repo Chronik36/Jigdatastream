@@ -39,7 +39,8 @@ NEEDS_LOOK = ("charge_only", "receipt_only", "close")
 CLOSE_DOLLARS, CLOSE_SHARE = 3.0, 0.06
 
 CATEGORY_COLORS = {"proxy": "#3dd8ef", "bot": "#3ddc84", "cook_group": "#9b8cff", "captcha": "#ff8a3d",
-                   "server": "#2f86f6", "aco_service": "#f5c84c", "account": "#f06fc2", "other": "#8592bd"}
+                   "server": "#2f86f6", "aco_service": "#f5c84c", "account": "#f06fc2", "shipping": "#5aaefc", "supplies": "#c8a2ff",
+                   "gas": "#ff6b7a", "other": "#8592bd"}
 
 
 def ensure(con):

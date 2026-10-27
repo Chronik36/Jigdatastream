@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% block body %}
+{% include "_expense_tabs.html" %}
+{% set idx = (rows|map(attribute="id")|list).index(e.id) if e and e.id in rows|map(attribute="id")|list else -1 %}
+{% set nxt = rows[idx + 1].id if idx >= 0 and idx + 1 < rows|length else (rows[0].id if rows and rows[0].id != (e.id if e else None) else None) %}
+<p class="muted">Every expense an email gave, one at a time. Fix the price, who you paid or the category, or say it isn't an expense. Fixes stick, and the AI re-reads the email to learn from them. Gas, shipping and other costs no email shows go in with <b>+ Add expense</b>.</p>
+<div class="rvtop"><span><b>{{rows|length}}</b> {{"left to go through" if show != "all" else "from emails"}} · {{done}} done</span>
+<a class="pill{{' s-shipped' if show != 'all'}}" href="/expenses/review">Still to check</a><a class="pill{{' s-shipped' if show == 'all'}}" href="/expenses/review?show=all">All of them</a></div>
+{% if e %}
+<section class="panel rv">
+<div class="rvhead"><div class="rvmail"><span class="muted small">{{(e.email_date or e.date or "")[:16]|replace("T", " ")}}{% if e.email_account %} · <span data-private>{{e.email_account}}</span>{% endif %}</span>
+<b>{{e.subject or e.description or "Email"}}</b><span class="muted small" data-private>{{e.sender or ""}}</span></div>
+{% if e.reviewed %}<span class="pill s-delivered">Checked</span>{% endif %}</div>
+{% if e.email_account and e.message_id %}<details class="rvbody" data-account="{{e.email_account}}" data-id="{{e.message_id}}"><summary>Read the email</summary><div class="rvtext muted">Loading…</div></details>{% endif %}
+<form method="post" action="/expenses/{{e.id}}/review" class="rvform">
+<input type="hidden" name="next" value="{{nxt or ''}}"><input type="hidden" name="show" value="{{show}}">
+<label>Paid to<input name="vendor" value="{{e.vendor or ''}}" required></label>
+<label>Amount<input name="amount" inputmode="decimal" value="{{'%.2f'|format(e.amount) if e.amount is not none else ''}}" placeholder="0.00"></label>
+<label>Date<input type="date" name="date" value="{{(e.date or '')[:10]}}"></label>
+<label>Billed<select name="billing_period"><option value="">-</option>{% for p in periods %}<option value="{{p}}" {{"selected" if p == e.billing_period}}>{{p|replace("_", " ")|capitalize}}</option>{% endfor %}</select></label>
+<label class="wide">What it was for<input name="description" value="{{e.description or ''}}"></label>
+<fieldset class="wide rvcats"><legend class="muted small">Category</legend>{% for c in categories %}<label class="rvcat"><input type="radio" name="category" value="{{c}}" {{"checked" if c == (e.category or "other")}}><span>{{c|replace("_", " ")|capitalize}}</span></label>{% endfor %}</fieldset>
+<div class="wide rvbtns"><button>{{"Save & next" if nxt else "Save"}}</button>{% if nxt %}<a class="btn ghost" href="/expenses/review?id={{nxt}}{{'&show=all' if show == 'all'}}">Skip</a>{% endif %}</div>
+</form>
+<form method="post" action="/expenses/{{e.id}}/not-expense" data-confirm="Not a botting expense? It is removed, and its email teaches the AI to skip emails like it." class="rvnot">
+<input type="hidden" name="back" value="/expenses/review{{'?show=all' if show == 'all'}}"><button class="ghost danger">Not an expense</button></form>
+</section>
+{% else %}<section class="panel"><p style="margin:0">Nothing left to check. <a href="/expenses/review?show=all">Go through them all again</a>.</p></section>{% endif %}
+{% if rows|length > 1 %}<section class="panel" style="margin-top:16px"><h3 style="margin-top:0">{{"Still to check" if show != "all" else "All"}}</h3><ul class="rvlist">
+{% for r in rows[:80] %}<li class="{{'on' if e and r.id == e.id}}"><a href="/expenses/review?id={{r.id}}{{'&show=all' if show == 'all'}}"><b>{{r.vendor or "?"}}</b> <span class="muted">{{(r.subject or r.description or "")[:70]}}</span></a><span class="num">{{(r.amount|money) if r.amount is not none else "-"}}</span></li>{% endfor %}
+{% if rows|length > 80 %}<li class="muted small">and {{rows|length - 80}} more</li>{% endif %}</ul></section>{% endif %}
+<style>
+.rvtop{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-bottom:12px}.rvtop>span{margin-right:auto}
+.rv{display:flex;flex-direction:column;gap:14px}.rvhead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.rvmail{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}.rvmail b{font-size:16px}
+.rvbody summary{cursor:pointer;color:var(--accent);font-weight:600}.rvtext{white-space:pre-wrap;font-size:13px;margin-top:8px;max-height:340px;overflow-y:auto;padding:10px;border-radius:10px;background:var(--surface-2);overflow-wrap:anywhere}
+.rvform{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px}
+.rvform>label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}.rvform input,.rvform select{margin:0;width:100%;color:var(--text)}
+.rvform .wide{grid-column:1/-1}.rvcats{border:0;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:8px}.rvcats legend{margin-bottom:6px}
+.rvcat input{position:absolute;opacity:0;pointer-events:none}.rvcat span{display:inline-block;padding:7px 13px;border-radius:999px;border:1px solid var(--line-2);cursor:pointer;font-size:13px}
+.rvcat input:checked+span{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.rvbtns{display:flex;gap:8px;flex-wrap:wrap}.rvnot{margin:0}button.danger{color:var(--red)}
+.rvlist{list-style:none;margin:0;padding:0}.rvlist li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line);min-width:0}
+.rvlist li:first-child{border-top:0}.rvlist li a{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}.rvlist li.on a b{color:var(--accent)}
+.small{font-size:12px}
+</style>
+<script>
+document.querySelectorAll('.rvbody').forEach(d => d.addEventListener('toggle', () => {
+  if (!d.open || d.dataset.loaded) return;
+  d.dataset.loaded = 1;
+  const box = d.querySelector('.rvtext');
+  fetch('/inbox/view?account=' + encodeURIComponent(d.dataset.account) + '&id=' + encodeURIComponent(d.dataset.id))
+    .then(r => r.json()).then(j => { box.textContent = j.body || j.error || 'Empty email.'; })
+    .catch(() => { box.textContent = "Couldn't open the email."; });
+}));
+</script>
+{% include "_expense_dialog.html" %}
+{% endblock %}
