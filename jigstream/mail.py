@@ -4,6 +4,9 @@ import email
 import imaplib
 import logging
 import re
+import threading
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from email import policy
 from email.utils import parsedate_to_datetime
@@ -431,41 +434,98 @@ def _header_rows(imap, uids, address, spam):
     return rows
 
 
-def search_headers(config, address, password, query="", limit=50, after=None):
-    """Newest emails matching a Gmail search (headers only, nothing downloaded), All Mail then Spam.
-    after = {"f": folder (0 All Mail, 1 Spam), "u": uid} continues below the last email already shown.
-    Each row carries its folder ("f") and "uid" so the caller can say where the next page starts."""
-    imap = imaplib.IMAP4_SSL(config.imap_host, timeout=30)
-    after = after or {"f": 0, "u": None}
-    try:
-        imap.login(address, password)
-        rows = []
-        for f, (folder, spam) in enumerate(((config.mailbox, False), (spam_folder(imap), True))):
-            if f < after["f"] or len(rows) >= limit or imap.select(folder, readonly=True)[0] != "OK":
-                continue
-            q = (query or "in:anywhere").strip()
-            status, data = imap.uid("SEARCH", "X-GM-RAW", _quote(q))
-            if status != "OK":
-                continue
-            uids = sorted((int(u) for u in data[0].split()), reverse=True)
-            if f == after["f"] and after.get("u"):
-                uids = [u for u in uids if u < after["u"]]
-            found = _header_rows(imap, [str(u).encode() for u in uids[: limit - len(rows)]], address, spam)
-            rows += sorted((dict(r, f=f) for r in found), key=lambda r: -r["uid"])
-        return rows
-    finally:
+# The Inbox page signs in again for every page it scrolls and every email it opens, which costs a second or two
+# each time. Signed-in connections are kept for a few minutes instead, one per inbox, along with the Spam
+# folder's name and the matching UIDs of the last search, so scrolling on doesn't search Gmail again.
+KEEP_SECONDS = 240
+_sessions = {}  # address -> {"imap", "used", "spam", "lock"}
+_sessions_lock = threading.Lock()
+_uid_cache = {}  # (address, folder, query) -> (time, [uid, ...] newest first)
+
+
+@contextmanager
+def session(config, address, password):
+    """A signed-in IMAP connection for address, reused while it's fresh. Yields (imap, spam folder name)."""
+    with _sessions_lock:
+        s = _sessions.setdefault(address, {"imap": None, "used": 0, "spam": None, "lock": threading.Lock()})
+    with s["lock"]:
+        imap = s["imap"]
+        if imap is not None and time.monotonic() - s["used"] < KEEP_SECONDS:
+            try:
+                if imap.noop()[0] != "OK":
+                    imap = None
+            except Exception:
+                imap = None
+        else:
+            imap = None
+        if imap is None:
+            _close(s["imap"])
+            imap = imaplib.IMAP4_SSL(config.imap_host, timeout=30)
+            try:
+                imap.login(address, password)
+            except Exception:
+                _close(imap)
+                s["imap"] = None
+                raise
+            s.update(imap=imap, spam=s["spam"] or spam_folder(imap))
+        try:
+            yield imap, s["spam"]
+            s.update(imap=imap, used=time.monotonic())
+        except Exception:
+            _close(imap)  # a half-read connection isn't safe to hand out again
+            s["imap"] = None
+            raise
+
+
+def _close(imap):
+    if imap is not None:
         try:
             imap.logout()
         except Exception:
             pass
 
 
+def _search_uids(imap, address, folder, query, fresh):
+    key = (address, folder, query)
+    hit = _uid_cache.get(key)
+    if hit and not fresh and time.monotonic() - hit[0] < KEEP_SECONDS:
+        return hit[1]
+    if query:
+        status, data = imap.uid("SEARCH", "X-GM-RAW", _quote(query))
+    else:
+        status, data = imap.uid("SEARCH", None, "ALL")  # plain IMAP is much quicker than a Gmail search for "all"
+    if status != "OK":
+        return None
+    uids = sorted((int(u) for u in (data[0] or b"").split()), reverse=True)
+    _uid_cache[key] = (time.monotonic(), uids)
+    return uids
+
+
+def search_headers(config, address, password, query="", limit=50, after=None):
+    """Newest emails matching a Gmail search (headers only, nothing downloaded), All Mail then Spam.
+    after = {"f": folder (0 All Mail, 1 Spam), "u": uid} continues below the last email already shown.
+    Each row carries its folder ("f") and "uid" so the caller can say where the next page starts."""
+    after = after or {"f": 0, "u": None}
+    query = (query or "").strip()
+    with session(config, address, password) as (imap, spam):
+        rows = []
+        for f, (folder, is_spam) in enumerate(((config.mailbox, False), (spam, True))):
+            if f < after["f"] or len(rows) >= limit or imap.select(folder, readonly=True)[0] != "OK":
+                continue
+            uids = _search_uids(imap, address, folder, query, fresh=not after.get("u") and f == after["f"])
+            if uids is None:
+                continue
+            if f == after["f"] and after.get("u"):
+                uids = [u for u in uids if u < after["u"]]
+            found = _header_rows(imap, [str(u).encode() for u in uids[: limit - len(rows)]], address, is_spam)
+            rows += sorted((dict(r, f=f) for r in found), key=lambda r: -r["uid"])
+        return rows
+
+
 def fetch_by_message_id(config, address, password, message_id):
     """One email by its Message-ID, read-only, from All Mail or Spam. None if it isn't there."""
-    imap = imaplib.IMAP4_SSL(config.imap_host, timeout=30)
-    try:
-        imap.login(address, password)
-        for folder in (config.mailbox, spam_folder(imap)):
+    with session(config, address, password) as (imap, spam):
+        for folder in (config.mailbox, spam):
             if imap.select(folder, readonly=True)[0] != "OK":
                 continue
             status, data = imap.uid("SEARCH", "X-GM-RAW", _quote(f"rfc822msgid:{message_id.strip('<>')}"))
@@ -479,11 +539,6 @@ def fetch_by_message_id(config, address, password, message_id):
                 msg.message_id = msg.message_id or message_id
                 return msg
         return None
-    finally:
-        try:
-            imap.logout()
-        except Exception:
-            pass
 
 
 def fetch_many(config, address, password, message_ids):

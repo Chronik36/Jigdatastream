@@ -95,3 +95,26 @@ def test_search_headers_pages_through_all_mail_then_spam(monkeypatch):
     assert [(r["message_id"], r["f"], r["spam"]) for r in page2] == [("<a>", 0, False), ("<b>", 1, True)]
     page3 = mail.search_headers(Config(), "me@gmail.com", "pw", "", limit=2, after={"f": 1, "u": 8})
     assert [r["message_id"] for r in page3] == ["<s>"]
+
+
+def test_inbox_pages_reuse_one_sign_in_and_search(monkeypatch):
+    logins = []
+
+    class Kept(FakeIMAP):
+        def login(self, user, password):
+            logins.append(user)
+
+        def noop(self):
+            return "OK", []
+
+    monkeypatch.setattr(mail.imaplib, "IMAP4_SSL", Kept)
+    mail._sessions.clear()
+    mail._uid_cache.clear()
+    FakeIMAP.searches = []
+    first = mail.search_headers(Config(), "keep@gmail.com", "pw", "", limit=2)
+    assert [r["uid"] for r in first] == [103, 102]
+    more = mail.search_headers(Config(), "keep@gmail.com", "pw", "", limit=2, after={"f": 0, "u": 102})
+    assert [r["uid"] for r in more][:1] == [101]
+    assert logins == ["keep@gmail.com"]  # signed in once for both pages
+    assert [box for box, _ in FakeIMAP.searches].count('"[Gmail]/All Mail"') == 1  # page two used the saved UIDs
+    mail._sessions.clear()
