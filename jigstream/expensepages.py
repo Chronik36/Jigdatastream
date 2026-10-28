@@ -211,6 +211,7 @@ def profit_page():
     c = _con()
     recurring.refresh(c)
     sales.link_orders(c)
+    sales.match_payouts(c)
     month, this = _month_arg()
     items = ledger.rows(c)
     return render_template("expense_profit.html", tab="profit", counts=ledger.counts(items),
@@ -286,6 +287,16 @@ def sale_action(sale_id, action):
             threading.Thread(target=teach_sale, args=(config, sale_id, current_app.config.get("DB_PATH")),
                              daemon=True).start()
         flash("Sale saved." + (" The AI re-reads its email and learns from your fix." if teach else ""))
+    elif action == "email":
+        # One of the emails around a payout is a sale (or something else): it's re-read as that, so the AI learns.
+        label, what = _what_it_is()
+        mid = request.form.get("message_id", "")
+        if label and any(e["message_id"] == mid for e in sales.nearby_emails(c, sale_id)):
+            taught = _relabel_email(c, mid, label, what)
+            flash(f"That email is now \"{what or inbox.LABELS[label][0]}\"."
+                  + (" The AI re-reads it; a sale shows up here and is matched to its payout." if taught else ""))
+        else:
+            flash("Pick what that email is.")
     elif action == "is":
         label, what = _what_it_is()
         row = c.execute("SELECT * FROM sales WHERE id = ?", (sale_id,)).fetchone()
@@ -304,6 +315,14 @@ def sale_action(sale_id, action):
         sales.delete(c, sale_id)
         flash("Sale deleted.")
     return _back()
+
+
+@pages.get("/expenses/sales/<int:sale_id>/emails")
+def sale_emails(sale_id):
+    """The emails from a sale's platform around it, for the sale window's "Emails around it" list."""
+    return {"emails": [{k: e[k] for k in ("message_id", "account", "sender", "subject", "date", "kind")}
+                       | {"sale": bool(e["sale"]), "item": (e["sale"] or {}).get("item")}
+                       for e in sales.nearby_emails(_con(), sale_id)]}
 
 
 @pages.post("/expenses/sales/deposit/<int:tx_id>")
