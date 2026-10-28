@@ -11,7 +11,7 @@ import re
 import threading
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 
 from . import db
 
@@ -176,6 +176,7 @@ def _back(order_id=None):
 
 @bp.get("/orders/<int:order_id>/sheet")
 def sheet(order_id):
+    from .addresscheck import _line
     from .app import STATUS_CHOICES
     from .orderstore import Store
     store = Store(_con())
@@ -189,7 +190,6 @@ def sheet(order_id):
     for r in store.db.execute("SELECT name, group_name FROM profiles ORDER BY lower(name)"):
         groups.setdefault(r["group_name"] or "No group", []).append(r["name"])
     from . import addresscheck, inbox, sales, stuck
-    from .addresscheck import _line
     platform = sales.platform_in(store.db, o.get("retailer") or "") or ""
     # The bot checkouts behind this order and the profile it's tied to, with the address check.
     try:
@@ -206,7 +206,17 @@ def sheet(order_id):
     mails = [dict(r, tag=dict(tagged[r["message_id"]]) if r["message_id"] in tagged else None) for r in store.db.execute(
         f"SELECT message_id, account, sender, subject, date FROM emails WHERE message_id IN ({marks})"
         " ORDER BY date DESC", ids)] if ids else []
-    return render_template("_order_sheet.html", o=o, events=events, checkouts=checkouts, profile=profile,
+    # Addresses to pick from when fixing the ship-to: each profile's, then ones other orders went to.
+    addrs, profile_addr = {}, {}
+    for r in store.db.execute("SELECT * FROM profiles ORDER BY lower(name)"):
+        line = _line(r)
+        if line:
+            profile_addr[r["name"]] = line
+            addrs.setdefault(line, r["name"])
+    for r in store.db.execute("SELECT shipping_address, COUNT(*) n FROM tracked_orders WHERE COALESCE(shipping_address, '')"
+                              " != '' GROUP BY shipping_address ORDER BY n DESC LIMIT 150"):
+        addrs.setdefault(r["shipping_address"], f"used on {r['n']} order{'s' if r['n'] != 1 else ''}")
+    return render_template("_order_sheet.html", o=o, events=events, checkouts=checkouts, profile=profile, addresses=addrs, profile_addr=profile_addr,
                            mails=mails, mail_labels=inbox.LABELS, not_order=inbox.NOT_ORDER,
                            wrong=addresscheck.check(store.db, [o]).get(order_id), shown=SHOWN, qty=quantity(o),
                            sale_platform=platform, sale_platforms=sales.platforms(store.db),
@@ -216,6 +226,69 @@ def sheet(order_id):
                            date=nice(o["order_date"]), eta=nice(o["estimated_delivery"]),
                            title=first.get("name") or o.get("retailer") or "Order",
                            image=first.get("image") or picture(first.get("name")), choices=STATUS_CHOICES)
+
+
+SOURCE_FIELDS = ("retailer", "order_number", "order_date", "total", "items", "shipping_name", "shipping_address",
+                 "carrier", "tracking_number", "estimated_delivery")
+
+
+def _snippet(body, field, value):
+    """The bit of an email around where it shows this value, to see what the AI read it from."""
+    text = re.sub(r"\s+", " ", body or "")
+    if field == "shipping_address":
+        from . import address as A
+        key = (A.base_line1(value).split() or [""])[0]
+    elif field == "total":
+        key = f"{value:,.2f}" if f"{value:,.2f}" in text else f"{value:.2f}"
+    elif field == "items":
+        key = (re.findall(r"[A-Za-z0-9]{3,}", value) or [""])[0]
+    elif field in ("order_date", "estimated_delivery"):
+        return ""
+    else:
+        key = str(value)
+    i = text.upper().find(key.upper()) if key else -1
+    if i < 0:
+        return ""
+    a, b = max(0, i - 60), min(len(text), i + len(key) + 90)
+    return ("…" if a else "") + text[a:b].strip() + ("…" if b < len(text) else "")
+
+
+@bp.get("/orders/<int:order_id>/sources")
+def sources(order_id):
+    """Where each of an order's details came from: which of its emails shows it (with the words around it), the
+    profile's match reason, or nothing (set by hand or a guess). Opens the order's emails read-only."""
+    from . import inbox
+    from .config import Config
+    from .orderstore import Store
+    store = Store(_con())
+    o = store.order(order_id)
+    if o is None:
+        return jsonify({"error": "That order is gone."}), 404
+    config = Config.from_env()
+    ids = (o.get("message_ids") or [])[-8:]
+    rows = [dict(r) for r in store.db.execute(
+        "SELECT message_id, account, subject, date FROM emails WHERE message_id IN (%s) ORDER BY date"
+        % ",".join("?" * len(ids)), ids)] if ids else []
+    first = (o["items"] or [{}])[0] if o["items"] else {}
+    values = {k: (first.get("name") if k == "items" else o.get(k)) for k in SOURCE_FIELDS}
+    out = {k: [] for k in SOURCE_FIELDS}
+    opened = 0
+    for r in rows:
+        try:
+            email = inbox.open_email(config, r["account"], r["message_id"])
+        except Exception:
+            email = None
+        if not email:
+            continue
+        opened += 1
+        body = f"{email.subject}\n{email.body}"
+        for k, v in values.items():
+            if v not in (None, "") and _shows(body, k, v):
+                out[k].append({"subject": r["subject"] or "(no subject)", "date": (r["date"] or "")[:10],
+                               "message_id": r["message_id"], "account": r["account"],
+                               "snippet": _snippet(body, k, v)})
+    return jsonify({"fields": out, "emails": len(rows), "opened": opened,
+                    "profile": {"name": o.get("profile_name"), "why": o.get("profile_match") or ""}})
 
 
 @bp.post("/orders/<int:order_id>/rename")
@@ -407,21 +480,10 @@ def edit(order_id):
         label_key = sub if sub in inbox.NOT_ORDER else "other"
     else:
         label_key = None
+    if kind == "order" and f.get("status") in ("not_an_order", "expense", "sale"):
+        kind = f["status"]  # picked from the Status list: the same as saying what its emails are
     if kind in ("not_an_order", "expense", "sale"):
-        ids = o.get("message_ids") or []
-        mails = [dict(r) for r in store.db.execute(
-            "SELECT message_id, account, sender, subject, date FROM emails WHERE message_id IN (%s)"
-            % ",".join("?" * len(ids)), ids)] if ids else []
-        if kind == "not_an_order":
-            store.dismiss_order(order_id)
-        else:
-            store.delete_order(order_id)
-        label = label_key or {"not_an_order": "other", "expense": "expense", "sale": "sale"}[kind]
-        if mails and config.accounts:  # the AI re-reads them as what you said they are, and learns from it
-            threading.Thread(target=inbox.label_emails, args=(config, Store(_con()), from_config(config), mails, label),
-                             kwargs={"what": what}, daemon=True).start()
-        flash({"not_an_order": "Removed: not an order. ", "expense": "Moved to Expenses. ", "sale": "Moved to Sales. "}[kind]
-              + ("The AI re-reads its emails and learns from it." if mails else ""))
+        flash(move_out(store, o, kind, label_key, what))
         return redirect(_back())
     fields = {}
     for k in EDITABLE:
@@ -451,6 +513,30 @@ def edit(order_id):
                          daemon=True).start()
     flash("Saved." + (" The AI re-reads this order's emails and learns from your fixes." if taught else ""))
     return redirect(_back())
+
+
+def move_out(store, o, kind, label_key=None, what=None):
+    """The order isn't one: not an order, a botting expense or a sale. It leaves Orders and the AI re-reads its
+    emails as what you said, learning from it. Returns what to tell you."""
+    from . import inbox
+    from .config import Config
+    from .llm import from_config
+    from .orderstore import Store
+    config = Config.from_env()
+    ids = o.get("message_ids") or []
+    mails = [dict(r) for r in store.db.execute(
+        "SELECT message_id, account, sender, subject, date FROM emails WHERE message_id IN (%s)"
+        % ",".join("?" * len(ids)), ids)] if ids else []
+    if kind == "not_an_order":
+        store.dismiss_order(o["id"])
+    else:
+        store.delete_order(o["id"])
+    label = label_key or {"not_an_order": "other", "expense": "expense", "sale": "sale"}[kind]
+    if mails and config.accounts:  # the AI re-reads them as what you said they are, and learns from it
+        threading.Thread(target=inbox.label_emails, args=(config, Store(_con()), from_config(config), mails, label),
+                         kwargs={"what": what}, daemon=True).start()
+    return ({"not_an_order": "Removed: not an order. ", "expense": "Moved to Expenses. ", "sale": "Moved to Sales. "}[kind]
+            + ("The AI re-reads its emails and learns from it." if mails else ""))
 
 
 @bp.post("/orders/<int:order_id>/email")

@@ -28,7 +28,7 @@
 <ul class="items">{% for it in o["items"] %}<li>{{it.name}}{% if it.quantity and it.quantity != 1 %} x{{it.quantity}}{% endif %}</li>{% else %}<li class="muted">No items listed</li>{% endfor %}</ul>
 <div class="rvgrid">
 <div><div class="fl">Status</div><span class="pill s-{{status}}">{{status|status_label}}</span>{% if o.status_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}{% include "_stagebar.html" %}
-<form method="post" action="/orders/{{o.id}}/label" class="fix"><input type="hidden" name="back" value="1"><select name="status" class="relabel" title="Set the right status; the AI learns from this order's emails"><option value="">Fix status…</option>{% for st in statuses %}<option value="{{st}}" {{"disabled" if st == status}}>{{st|status_label}}</option>{% endfor %}<option disabled>──────────</option><option value="not_an_order">Not an order (remove)</option></select></form></div>
+<form method="post" action="/orders/{{o.id}}/label" class="fix"><input type="hidden" name="back" value="1"><select name="status" class="relabel" title="Set the right status; the AI learns from this order's emails"><option value="">Fix status…</option>{% for st in statuses %}<option value="{{st}}" {{"disabled" if st == status}}>{{st|status_label}}</option>{% endfor %}<option disabled>──────────</option><option value="not_an_order">Not an order (remove)</option>{% for m in moves %}<option value="{{m}}">{{m|status_label}}</option>{% endfor %}</select></form></div>
 <div><div class="fl">Tracking</div>{% if o.tracking_number %}<a class="track" href="{{o|track_url}}" target="_blank" rel="noopener"><span class="muted">{{o.carrier or "Track"}}</span> {{o.tracking_number}} ↗</a> <span class="muted small" data-copy="{{o.tracking_number}}" title="Copy the tracking number">copy</span>{% else %}<span class="muted">No tracking yet</span>{% endif %}{% if o.carrier_status %}<div class="muted small">{{o.carrier_status}}</div>{% endif %}{% if o.estimated_delivery %}<div class="muted small">ETA {{o.estimated_delivery}}</div>{% endif %}</div>
 <div><div class="fl">Profile</div>{% if o.profile_name %}<a href="/profile-orders?profile={{o.profile_name|urlencode}}"><b>{{o.profile_name}}</b></a> <span class="muted small">{{o.profile_match or ""}}</span>{% elif o.profile_candidates %}<span style="color:var(--orange)">Could be {{o.profile_candidates|join(", ")}}</span>{% else %}<span class="muted">No match</span>{% endif %}
 <form method="post" action="/orders/{{o.id}}/profile" class="fix"><input type="hidden" name="back" value="{{here}}&at={{at}}"><select name="profile" onchange="if (this.value !== '__keep__') this.form.submit()" title="Pick the profile this order was placed with"><option value="__keep__">Change profile…</option>{% for n in o.profile_candidates %}<option value="{{n}}">{{n}}</option>{% endfor %}{% for n in profile_names if n not in o.profile_candidates %}<option value="{{n}}">{{n}}</option>{% endfor %}<option value="">None of my profiles</option>{% if o.profile_manual %}<option value="__auto__">Match automatically</option>{% endif %}</select></form></div>
@@ -102,8 +102,11 @@
   document.addEventListener('change', e => {
     const sel = e.target;
     if (!sel.classList.contains('relabel') || !sel.value) return;
-    if (sel.value !== 'not_an_order') sel.form.submit();
-    else btConfirm('Remove this from Orders? Its emails become examples of what is not an order.').then(ok => ok ? sel.form.submit() : sel.value = '');
+    const ask = {not_an_order: 'Remove this from Orders? Its emails become examples of what is not an order.',
+                 expense: 'Move this to Expenses as a botting expense? The AI re-reads its emails as one.',
+                 sale: 'Move this to Sales? The AI re-reads its emails as a sale.'}[sel.value];
+    if (!ask) sel.form.submit();
+    else btConfirm(ask).then(ok => ok ? sel.form.submit() : sel.value = '');
   });
   document.addEventListener('keydown', e => {
     if (e.target.closest('input,select,textarea,dialog') || e.metaKey || e.ctrlKey || e.altKey) return;
