@@ -17,8 +17,9 @@ import time
 from datetime import timedelta
 from urllib.parse import quote, urlparse
 
-from flask import (Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request,
-                   session, url_for)
+from flask import (Blueprint, abort, current_app, flash, has_request_context, jsonify, redirect, render_template,
+                   request, session, url_for)
+from flask.sessions import SecureCookieSessionInterface
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import db, tunnel, updater
@@ -130,12 +131,22 @@ def token_ok():
     return bool(expected) and hmac.compare_digest(sent, expected)
 
 
+class LinkSessions(SecureCookieSessionInterface):
+    """Through the phone link (always https) the sign-in cookie is marked Secure, so a phone never sends it over
+    plain http. BotTrack's own window and same-Wi-Fi phones use http, so theirs can't be."""
+
+    def get_cookie_secure(self, app):
+        return super().get_cookie_secure(app) or (has_request_context() and via_link()
+                                                  and bool(request.headers.get("Cf-Connecting-Ip")))
+
+
 def init_app(app):
     """Guard every request and give the app a real secret key (sessions now leave the Mac)."""
     # Saved to .env when phone access is turned on, so phones stay signed in across restarts.
     app.secret_key = os.environ.get("PHONE_SECRET_KEY") or secrets.token_hex(32)
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                       PERMANENT_SESSION_LIFETIME=timedelta(days=365))
+    app.session_interface = LinkSessions()
     app.jinja_env.globals["csrf_token"] = csrf_token
     if os.environ.get("PHONE_ACCESS") == "1" and not os.environ.get("PHONE_PAIR_KEY"):
         save_env(new_pairing())  # phone access turned on before pairing by QR code existed
