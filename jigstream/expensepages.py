@@ -217,6 +217,7 @@ def profit_page():
                            rows=sales.rows(c, month), hist=sales.history(c, width=380), deposits=sales.deposits(c),
                            unsold=sales.unsold(c, 8), platforms=sales.platforms(c), custom=sales.custom_platforms(c),
                            orders=sales.order_choices(c), prev=budget.shift(month, -1),
+                           fee_pcts={pl.lower(): v for pl in sales.platforms(c) if (v := sales.fee_pct(c, pl)) is not None},
                            find_state=getattr(current_app, "find_state", None), month=month,
                            next=budget.shift(month, 1) if month < this else None, **_dialogs())
 
@@ -230,9 +231,16 @@ def profit_goal():
 
 
 def _sale_form():
+    """The sale dialog. Fees and payout fill in from the fee percent when left blank, and the percent is
+    remembered for that platform."""
     order = request.form.get("order_id", type=int)
+    pct = _amount("fee_pct")
+    pct = pct if pct is not None and 0 <= pct < 100 else None
+    price, fees, payout = sales.amounts(_amount("sale_price"), pct, _amount("fees"), _amount("payout"))
+    if pct is not None and _text("platform"):
+        sales.set_setting(_con(), f"fee_pct:{sales._key(_text('platform'))}", str(pct))
     return {"platform": _text("platform"), "item": _text("item"), "size": _text("size"),
-            "sale_price": _amount("sale_price"), "fees": _amount("fees"), "payout": _amount("payout"),
+            "sale_price": price, "fees": fees, "payout": payout,
             "date": _text("date"), "cost": _amount("cost"), "order_id": order or None}
 
 
