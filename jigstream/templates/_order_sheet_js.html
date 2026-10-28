@@ -114,6 +114,15 @@ body dialog.osheet::-webkit-scrollbar{display:none}
     open(row.dataset.sheet);
   });
   dlg.addEventListener('change', e => {
+    if (e.target.matches('[data-os-kind]')) {
+      const w = wrap.querySelector('[data-os-what]');
+      if (w) w.hidden = e.target.value !== 'other:custom';
+    }
+    if (e.target.matches('[data-os-mlabel]') && e.target.value) {
+      const sel = e.target, order = ['ordered', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled', 'returned'].includes(sel.value);
+      (order ? Promise.resolve(true) : btConfirm('Take this email off the order and teach the AI it is "' + sel.selectedOptions[0].textContent + '"? If it is the only email, the order goes too.'))
+        .then(ok => ok ? sel.form.submit() : sel.value = '');
+    }
     if (!e.target.matches('[data-os-kind]')) return;
     if (e.target.value === 'sale' && wrap.querySelector('[data-os-sale]')) {  // a sale has its own form, with the numbers
       e.target.value = 'order'; e.target.closest('form').hidden = true;
@@ -158,12 +167,33 @@ body dialog.osheet::-webkit-scrollbar{display:none}
       else { s.dataset.copy = text; s.click(); delete s.dataset.copy; }
       return;
     }
+    const mb = e.target.closest('[data-os-mail]');
+    if (mb) {  // the whole email, read from Gmail, under its line
+      const view = mb.closest('li').querySelector('.os-mview');
+      if (!view.hidden) { view.hidden = true; mb.textContent = 'Open'; return; }
+      view.hidden = false; mb.textContent = 'Close'; view.textContent = 'Loading the email from Gmail…';
+      fetch('/inbox/view?account=' + encodeURIComponent(mb.dataset.account) + '&id=' + encodeURIComponent(mb.dataset.osMail))
+        .then(r => r.json()).then(m => {
+          if (m.error) { view.textContent = m.error; return; }
+          view.textContent = (m.subject || '') + '\nFrom: ' + (m.sender || '') + '\n' + (m.date || '') + '\n\n' + (m.body || '');
+        }).catch(() => { view.textContent = "Couldn't load that email. Is BotTrack connected to Gmail?"; });
+      return;
+    }
     if (e.target.closest('[data-os-more]')) {
       wrap.querySelectorAll('.os-tl li[hidden]').forEach(li => li.hidden = false);
       e.target.closest('[data-os-more]').remove(); lastShown();
     }
   });
   dlg.addEventListener('change', e => {
+    if (e.target.matches('[data-os-kind]')) {
+      const w = wrap.querySelector('[data-os-what]');
+      if (w) w.hidden = e.target.value !== 'other:custom';
+    }
+    if (e.target.matches('[data-os-mlabel]') && e.target.value) {
+      const sel = e.target, order = ['ordered', 'in_transit', 'out_for_delivery', 'delivered', 'cancelled', 'returned'].includes(sel.value);
+      (order ? Promise.resolve(true) : btConfirm('Take this email off the order and teach the AI it is "' + sel.selectedOptions[0].textContent + '"? If it is the only email, the order goes too.'))
+        .then(ok => ok ? sel.form.submit() : sel.value = '');
+    }
     if (e.target.name === 'status' && e.target.value === 'not_an_order') {
       btConfirm('Remove this from Orders? Its emails become examples of what is not an order.').then(ok => { if (!ok) e.target.value = ''; });
     }
