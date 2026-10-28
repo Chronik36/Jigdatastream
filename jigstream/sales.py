@@ -10,12 +10,15 @@ is when flips cover the expenses; the goal is break-even plus the profit you wan
 """
 import calendar
 import json
+import logging
 import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from . import budget, ledger
 from .extract import SELL_PLATFORMS
+
+logger = logging.getLogger("jigstream.sales")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sales (
@@ -113,7 +116,8 @@ def save_email(con, email, result):
     """A sale or payout email. A second email about the same sale (sold, then paid out) fills in the first.
     A sale you fixed by hand (an order turned into a sale) keeps your numbers: a later read only fills blanks."""
     ensure(con)
-    existing = con.execute("SELECT * FROM sales WHERE message_id = ? AND source = 'fixed'", (email.message_id,)).fetchone()
+    existing = con.execute("SELECT * FROM sales WHERE message_id = ? AND source IN ('fixed', 'moved')",
+                           (email.message_id,)).fetchone()
     if existing is None and result.get("order_number"):
         existing = next((r for r in con.execute("SELECT * FROM sales WHERE order_number IS NOT NULL")
                          if _key(r["order_number"]) == _key(result["order_number"])
@@ -182,7 +186,44 @@ def amounts(price, pct=None, fees=None, payout=None):
     return price, fees, payout
 
 
-def from_order(con, order, fields):
+def move_misread(con, platforms=None):
+    """Orders that are really sales: an order whose emails come from a selling platform (eBay, Vinted, Mercari,
+    StockX, GOAT, your own) and say you sold it or were paid out becomes a sale, its total as the sale price.
+    Runs at the start of each sync, so ones saved before sales were told apart get fixed too.
+    Returns [(sale row, the order's emails)] for the AI to re-read and learn from."""
+    from .extract import sale_signal
+    from .mail import Email
+    from .orderstore import Store
+    ensure(con)
+    platforms = platforms if platforms is not None else globals()["platforms"](con)
+    store, moved = Store(con), []
+    for r in con.execute("SELECT id, message_ids FROM tracked_orders WHERE COALESCE(shipping_status, '') != 'not_an_order'"
+                         " AND message_ids IS NOT NULL").fetchall():
+        ids = [m for m in json.loads(r["message_ids"] or "[]") if m and not m.startswith("manual:")]
+        if not ids:
+            continue
+        mails = [dict(m) for m in con.execute("SELECT message_id, account, sender, subject, date FROM emails"
+                                              " WHERE message_id IN (%s)" % ",".join("?" * len(ids)), ids)]
+        platform = next((p for m in mails if (p := sale_signal(
+            Email(m["message_id"], m["sender"] or "", m["subject"] or "", m["date"] or "", ""), platforms))), None)
+        if not platform:
+            continue
+        o = store.order(r["id"])
+        if not o:
+            continue
+        first = (o.get("items") or [{}])[0] or {}
+        store.delete_order(r["id"])
+        sid = from_order(con, o, {"platform": platform, "item": first.get("name"), "sale_price": o.get("total")},
+                         source="moved")
+        con.executemany("UPDATE emails SET kind = 'sale' WHERE message_id = ?", [(m,) for m in ids])
+        con.commit()
+        logger.info("order %s (%s %s) was a %s sale; moved to Sales", r["id"], o.get("retailer"), o.get("order_number"),
+                    platform)
+        moved.append((dict(con.execute("SELECT * FROM sales WHERE id = ?", (sid,)).fetchone()), mails))
+    return moved
+
+
+def from_order(con, order, fields, source="fixed"):
     """An order that was really a sale (say an eBay "you sold" email read as a purchase) becomes a sale with the
     numbers you typed. It keeps the order's first email, so the AI's later reads of that email only fill blanks.
     fields: platform, item, size, date, sale_price, fees, payout, fee_pct, order_id (what you bought it with,
@@ -204,10 +245,10 @@ def from_order(con, order, fields):
         cost = r[0] if r else None
     cur = con.execute(
         "INSERT INTO sales (message_id, platform, item, size, sale_price, fees, payout, currency, date, order_number,"
-        " account, order_id, cost, link_manual, counted, source, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'fixed',?)",
+        " account, order_id, cost, link_manual, counted, source, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
         (mid, platform, fields.get("item"), fields.get("size"), price, fees, payout, order.get("currency") or "USD",
          fields.get("date") or order.get("order_date") or (order.get("last_email_date") or "")[:10] or None,
-         order.get("order_number"), order.get("account"), bought, cost, 1 if bought else 0, _now()))
+         order.get("order_number"), order.get("account"), bought, cost, 1 if bought else 0, source, _now()))
     con.commit()
     link_orders(con)
     return cur.lastrowid

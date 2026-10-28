@@ -34,7 +34,7 @@
   <button type="button" class="os-a c-green" data-os-share="{{o.retailer or ''}} order {{o.order_number or ''}}: {{title}}, {{status|status_label}}{% if o.tracking_number %}, {{o.carrier or 'tracking'}} {{o.tracking_number}}{% endif %}{% if url %} {{url}}{% endif %}">{{ os_icon("share") }}Share</button>
   <button type="button" class="os-a c-sky" data-os-toggle="os-edit">{{ os_icon("edit") }}Edit</button>
   <a class="os-a c-green" href="/expenses/in-person?order={{o.id}}#ipsale" title="Sold it in person, like at Tradepost or a show">{{ os_icon("receipt") }}Sold it</a>
-  <button type="button" class="os-a c-green" data-os-toggle="os-sale" title="These emails are a sale you made (an eBay &quot;you sold it&quot;), not something you bought">{{ os_icon("tag") }}It's a sale</button>
+  <button type="button" class="os-a c-green" data-os-toggle="os-sale" title="These emails are a sale you made (eBay, Vinted, Mercari...), not something you bought">{{ os_icon("tag") }}It's a sale</button>
   <button type="button" class="os-a c-orange" data-os-toggle="os-status">{{ os_icon("pen") }}Status</button>
   <form method="post" action="{{url_for('ordersheet.delete', order_id=o.id)}}" class="os-del" data-confirm="Delete this order from BotTrack? Undo brings it back.">
     <button class="os-a c-red">{{ os_icon("trash") }}Delete</button></form>
@@ -64,7 +64,7 @@
   <p class="muted small wide">Your fixes stick through syncs, and the AI re-reads this order's emails to learn from them.</p></form>
 <form id="os-sale" class="os-pop os-editf" method="post" action="{{url_for('ordersheet.as_sale', order_id=o.id)}}" data-os-sale hidden>
   <input type="hidden" name="back" value="1">
-  <p class="muted small wide">This is something you <b>sold</b>, like an eBay "you sold it" email. It moves to Sales on Profit goal with these numbers.</p>
+  <p class="muted small wide">This is something you <b>sold</b>, like a "you sold it" email from eBay, Vinted, Mercari or StockX. It moves to Sales on Profit goal with these numbers.</p>
   <label>Sold on<input name="platform" value="{{sale_platform or 'eBay'}}" list="os-plist" required maxlength="40"></label>
   <label>Sale date<input type="date" name="date" value="{{(o.order_date or (o.last_email_date or ''))[:10]}}"></label>
   <label class="wide">Item<input name="item" value="{{title if o['items'] else ''}}" maxlength="200"></label>
