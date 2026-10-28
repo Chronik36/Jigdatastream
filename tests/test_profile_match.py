@@ -96,7 +96,7 @@ def test_pages(tmp_path):
     c.execute("INSERT INTO checkouts (fingerprint, status, site, profile) VALUES ('g','success','Best Buy','Ana B')")
     c.commit()
     client = create_app(path).test_client()
-    page = client.get("/orders").get_data(as_text=True)
+    page = client.get("/orders?day=all").get_data(as_text=True)
     assert "Ana B" in page and "address + name" in page
     page = client.get("/profile-orders?profile=Ana%20B").get_data(as_text=True)
     assert "Walmart" in page and "Best Buy" in page and "Delivered" in page
