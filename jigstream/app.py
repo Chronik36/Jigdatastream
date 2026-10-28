@@ -863,7 +863,7 @@ def create_app(db_path=None):
         stop_sync(wait=20)
 
     def quick_check():
-        """Read the newest few emails of each inbox (run.py and the Mac app call this every few minutes).
+        """Read the last day of email in each inbox (run.py and the Mac app call this every few minutes).
         Skipped while a full sync runs, which reads them anyway."""
         config = Config.from_env()
         ai = app.config.get("AI_STATE")
@@ -871,7 +871,7 @@ def create_app(db_path=None):
                 or engines.compare_state["running"] or not mail_lock.acquire(blocking=False):
             return None
         try:
-            counts = quick_check_inboxes(config, Store(con()), newest=int(os.environ.get("QUICK_CHECK_NEWEST", 20)),
+            counts = quick_check_inboxes(config, Store(con()), newest=int(os.environ.get("QUICK_CHECK_NEWEST", 0)),
                                          stop=lambda: sync_state["running"])
             if counts["order"] or counts.get("sale") or counts["botting_expense"]:
                 try:
