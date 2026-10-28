@@ -80,7 +80,7 @@ body dialog.osheet::-webkit-scrollbar{display:none}
 (function () {
   const dlg = document.getElementById('osheet'), wrap = document.getElementById('oswrap');
   let current = null;
-  function open(id) {
+  function open(id, then) {
     current = id;
     wrap.innerHTML = '<p class="muted os-load">Loading…</p>';
     if (!dlg.open) dlg.showModal();
@@ -95,6 +95,7 @@ body dialog.osheet::-webkit-scrollbar{display:none}
         }
       });
       lastShown();
+      if (then) then();
       try { history.replaceState(null, '', location.pathname + location.search + '#sheet-' + id); } catch (e) {}
     }).catch(() => { wrap.innerHTML = '<p class="muted os-load">Couldn\'t open that order.</p>'; });
   }
@@ -107,6 +108,17 @@ body dialog.osheet::-webkit-scrollbar{display:none}
     dlg.close(); current = null;
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
   }
+  // "Fix" buttons outside the sheet (Shipping cards): open it straight on the edit form, at that field.
+  function fixAt(field) {
+    const f = document.getElementById('os-edit'); if (!f) return;
+    wrap.querySelectorAll('.os-pop').forEach(p => { p.hidden = p !== f; });
+    const i = f.querySelector('[name="' + field + '"]') || f.querySelector('input:not([type=hidden]),select');
+    f.scrollIntoView({block: 'start'}); if (i) i.focus({preventScroll: true});
+  }
+  document.addEventListener('click', e => {
+    const fx = e.target.closest('[data-sheet-fix]');
+    if (fx && !dlg.contains(fx)) { e.preventDefault(); open(fx.dataset.sheetFix, () => fixAt(fx.dataset.field || 'shipping_address')); }
+  });
   document.addEventListener('click', e => {
     const row = e.target.closest('[data-sheet]');
     if (!row || dlg.contains(row) || e.target.closest('a,button,select,input,textarea,label,form,summary,details')) return;
@@ -157,7 +169,35 @@ body dialog.osheet::-webkit-scrollbar{display:none}
       wrap.querySelectorAll('.os-pop').forEach(p => { if (p !== f) p.hidden = true; });
       f.hidden = !f.hidden;
       if (!f.hidden && f.matches('[data-os-sale]')) saleFill(f, 'price');
-      if (!f.hidden) { f.scrollIntoView({block: 'nearest', behavior: 'smooth'}); const i = f.querySelector('input:not([type=hidden]),select'); if (i) i.focus({preventScroll: true}); }
+      if (!f.hidden) {
+        f.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+        const i = (t.dataset.osFocus && f.querySelector('[name="' + t.dataset.osFocus + '"]')) || f.querySelector('input:not([type=hidden]),select');
+        if (i) i.focus({preventScroll: true});
+      }
+      return;
+    }
+    const src = e.target.closest('[data-os-src]');
+    if (src) {  // which email each detail was read from, with the words around it
+      src.disabled = true; src.lastChild.textContent = 'Reading its emails…';
+      fetch('/orders/' + src.dataset.osSrc + '/sources').then(r => r.json()).then(d => {
+        src.lastChild.textContent = 'Where from?'; src.disabled = false;
+        if (d.error) return;
+        const esc = t => String(t || '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
+        wrap.querySelectorAll('[data-src]').forEach(dd => {
+          dd.querySelectorAll('.os-src,.muted.small').forEach(x => { if (x.classList.contains('os-src') || !dd.querySelector('a,span[data-copy],b')) x.remove(); });
+          const hits = (d.fields || {})[dd.dataset.src] || [], el = document.createElement('span');
+          el.className = 'os-src' + (hits.length ? '' : ' none');
+          el.innerHTML = hits.length ? hits.slice(0, 2).map(h => 'from <b>' + esc(h.subject) + '</b> ' + esc(h.date) + (h.snippet ? '<q data-private>' + esc(h.snippet) + '</q>' : '')).join('')
+            : (d.opened ? 'Not in its emails: typed by hand, from a profile, or a guess. Tap Fix if it\'s wrong.' : "Couldn't open its emails (is Gmail connected?).");
+          dd.appendChild(el);
+        });
+      }).catch(() => { src.lastChild.textContent = 'Where from?'; src.disabled = false; });
+      return;
+    }
+    const ua = e.target.closest('[data-os-useaddr]');
+    if (ua) {
+      const f = ua.closest('form'), map = JSON.parse((document.getElementById('os-paddr') || {}).textContent || '{}');
+      const a = map[f.querySelector('[data-os-profile]').value]; if (a) f.querySelector('[name=shipping_address]').value = a;
       return;
     }
     const s = e.target.closest('[data-os-share]');
@@ -194,8 +234,15 @@ body dialog.osheet::-webkit-scrollbar{display:none}
       (order ? Promise.resolve(true) : btConfirm('Take this email off the order and teach the AI it is "' + sel.selectedOptions[0].textContent + '"? If it is the only email, the order goes too.'))
         .then(ok => ok ? sel.form.submit() : sel.value = '');
     }
-    if (e.target.name === 'status' && e.target.value === 'not_an_order') {
-      btConfirm('Remove this from Orders? Its emails become examples of what is not an order.').then(ok => { if (!ok) e.target.value = ''; });
+    if (e.target.name === 'status' && ['not_an_order', 'expense', 'sale'].includes(e.target.value)) {
+      const where = {not_an_order: 'Remove this from Orders? Its emails become examples of what is not an order.',
+                     expense: 'Move this to Expenses as a botting expense? The AI re-reads its emails as one.',
+                     sale: 'Move this to Sales? The AI re-reads its emails as a sale.'}[e.target.value];
+      btConfirm(where).then(ok => { if (!ok) e.target.value = e.target.form.matches('#os-edit') ? (e.target.querySelector('[selected]') || {}).value || '' : ''; });
+    }
+    if (e.target.matches('[data-os-profile]')) {  // a profile picked: offer its address
+      const map = JSON.parse((document.getElementById('os-paddr') || {}).textContent || '{}'), row = wrap.querySelector('[data-os-useaddr-row]');
+      if (row) { row.hidden = !map[e.target.value]; row.querySelector('button').textContent = 'Use ' + e.target.value + "'s address"; }
     }
   });
   dlg.addEventListener('cancel', e => { e.preventDefault(); close(); });

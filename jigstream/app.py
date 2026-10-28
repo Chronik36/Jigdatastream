@@ -23,9 +23,13 @@ from .sync import find_sales, quick_check as quick_check_inboxes, run_sync, summ
 logger = logging.getLogger("jigstream.app")
 
 # Statuses offered in the Orders dropdown, with how each status is shown.
-STATUS_CHOICES = ["ordered", "in_transit", "out_for_delivery", "delivered", "cancelled", "returned", "not_an_order"]
+# Every status picker: the order stages, then what else its emails can be (each moves the order off Orders).
+STATUS_CHOICES = ["ordered", "in_transit", "out_for_delivery", "delivered", "cancelled", "returned", "not_an_order",
+                  "expense", "sale"]
+MOVES = ("not_an_order", "expense", "sale")
 STATUS_LABELS = {"shipped": "In transit", "in_transit": "In transit", "out_for_delivery": "Out for delivery",
-                 "not_an_order": "Not an order (remove)"}
+                 "not_an_order": "Not an order (remove)", "expense": "Botting expense (move to Expenses)",
+                 "sale": "A sale / payout (move to Sales)"}
 # Any carrier, when the email didn't say which: a free page that detects the carrier from the number.
 ANY_CARRIER_URL = "https://parcelsapp.com/en/tracking/{}"
 
@@ -477,6 +481,9 @@ def create_app(db_path=None):
                                  daemon=True).start()
             flash(f"Removed {order['retailer'] or 'that order'} {order['order_number'] or ''}. Its emails are saved as "
                   "\"not an order\" examples so the AI learns to skip emails like it.")
+            return redirect(back or url_for("orders"))
+        if order and status in ("expense", "sale"):
+            flash(ordersheet.move_out(store, order, status))
             return redirect(back or url_for("orders"))
         if not order or status not in STATUSES:
             flash("Couldn't save that status.")
