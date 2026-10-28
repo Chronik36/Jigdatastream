@@ -852,7 +852,7 @@ def create_app(db_path=None):
                 or engines.compare_state["running"] or not mail_lock.acquire(blocking=False):
             return None
         try:
-            counts = quick_check_inboxes(config, Store(con()), newest=int(os.environ.get("QUICK_CHECK_NEWEST", 5)),
+            counts = quick_check_inboxes(config, Store(con()), newest=int(os.environ.get("QUICK_CHECK_NEWEST", 20)),
                                          stop=lambda: sync_state["running"])
             if counts["order"] or counts.get("sale") or counts["botting_expense"]:
                 try:
