@@ -280,6 +280,7 @@ body .fl{color:#7884b3}
 </header>
 <main>
 {% if key_asks and not path.startswith('/keys') %}<div class="banner"><span>{{key_asks}} {{'person is' if key_asks == 1 else 'people are'}} asking for a BotTrack key</span><span class="grow" style="flex:1"></span><a class="btn" href="/keys#requests">See requests</a></div>{% endif %}
+{% if filevault_banner %}<div class="banner"><span>FileVault is off on this Mac, so your inbox passwords and cards aren't protected if it's lost or stolen.</span><span class="grow" style="flex:1"></span><a class="btn" href="/filevault">Turn it on</a></div>{% endif %}
 {% if key_grace and not path.startswith('/activate') %}<div class="banner"><span>BotTrack now needs a key for your Gmail. You can keep using it until {{key_grace}}.</span><span class="grow" style="flex:1"></span><a class="btn" href="/activate">Enter key</a></div>{% endif %}
 {% if update and update.available and not path.startswith('/setup') %}<div class="banner"><span>A new version of BotTrack is ready{% if update.message %}: <span class="muted">{{update.message}}</span>{% endif %}</span><span class="grow" style="flex:1"></span>
 <form method="post" action="{{update_url}}" data-loader="Installing the update"><button>Update now</button></form></div>
