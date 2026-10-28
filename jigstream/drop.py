@@ -183,11 +183,116 @@ def rows(con, matched=None, links=None):
         c["proxy_group"], c["proxy"] = proxy_of(r["raw"])
         c.pop("raw", None)
         c["day"], c["outcome"] = day_of(c["ts"]), outcome(c)
-        c["product"] = parsers.tidy(c["product"])  # for showing; the stored row is untouched
+        c["product"], c["size"] = shown_product(c["product"]), shown_size(c["size"])  # the stored row is untouched
+        c["order_shown"], c["order_link"] = shown_order(c["order_number"])
         c["where"] = homes.get(c["profile"]) or order_address(c["order"])
         out.append(c)
     label_addresses(out)
     return out
+
+
+MD_LINK = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
+PLACEHOLDER = {"default", "default title", "n/a", "na", "none", "-", "one size"}
+
+
+def shown_product(s):
+    """A bot's product as people should read it: no markdown, no list dashes ("- 1x Booster Bundle - Default"),
+    no "Default" variant tacked on."""
+    parts = []
+    for line in re.split(r"\n|,\s*(?=[-•*]\s)", parsers.tidy(s)):
+        line = re.sub(r"^[\s\-•*·]+", "", line).strip()
+        line = re.sub(r"\s+[-·]\s+(?:default(?: title)?)$", "", line, flags=re.I).strip()
+        if line:
+            parts.append(line)
+    return ", ".join(parts)
+
+
+def shown_size(s):
+    s = parsers.tidy(s)
+    return "" if s.lower() in PLACEHOLDER else s
+
+
+def shown_order(s):
+    """(the order number, a link to the order on the store) from what the bot sent, which can be a markdown link."""
+    m = MD_LINK.search(s or "")
+    return (m.group(1).strip(), m.group(2)) if m else (parsers.tidy(s), None)
+
+
+def sources(con, checkout_id):
+    """Where a checkout on the Drops page came from: the bot's webhook (and its follow-up), the order emails it was
+    matched to, emails whose subject carries its order number, and, while it has no order, the store's other emails
+    from that day, so the right one can be found and labelled. None when there's no such checkout."""
+    c = next((r for r in stuck.cross_reference(con) if r["id"] == checkout_id), None)
+    if c is None:
+        row = con.execute("SELECT * FROM checkouts WHERE id = ?", (checkout_id,)).fetchone()
+        if row is None:
+            return None
+        c = dict(row, order=None, bot_update=None, matched_on=None)
+    hook = webhook(c.get("raw"))
+    update = c.get("bot_update")
+    cols = "message_id, account, sender, subject, date"
+    order = c.get("order")
+    ids = (order or {}).get("message_ids") or []
+    if isinstance(ids, str):
+        ids = json.loads(ids or "[]")
+    seen = set(ids)
+    mails = [dict(r) for r in con.execute(
+        f"SELECT {cols} FROM emails WHERE message_id IN ({','.join('?' * len(ids))}) ORDER BY date", ids)] if ids else []
+    number, _ = shown_order(c.get("order_number"))
+    by_number = []
+    if len(stuck._number(number)) >= 5:
+        for r in con.execute(f"SELECT {cols} FROM emails WHERE subject LIKE ? ORDER BY date LIMIT 20", (f"%{number}%",)):
+            if r["message_id"] not in seen:
+                seen.add(r["message_id"])
+                by_number.append(dict(r))
+    same_day = []
+    key, day = stuck.site_key(c.get("site")), day_of(c.get("ts"))
+    if not order and key and day:
+        word = re.split(r"[^a-z0-9]", key)[0]
+        for r in con.execute(f"SELECT {cols} FROM emails WHERE substr(date, 1, 10) BETWEEN date(?, '-1 day') AND"
+                             " date(?, '+2 day') AND (lower(sender) LIKE ? OR lower(subject) LIKE ?) ORDER BY date"
+                             " LIMIT 30", (day, day, f"%{word}%", f"%{word}%")):
+            if r["message_id"] not in seen:
+                seen.add(r["message_id"])
+                same_day.append(dict(r))
+    return {"checkout": dict(c, raw=None), "webhook": hook, "update": dict(update, hook=webhook(update.get("raw")))
+            if update else None, "order": order, "mails": mails, "by_number": by_number, "same_day": same_day,
+            "number": number}
+
+
+LOGIN = re.compile(r"(?:\S+:\S+@)?(\b(?:\d{1,3}(?:\.\d{1,3}){3}|[a-z0-9-]+(?:\.[a-z0-9-]+)+):\d{2,5})(?::[^:\s|`]+:[^:\s|`]+)?",
+                   re.I)
+
+
+def scrub(text):
+    """Any proxy login written into a webhook's text, cut to its host and port."""
+    return LOGIN.sub(r"\1", text or "")
+
+
+def webhook(raw):
+    """The bot's Discord embed as lines to show: {title, description, color, fields: [(name, value)], footer}.
+    Proxy logins are cut to host and port, as everywhere else."""
+    try:
+        data = json.loads(raw or "{}")
+    except ValueError:
+        return None
+    e = data.get("embed") if isinstance(data, dict) else None
+    if not isinstance(e, dict):
+        return None
+    fields = []
+    for f in e.get("fields") or []:
+        name, value = parsers.tidy(f.get("name")), parsers.tidy(f.get("value"))
+        if name.lower().rstrip(":") in PROXY_FIELDS + GROUP_FIELDS and (":" in value or "@" in value):
+            value = proxy_host(value) or value
+        value = scrub(value)
+        if name.lower().rstrip(":") in ("password", "pass", "card", "card number", "cvv"):
+            continue
+        fields.append((name, value.strip("|` ")))
+    color = e.get("color")
+    return {"sender": data.get("payload_username") or "", "title": parsers.tidy(e.get("title")),
+            "description": scrub(parsers.tidy(e.get("description"))), "fields": fields,
+            "footer": parsers.tidy((e.get("footer") or {}).get("text")),
+            "color": f"#{int(color):06x}" if isinstance(color, int) else None}
 
 
 def tally(items):

@@ -333,3 +333,36 @@ def test_things_to_train_teaches_a_sender_and_a_kind_of_message(tmp_path):
     assert len(drop.rows(c)) == 1  # task logs aren't checkout attempts
     parsers.ingest(c, json.dumps([task(4)]))  # a new one is placed by what was taught
     assert c.execute("SELECT bot, status FROM checkouts WHERE ts LIKE '2026-10-04%'").fetchone()[:] == ("Cyber", "ignored")
+
+
+def test_checkout_shows_where_it_came_from(tmp_path):
+    c, store = setup(tmp_path)
+    # Pokemon Center's webhook sends the order number as a markdown link to the order.
+    link = "[P0041944488](https://www.pokemoncenter.com/orders/P0041944488?postalCode=12953)"
+    hook(c, "a", "Pokemon Center US", "Ana", "ISP A", "isp.example.net:8000:jake:s3cret", number=link)
+    c.execute("UPDATE checkouts SET product = ?, size = 'Default'",
+              ("- 1x Pokémon TCG: Booster Bundle (6 Packs) - Default",))
+    c.commit()
+    mail(store, "a1", "Pokemon Center", "ordered", "2026-10-20T15:05:00+00:00", "P0041944488")
+    hook(c, "b", "Pokemon Center US", "Ana", "ISP A", "isp.example.net:8000", number="P0099")
+    c.execute("INSERT INTO emails (message_id, account, sender, subject, date) VALUES "
+              "('<pc2@x>', 'inbox@gmail.com', 'Pokemon Center <orders@pokemoncenter.com>', 'Thanks for your order',"
+              " '2026-10-20T16:00:00+00:00')")
+    c.commit()
+    rows = {r["fingerprint"]: r for r in drop.rows(Store(c).db)}
+    a = next(r for r in rows.values() if r["order_shown"] == "P0041944488")
+    assert a["outcome"] == "confirmed" and a["order"]  # the markdown number still matches its order email
+    assert a["product"] == "1x Pokémon TCG: Booster Bundle (6 Packs)" and a["size"] == ""
+    assert a["order_link"].startswith("https://www.pokemoncenter.com/orders/")
+    client = create_app(str(tmp_path / "m.db")).test_client()
+    day = a["day"]
+    page = client.get(f"/drop?day={day}").get_data(as_text=True)
+    assert f'data-sources="{a["id"]}"' in page and "Where it came from" in page and "](https" not in page
+    got = client.get(f"/drop/{a['id']}/sources").get_data(as_text=True)
+    assert "Hayha webhook" in got and "Order emails" in got and "Order ordered" in got and 'data-dmail="&lt;a1@x&gt;"' in got
+    assert f'data-sheet="{a["order"]["id"]}"' in got and "isp.example.net:8000" in got
+    assert "s3cret" not in got and "jake" not in got
+    b = next(r for r in rows.values() if r["order_shown"] == "P0099")
+    got = client.get(f"/drop/{b['id']}/sources").get_data(as_text=True)
+    assert "No order email is matched" in got and "Thanks for your order" in got and 'action="/inbox/label"' in got
+    assert client.get("/drop/9999/sources").status_code == 404
