@@ -121,3 +121,36 @@ def test_relay_adds_the_proxy_login():
     assert c.recv(100).startswith(b"HTTP/1.1 200")
     relay.close()
     assert got[0].startswith(b"CONNECT www.target.com:443 HTTP/1.1\r\nProxy-Authorization: Basic Ym9iOnB3\r\n")
+
+
+
+def test_phone_browsers_open_in_the_android_app(tmp_path, monkeypatch):
+    from test_mobile import PASSWORD, phone, sign_in
+    from werkzeug.security import generate_password_hash
+    import os
+    import jigstream.app as appmod
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(os, "environ", {k: v for k, v in os.environ.items() if not k.startswith(("PHONE", "GMAIL"))})
+    os.environ.update(PHONE_ACCESS="1", PHONE_EMAIL="me@example.com", PHONE_PASSWORD_HASH=generate_password_hash(PASSWORD),
+                      BOTTRACK_CARD_KEY_FILE=str(tmp_path / "key"))
+    monkeypatch.setattr(appmod, "installed_models", lambda url: [])
+    mobile.failures.clear()
+    path = str(tmp_path / "p.db")
+    app = appmod.create_app(path)
+    con = db.connect(path)
+    proxies.add_list(con, "1.1.1.1:8000:u1:p1", "Acme", "Resi")
+    storeaccounts.save(con, "Target", "jake@x.com", "secret-pw")
+    browsers.add(con, 1, "Target", group="Resi", account_id=1)
+    c = phone(app)
+    sign_in(c)
+    c.environ_base["HTTP_USER_AGENT"] = "Mozilla/5.0 (Linux; Android 14) BotTrackApp/7"
+    page = c.get("/browsers").get_data(as_text=True)
+    assert 'href="bottrack://browse?id=1"' in page and "+ New" in page and "Add and open" in page
+    assert 'href="/browsers"' in page and "Browsers" in page  # in the tab bar too
+    cfg = c.get("/browsers/1/config.json").get_json()
+    assert cfg["proxy"]["host"] == "1.1.1.1" and cfg["proxy"]["password"] == "p1" and cfg["url"] == "https://www.target.com"
+    assert cfg["account"] == {"site": "Target", "email": "jake@x.com", "username": None}
+    assert "secret-pw" not in str(cfg)  # account passwords stay on the computer
+    c.environ_base["HTTP_USER_AGENT"] = "Mozilla/5.0 (iPhone)"
+    page = c.get("/browsers").get_data(as_text=True)
+    assert 'aria-disabled=true' in page and "Android app (version 7 or newer)" in page
