@@ -60,7 +60,9 @@ If one is wrong, pick Good, Bad or Not an order next to it: it sticks, and when 
 <td>{{ verdict(c) }}</td>
 <td><a href="{{ link(by='group', name=c.proxy_group or 'No group') }}">{{c.proxy_group or "-"}}</a></td><td class="muted"><a class="muted" href="{{ link(by='proxy', name=c.proxy or 'No proxy') }}">{{c.proxy or "-"}}</a></td><td><a href="{{ link(by='profile', name=c.profile or 'No profile') }}"><b>{{c.profile or "-"}}</b></a>{% if c.address %}<div style="font-size:12px"><a class="muted" href="{{ link(by='address', name=c.address) }}" title="Every checkout to this address, whatever the jig">{{c.address}}</a></div>{% endif %}{% if c.email %}<div class="muted" style="font-size:12px">{{c.email}}</div>{% endif %}</td>
 <td class="muted" style="white-space:nowrap">{{(c.ts or "")[:10] if not day}} {{(c.ts or "")[11:16]}}</td><td>{{c.bot or "-"}}</td>
-<td>{{c.product or "-"}}{% if c.size %} <span class="muted">· {{c.size}}</span>{% endif %}{% if c.order_number %}<div class="muted"><span data-copy>{{c.order_number}}</span></div>{% endif %}</td></tr>{% endfor %}
+<td>{{c.product or "-"}}{% if c.size %} <span class="muted">· {{c.size}}</span>{% endif %}{% if c.order_shown %}<div class="muted"><span data-copy>{{c.order_shown}}</span>{% if c.order_link %} <a class="muted" href="{{c.order_link}}" target="_blank" rel="noopener" title="The order on the store's site">↗</a>{% endif %}</div>{% endif %}
+<button type="button" class="ds-btn" data-sources="{{c.id}}" aria-expanded="false">Where it came from</button></td></tr>
+<tr class="ds-row" hidden><td colspan="8"><div class="ds-box"></div></td></tr>{% endfor %}
 </tbody></table></section>{% endfor %}{% else %}<p class="muted">No checkouts here.</p>{% endfor %}
 <h3>Best {{('on ' ~ day) if day}}{{(' for ' ~ name) if by}}</h3>
 {% else %}
@@ -81,4 +83,46 @@ If one is wrong, pick Good, Bad or Not an order next to it: it sticks, and when 
 <div style="display:flex;flex-wrap:wrap;gap:14px;margin:14px 0">
 {{ board("Proxy groups", r.groups, "Group", "group") }}{{ board("Proxies", r.proxies, "Proxy", "proxy") }}
 {{ board("Profiles", r.profiles, "Profile", "profile") }}{{ board("Addresses", r.addresses, "Address (jig removed)", "address") }}{{ board("Best proxy + profile", r.combos, "Proxy + profile") }}</div>
+<style>
+.ds-btn{margin:8px 0 0;padding:5px 12px;font-size:12px}
+.ds-row>td{border-left:3px solid var(--accent)}
+.ds{display:flex;flex-direction:column;gap:10px;min-width:0;overflow-wrap:anywhere;text-align:left}
+.ds-hook{border:1px solid var(--line-2);border-left:4px solid var(--hc,var(--accent));border-radius:12px;padding:10px 12px;background:var(--surface-2);display:flex;flex-direction:column;gap:6px}
+.ds-hh{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}.ds-ht{font-weight:600}.ds-hd{white-space:pre-wrap;font-size:13px}
+.ds-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:6px 14px;margin:0}
+.ds-kv div{min-width:0}.ds-kv dt{font-size:11px;color:var(--muted)}.ds-kv dd{margin:0;font-size:13px}
+.ds-h{margin:6px 0 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ds-sheet{margin:0 0 0 auto;padding:5px 12px;font-size:12px}
+.ds-mails{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+.ds-mails li{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.ds-mtop{display:flex;gap:10px;align-items:flex-start}.ds-msubj{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ds-mopen{padding:5px 12px;font-size:12px;flex:none;margin:0}.ds-mlabel{margin:0}.ds-mlabel select{width:100%;margin:0;font-size:12.5px;padding:6px 8px}
+.ds-mview{white-space:pre-wrap;font-size:12.5px;line-height:1.5;border-top:1px solid var(--line);padding-top:8px}
+</style>
+<script>
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-sources]');
+  if (b) {  // the webhook and emails behind a checkout, under its row
+    var row = b.closest('tr').nextElementSibling, box = row.querySelector('.ds-box');
+    var open = row.hidden;
+    row.hidden = !open; b.setAttribute('aria-expanded', open); b.textContent = open ? 'Hide where it came from' : 'Where it came from';
+    if (open && !box.dataset.loaded) {
+      box.textContent = 'Loading…';
+      fetch('/drop/' + b.dataset.sources + '/sources').then(function (r) { return r.text(); })
+        .then(function (h) { box.innerHTML = h; box.dataset.loaded = '1'; })
+        .catch(function () { box.textContent = "Couldn't load it. Is BotTrack still running?"; });
+    }
+    return;
+  }
+  var m = e.target.closest('[data-dmail]');
+  if (m) {  // the whole email, read from Gmail, under its line
+    var view = m.closest('li').querySelector('.ds-mview');
+    if (!view.hidden) { view.hidden = true; m.textContent = 'Open'; return; }
+    view.hidden = false; m.textContent = 'Close'; view.textContent = 'Loading the email from Gmail…';
+    fetch('/inbox/view?account=' + encodeURIComponent(m.dataset.account) + '&id=' + encodeURIComponent(m.dataset.dmail))
+      .then(function (r) { return r.json(); }).then(function (x) {
+        view.textContent = x.error || ((x.subject || '') + '\nFrom: ' + (x.sender || '') + '\n' + (x.date || '') + '\n\n' + (x.body || ''));
+      }).catch(function () { view.textContent = "Couldn't load that email. Is BotTrack connected to Gmail?"; });
+  }
+});
+</script>
 {% endblock %}

@@ -305,6 +305,13 @@ def create_app(db_path=None):
     def card_check_page():
         return render_template("cardcheck.html", r=cardcheck.report(Store(con()).db), minutes=cardcheck.LINK_MINUTES)
 
+    @app.get("/drop/<int:checkout_id>/sources")
+    def drop_sources(checkout_id):
+        found = drop.sources(Store(con()).db, checkout_id)
+        if found is None:
+            return "<p class='muted'>That checkout is gone.</p>", 404
+        return render_template("_drop_sources.html", s=found, labels=inbox.LABELS)
+
     @app.post("/drop/<int:checkout_id>/verdict")
     def drop_verdict(checkout_id):
         verdict = request.form.get("verdict", "")
