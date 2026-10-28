@@ -26,7 +26,7 @@ tr.pg-more{display:none !important}
 .pg-btn{display:block;width:100%;margin:-12px 0 24px}
 </style>
 <nav class="ptabs" aria-label="Main pages">
-{% for href, label, ic in [("/", "Home", "dash"), ("/orders", "Orders", "orders"), ("/expenses", "Expenses", "expenses"), ("/drop", "Drops", "drop")] %}
+{% for href, label, ic in [("/", "Home", "dash"), ("/orders", "Orders", "orders"), ("/expenses", "Expenses", "expenses"), ("/browsers", "Browsers", "globe"), ("/drop", "Drops", "drop")] %}
 <a href="{{href}}" class="{{'on' if (path == href if href == '/' else path.startswith(href))}}">{{ icon(ic) }}{{label}}</a>{% endfor %}
 <button type="button" onclick="document.documentElement.classList.toggle('open')">{{ icon("menu") }}More</button>
 </nav>

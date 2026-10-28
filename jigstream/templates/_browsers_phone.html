@@ -1,0 +1,90 @@
+{# Browsers on a phone: cards that open in the Android app (bottrack://browse), each through its own proxy. #}
+{% set in_app = app_version and app_version >= 7 %}
+<style>
+.bp-head{display:flex;align-items:center;gap:12px;margin:4px 0 6px}.bp-head h2{margin:0;flex:1;font-size:26px;letter-spacing:-.02em}
+.bp-new{height:44px;padding:0 18px;border-radius:22px;font-size:15px;font-weight:600;margin:0}
+.bp-lead{margin:0 0 14px;font-size:14px;line-height:1.45;color:var(--muted)}
+.bp-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.bp-chip{height:36px;display:inline-flex;align-items:center;padding:0 14px;border-radius:18px;border:1px solid var(--line-2);color:var(--text);font-size:13px;font-weight:500}
+.bp-chip.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.bp-list{display:flex;flex-direction:column;gap:12px}
+.bp-card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.bp-card.new{border-color:var(--accent)}
+.bp-top{display:flex;align-items:center;gap:12px;min-width:0}
+.bp-ico{width:44px;height:44px;border-radius:14px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:var(--accent);flex:none}
+.bp-name{font-size:16px;font-weight:600;overflow-wrap:anywhere}.bp-sub{font-size:13px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+.bp-state{margin-left:auto;font-size:13px;color:var(--muted);flex:none}
+.bp-row{display:flex;gap:8px;align-items:stretch}.bp-row form{margin:0;display:flex}
+.bp-open{flex:1;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;background:var(--accent);color:#04202a;border:0}
+.bp-open[aria-disabled=true]{background:var(--surface-2);color:var(--muted);pointer-events:none}
+.bp-tog{height:44px;padding:0 12px;border-radius:14px;border:1px solid var(--line-2);display:flex;align-items:center;gap:8px;font-size:13px;margin:0;cursor:pointer}
+.bp-tog input{width:18px;height:18px;margin:0;accent-color:var(--accent)}
+.bp-edit{height:44px;padding:0 14px;border-radius:14px;margin:0}
+.bp-note{font-size:13px;color:var(--muted);margin:12px 0 0}
+dialog.bp-sheet{margin:auto 0 0;width:100%;max-width:100%;border-radius:28px 28px 0 0;padding:0;border:0;border-top:1px solid var(--line-2)}
+.bp-sheet form{display:flex;flex-direction:column;gap:16px;padding:10px 20px 28px;margin:0}
+.bp-grab{width:40px;height:5px;border-radius:3px;background:var(--line-2);align-self:center}
+.bp-sheet h3{margin:0;font-size:22px;flex:1;text-transform:none;letter-spacing:0;color:var(--text)}.bp-sheet .x{width:44px;height:44px;border-radius:22px}
+.bp-sheet label.f{display:flex;flex-direction:column;gap:8px;font-size:13px;font-weight:600;color:var(--muted)}
+.bp-sheet input:not([type]),.bp-sheet select{height:50px;border-radius:14px;font-size:16px;margin:0;width:100%;color:var(--text)}
+.bp-pick{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.bp-pick label{position:relative;cursor:pointer}.bp-pick input{position:absolute;opacity:0;pointer-events:none}
+.bp-pick span{display:block;min-height:64px;box-sizing:border-box;padding:12px 14px;border-radius:14px;border:1px solid var(--line-2);font-size:15px;font-weight:600;color:var(--text)}
+.bp-pick small{display:block;font-weight:400;font-size:12px;color:var(--muted);margin-top:2px}
+.bp-pick input:checked+span{border-color:var(--accent);background:var(--accent-soft)}
+.bp-switch{display:flex;align-items:center;gap:12px;min-height:56px;padding:0 14px;border-radius:14px;border:1px solid var(--line-2);cursor:pointer}
+.bp-switch b{display:block;font-size:15px}.bp-switch small{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.bp-switch input{width:22px;height:22px;margin:0 0 0 auto;accent-color:var(--accent)}
+.bp-go{height:54px;border-radius:16px;font-size:16px;font-weight:700;margin:0;width:100%;justify-content:center;text-align:center}
+</style>
+{% set show = request.args.get("show", "") %}
+{% set shown = browsers if not show else (browsers|selectattr("keep_session")|list if show == "saved" else browsers|rejectattr("keep_session")|list) %}
+<div class="bp-head"><h2>Browsers</h2><button type="button" class="bp-new" onclick="bpNew.showModal()">+ New</button></div>
+<p class="bp-lead">Each one goes through its own proxy and keeps its own sign-ins.</p>
+<div class="bp-chips">
+<a class="bp-chip{{' on' if not show}}" href="/browsers">All {{browsers|length}}</a>
+<a class="bp-chip{{' on' if show == 'saved'}}" href="/browsers?show=saved">Saved {{browsers|selectattr("keep_session")|list|length}}</a>
+<a class="bp-chip{{' on' if show == 'fresh'}}" href="/browsers?show=fresh">Fresh {{browsers|rejectattr("keep_session")|list|length}}</a>
+</div>
+<div class="bp-list">
+{% for b in shown %}<article class="bp-card{{' new' if b.id == open_id}}">
+<div class="bp-top"><div class="bp-ico" aria-hidden="true">{{(b.site or b.name or "B")[:1]|upper}}</div>
+<div style="min-width:0"><div class="bp-name">{{b.name}}</div>
+<div class="bp-sub">{% if b.proxy %}{{b.grp or "Proxy"}} · {{b.host}}{% else %}No proxy · your own connection{% endif %}</div></div>
+<span class="bp-state">{{"Saved" if b.keep_session else "Fresh"}}</span></div>
+<div class="bp-row">
+<a class="bp-open" href="bottrack://browse?id={{b.id}}" {{'aria-disabled=true' if not in_app}}>Open</a>
+<form method="post" action="/browsers/{{b.id}}/keep"><label class="bp-tog"><input type="checkbox" name="keep" value="1" {{"checked" if b.keep_session}} onchange="this.form.requestSubmit()"> Save session</label></form>
+</div></article>
+{% else %}<article class="bp-card"><p style="margin:0">No browsers yet. Tap <b>+ New</b> to add one with a proxy.</p></article>{% endfor %}
+</div>
+{% if not in_app %}<p class="bp-note">Browsers open in the BotTrack Android app (version 7 or newer). Update it from App &amp; updates. On iPhone they open on your computer instead.</p>{% endif %}
+
+<dialog class="bp-sheet" id="bpNew"><form method="post" action="/browsers/add">
+<div class="bp-grab"></div>
+<div style="display:flex;align-items:center"><h3>New browser</h3><button type="button" class="x ghost" aria-label="Close" onclick="bpNew.close()">×</button></div>
+<label class="f">Name<input name="name" placeholder="e.g. Target"></label>
+<div class="f" style="display:flex;flex-direction:column;gap:8px"><span style="font-size:13px;font-weight:600;color:var(--muted)">Proxy</span>
+<div class="bp-pick">
+{% for g, ps in groups[:3] %}<label><input type="radio" name="pick" value="group:{{g}}" {{"checked" if loop.first}}><span>{{g}}<small>next free of {{ps|length}}</small></span></label>{% endfor %}
+<label><input type="radio" name="pick" value="one" {{"checked" if not groups}}><span>Pick one<small>choose from a list</small></span></label>
+<label><input type="radio" name="pick" value="none"><span>No proxy<small>your own connection</small></span></label>
+</div>
+<select name="proxy_id" id="bpOne" hidden aria-label="Proxy"><option value="">Pick a proxy…</option>{% for g, ps in groups %}<optgroup label="{{g}}">{% for p in ps %}<option value="{{p.id}}">{{p.label}}</option>{% endfor %}</optgroup>{% endfor %}</select>
+<input type="hidden" name="group" id="bpGroup" value="{{groups[0][0] if groups else ''}}">
+</div>
+<label class="f">Account<select name="account_id"><option value="">No account</option>{% for a in accounts %}<option value="{{a.id}}">{{a.site}} · {{a.email}}</option>{% endfor %}</select></label>
+<label class="bp-switch"><span><b>Save session</b><small>Stay signed in after you close it</small></span><input type="checkbox" name="keep" value="1" checked></label>
+<input type="hidden" name="open" value="{{'1' if in_app else ''}}">
+<button class="bp-go">{{"Add and open" if in_app else "Add"}}</button>
+</form></dialog>
+<script>
+const bpNew = document.getElementById('bpNew');
+bpNew.addEventListener('change', e => {
+  if (e.target.name !== 'pick') return;
+  const v = e.target.value, one = document.getElementById('bpOne'), grp = document.getElementById('bpGroup');
+  one.hidden = v !== 'one'; if (v !== 'one') one.value = '';
+  grp.value = v.startsWith('group:') ? v.slice(6) : '';
+});
+{% if open_id and in_app %}location.href = 'bottrack://browse?id={{open_id}}';{% endif %}
+</script>

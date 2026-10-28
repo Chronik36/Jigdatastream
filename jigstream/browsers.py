@@ -9,6 +9,7 @@ Chrome can't sign in to a proxy by itself (no user:pass in --proxy-server), so e
 on this computer (127.0.0.1) that adds the proxy's login and passes everything on to it. Only HTTP proxies.
 """
 import base64
+import json
 import logging
 import os
 import select
@@ -309,6 +310,7 @@ def page():
     c = _con()
     items = rows(c)
     return render_template("browsers.html", browsers=items, chrome=find_chrome(c), app_path=app_path(c),
+                           open_id=request.args.get("open", type=int),
                            groups=[(g["name"], g["proxies"]) for g in proxies.groups(c)],
                            accounts=storeaccounts.rows(c), open_n=sum(b["running"] for b in items))
 
@@ -319,8 +321,32 @@ def add_page():
     ids = add(c, _int("count") or 1, (request.form.get("name") or "").strip() or None, _int("proxy_id"),
               request.form.get("group") or None, _int("account_id"), (request.form.get("start_url") or "").strip() or None,
               request.form.get("keep") == "1")
+    if request.form.get("open") == "1" and ids:  # the phone's "Add and open": the app opens it on arrival
+        return redirect(url_for("browsers.page", open=ids[0]))
     flash(f"Added {len(ids)} browser{'' if len(ids) == 1 else 's'}.")
     return _back()
+
+
+@bp.get("/browsers/<int:bid>/config.json")
+def config(bid):
+    """What the Android app needs to open a browser itself: its proxy (with the login, as the app signs in to the
+    proxy), where to start, and whether to keep the session. Account passwords are never included."""
+    c = _con()
+    b = next((r for r in rows(c) if r["id"] == bid), None)
+    if not b:
+        return {"error": "That browser is gone."}, 404
+    p = c.execute("SELECT * FROM proxies WHERE id = ?", (b["proxy_id"],)).fetchone() if b["proxy_id"] else None
+    if p and (p["scheme"] or "http").startswith("socks"):
+        return {"error": "SOCKS proxies can't be used here yet, only HTTP ones."}, 400
+    url = b["start_url"] or SITE_URLS.get(b["site"] or "") or "https://www.google.com"
+    c.execute("UPDATE browsers SET last_opened = ? WHERE id = ?", (_now(), bid))
+    c.commit()
+    logger.info("browser %s opened on the phone (proxy: %s)", bid, bool(p))
+    return {"id": bid, "name": b["name"], "url": url, "keep": bool(b["keep_session"]),
+            "proxy": {"host": p["host"], "port": p["port"], "user": p["user"] or "", "password": p["password"] or "",
+                      "label": b["proxy"], "group": b["grp"] or "",
+                      "place": (json.loads(p["exit_geo"]).get("city") if p["exit_geo"] else "") or ""} if p else None,
+            "account": {"site": b["site"], "email": b["email"], "username": b["username"]} if b["email"] else None}
 
 
 @bp.post("/browsers/<int:bid>/edit")
