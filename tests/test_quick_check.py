@@ -75,7 +75,7 @@ class QuickCheckTests(unittest.TestCase):
         counts = quick_check(Config(accounts=[("me@gmail.com", "pw")], use_examples=False), store, llm=llm,
                              fetch=fetch)
         self.assertEqual(counts["order"], 1)
-        self.assertEqual(asked, [("me@gmail.com", 5)])
+        self.assertEqual(asked, [("me@gmail.com", 20)])
         self.assertEqual([o["order_number"] for o in store.orders()], ["Q1"])
 
     def test_stops_when_a_full_sync_starts(self):

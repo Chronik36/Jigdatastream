@@ -384,7 +384,7 @@ def fetch_emails(config, address, password, days=None, skip_ids=(), on_total=Non
             pass
 
 
-def newest_emails(config, address, password, n=5, known=lambda ids: set()):
+def newest_emails(config, address, password, n=20, known=lambda ids: set()):
     """The n newest matching emails of the last two days in All Mail and in Spam, minus the ones known(ids)
     says were already read. Only their headers are looked at until one is new, so a quiet inbox costs one login."""
     imap = imaplib.IMAP4_SSL(config.imap_host, timeout=60)
