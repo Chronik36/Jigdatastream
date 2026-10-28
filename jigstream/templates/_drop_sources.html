@@ -1,0 +1,29 @@
+{# Where a Drops checkout came from (drop.sources): the bot's webhook, its follow-up, and the emails behind it. Loaded under the checkout's row. #}
+{% macro hook_box(h, who, when) %}<div class="ds-hook"{% if h.color %} style="--hc:{{h.color}}"{% endif %}>
+<div class="ds-hh"><b>{{who}}</b><span class="muted">{{h.sender}}{{" · " if h.sender and when}}{{(when or "")[:16]|replace("T", " ")}}</span></div>
+{% if h.title %}<div class="ds-ht">{{h.title}}</div>{% endif %}
+{% if h.description %}<div class="ds-hd">{{h.description}}</div>{% endif %}
+{% if h.fields %}<dl class="ds-kv">{% for n, v in h.fields %}<div><dt>{{n}}</dt><dd>{{v or "-"}}</dd></div>{% endfor %}</dl>{% endif %}
+{% if h.footer %}<div class="muted small">{{h.footer}}</div>{% endif %}</div>{% endmacro %}
+{% macro mail_list(ms) %}<ul class="ds-mails">{% for m in ms %}<li>
+<div class="ds-mtop"><div class="ds-msubj"><b>{{m.subject or "(no subject)"}}</b><span class="muted small">{{m.sender or ""}} · {{(m.date or "")[:16]|replace("T", " ")}}</span></div>
+<button type="button" class="ds-mopen" data-dmail="{{m.message_id}}" data-account="{{m.account}}">Open</button></div>
+<form method="post" action="/inbox/label" class="ds-mlabel"><input type="hidden" name="pick" value='{{ {"account": m.account, "message_id": m.message_id, "sender": m.sender, "subject": m.subject, "date": m.date}|tojson }}'>
+<select name="label" onchange="if (this.value) this.form.submit()" aria-label="What this email is"><option value="">This email is…</option>{% for k, v in labels.items() %}{% if k == "expense" %}<option disabled>──────────</option>{% endif %}<option value="{{k}}">{{v[0]}}</option>{% endfor %}</select></form>
+<div class="ds-mview" hidden></div></li>{% endfor %}</ul>{% endmacro %}
+<div class="ds">
+{% if s.webhook %}{{ hook_box(s.webhook, (s.checkout.bot or "Bot") ~ " webhook", s.checkout.ts) }}
+{% else %}<p class="muted small">The bot's message wasn't kept for this checkout.</p>{% endif %}
+{% if s.update and s.update.hook %}{{ hook_box(s.update.hook, (s.update.bot or "Bot") ~ " follow-up: " ~ s.update.verdict, s.update.ts) }}{% endif %}
+
+<h4 class="ds-h">Order emails{% if s.mails %} <span class="muted">{{s.mails|length}}</span>{% endif %}
+{% if s.order %}<button type="button" class="ds-sheet" data-sheet="{{s.order.id}}">Open the order</button>{% endif %}</h4>
+{% if s.order %}<p class="muted small">Matched by {{s.checkout.matched_on or "the same store, time and buyer"}}.</p>{% endif %}
+{% if s.mails %}{{ mail_list(s.mails) }}{% elif s.order %}<p class="muted small">The order has no emails saved.</p>
+{% else %}<p class="muted small">No order email is matched to this checkout yet{% if s.checkout.status == "success" %}, so it shows as Unsure{% endif %}.</p>{% endif %}
+
+{% if s.by_number %}<h4 class="ds-h">Emails with order # {{s.number}} <span class="muted">{{s.by_number|length}}</span></h4>{{ mail_list(s.by_number) }}{% endif %}
+{% if s.same_day %}<h4 class="ds-h">Other {{s.checkout.site}} emails around then <span class="muted">{{s.same_day|length}}</span></h4>
+<p class="muted small">If one of these is this checkout's order email, mark it "Order placed" (or what it really is). The AI re-reads it and learns, and the checkout matches it.</p>
+{{ mail_list(s.same_day) }}{% endif %}
+</div>
