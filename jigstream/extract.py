@@ -133,6 +133,8 @@ def looks_like_purchase(email):
     text = f"{email.subject}\n{email.body[:20000]}"
     if not PURCHASE_WORDS.search(text):
         return False
+    if cancel_signal(email) == "cancelled" and find_order_number(email):
+        return True  # "Your order #123 was cancelled" often shows no price at all
     return bool(MONEY.search(text) or find_tracking(text)[0])
 
 

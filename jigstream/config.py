@@ -12,7 +12,8 @@ DEFAULT_QUERY = (
     " OR purchase OR subscription OR payment OR paid OR renewal OR renew OR license OR billing"
     " OR charge OR proxies OR proxy OR whop OR stripe OR paddle OR sellix OR shopify"
     " OR sold OR payout OR \"paid out\" OR earnings OR stockx OR goat OR ebay OR tradepost OR mercari OR vinted"
-    " OR alias OR \"trade post\" OR buylist OR \"trade-in\")"
+    " OR alias OR \"trade post\" OR buylist OR \"trade-in\""
+    " OR cancel OR canceled OR cancelled OR cancellation OR refund OR refunded)"
     " -in:spam -in:trash"
 )
 

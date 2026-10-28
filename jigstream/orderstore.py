@@ -133,6 +133,23 @@ def _setup(con):
             con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
     con.executescript(INDEXES)
     con.commit()
+    _reread_cancels(con)
+
+
+def _reread_cancels(con):
+    """Once: forget cancel emails that were skipped (no price in them) or that the model called not relevant,
+    so the next sync reads them again and finds the order by the number they show."""
+    from types import SimpleNamespace
+    from .extract import cancel_signal
+    con.execute("CREATE TABLE IF NOT EXISTS store_fixes (name TEXT PRIMARY KEY)")
+    if con.execute("SELECT 1 FROM store_fixes WHERE name = 'reread_cancels'").fetchone():
+        return
+    ids = [r[0] for r in con.execute("SELECT message_id, subject FROM emails WHERE kind IN ('skipped', 'other')")
+           if cancel_signal(SimpleNamespace(subject=r[1] or "", body="")) == "cancelled"]
+    for i in range(0, len(ids), 500):
+        con.execute("DELETE FROM emails WHERE message_id IN (%s)" % ",".join("?" * len(ids[i:i + 500])), ids[i:i + 500])
+    con.execute("INSERT INTO store_fixes VALUES ('reread_cancels')")
+    con.commit()
 
 
 def _order_dict(row):
@@ -232,8 +249,36 @@ class Store:
     def accounts(self):
         return [dict(r) for r in self.db.execute("SELECT * FROM mail_accounts ORDER BY address")]
 
+    def order_named_in(self, email):
+        """The one open order whose order number is written in this email (subject or body), however it's
+        spaced or dashed, or None."""
+        text = f"{email.subject}\n{(email.body or '')[:20000]}"
+        hits = {}
+        for row in self.db.execute("SELECT * FROM tracked_orders WHERE order_number IS NOT NULL AND order_number != ''"
+                                   " AND COALESCE(shipping_status, '') NOT IN ('cancelled', 'refunded', 'returned')"):
+            number = _key(row["order_number"])
+            if len(number) < 5 or not re.search(r"\d", number) or number in hits:
+                continue
+            spaced = r"[\s#-]?".join(re.escape(c) for c in number)
+            if re.search(rf"(?<![A-Za-z0-9]){spaced}(?![A-Za-z0-9])", text, re.I):
+                hits[number] = row
+        # one order named; a longer number that contains a shorter one wins
+        best = [n for n in hits if not any(n != m and n in m for m in hits)]
+        return hits[best[0]] if len(best) == 1 else None
+
     def save(self, email, result):
         kind = result["kind"]
+        if kind == "other":
+            from .extract import cancel_signal
+            if cancel_signal(email) == "cancelled":
+                row = self.order_named_in(email)
+                if row is not None:  # a cancel the model filed as a plain notice, naming an order we have
+                    result = {"kind": "order", "retailer": row["retailer"], "order_number": row["order_number"],
+                              "order_date": None, "items": [], "total": None, "currency": row["currency"],
+                              "shipping_address": None, "shipping_name": None, "recipient_email": None,
+                              "tracking_number": None, "tracking_url": None, "carrier": None,
+                              "shipping_status": "cancelled", "estimated_delivery": None}
+                    kind = "order"
         if kind == "order":
             self._save_order(email, result)
         elif kind == "botting_expense":
@@ -271,7 +316,8 @@ class Store:
             if row:
                 return row
         if result["shipping_status"] in ("cancelled", "refunded"):
-            return self._order_for_cancel(result, email)
+            # the order number the cancel shows, even when the model copied it wrong or not at all
+            return self.order_named_in(email) or self._order_for_cancel(result, email)
         return self._cancel_for_order(result, email)
 
     def _same_buyer_orders(self, result, email, where):

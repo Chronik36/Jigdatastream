@@ -134,3 +134,56 @@ def test_every_sync_rechecks_two_months():
     from jigstream.sync import search_days
     cfg = SimpleNamespace(full_history=False, days_back=None, first_sync_days=365)
     assert search_days(cfg, {"last_synced_at": datetime.now(timezone.utc).isoformat()}) == 60
+
+
+def test_cancel_with_no_price_is_not_skipped():
+    from jigstream.extract import looks_like_purchase
+    cancel = mail("<2>", "Your order has been cancelled", "Order number: W123456789 was cancelled.", "")
+    assert looks_like_purchase(cancel)
+    assert not looks_like_purchase(mail("<3>", "Your order has been cancelled", "We're sorry.", ""))
+
+
+def test_cancel_finds_its_order_by_the_number_it_shows(tmp_path):
+    store = Store(db.connect(tmp_path / "t.db"))
+    first = mail("<1>", "Thanks for your order", "Order W123456789", "2026-10-01T09:00:00+00:00", to="a@x.com")
+    store.save(first, normalize({"kind": "order", "retailer": "Walmart", "order_number": "W123456789",
+                                 "shipping_status": "ordered"}, first))
+    # forwarded from another address, the model misread the number, a different store name
+    cancel = mail("<2>", "Fwd: Order canceled", "Hi, we canceled order W1234-56789. Sorry!",
+                  "2026-10-28T09:00:00+00:00", to="b@x.com", sender="me <me@icloud.com>")
+    store.save(cancel, normalize({"kind": "order", "retailer": "me", "order_number": "1234567"}, cancel))
+    rows = store.db.execute("SELECT * FROM tracked_orders").fetchall()
+    assert [r["shipping_status"] for r in rows] == ["cancelled"]
+
+
+def test_cancel_the_model_called_not_relevant_still_finds_its_order(tmp_path):
+    store = Store(db.connect(tmp_path / "t.db"))
+    first = mail("<1>", "Thanks for your order", "Order W123456789", "2026-10-01T09:00:00+00:00")
+    store.save(first, normalize({"kind": "order", "retailer": "Walmart", "order_number": "W123456789",
+                                 "shipping_status": "ordered"}, first))
+    cancel = mail("<2>", "Canceled: W123456789", "Sorry about that.", "2026-10-02T09:00:00+00:00")
+    store.save(cancel, {"kind": "other"})
+    assert store.db.execute("SELECT shipping_status FROM tracked_orders").fetchone()[0] == "cancelled"
+    assert store.db.execute("SELECT kind FROM emails WHERE message_id = '<2>'").fetchone()[0] == "order"
+
+
+def test_number_inside_a_longer_number_is_not_a_match(tmp_path):
+    store = Store(db.connect(tmp_path / "t.db"))
+    first = mail("<1>", "Thanks for your order", "Order 123456", "2026-10-01T09:00:00+00:00")
+    store.save(first, normalize({"kind": "order", "retailer": "Target", "order_number": "123456",
+                                 "shipping_status": "ordered"}, first))
+    assert store.order_named_in(mail("<2>", "Order cancelled", "Call 9123456700", "")) is None
+    assert store.order_named_in(mail("<2>", "Order cancelled", "Order #123456", ""))["order_number"] == "123456"
+
+
+def test_skipped_cancel_emails_are_read_again_once(tmp_path):
+    from jigstream import orderstore
+    store = Store(db.connect(tmp_path / "t.db"))
+    store.db.execute("DELETE FROM store_fixes")
+    store.db.execute("INSERT INTO emails VALUES ('<old>', 'me', 's', 'Your order was cancelled', '', 'skipped', NULL, '')")
+    store.db.execute("INSERT INTO emails VALUES ('<ad>', 'me', 's', 'Big sale today', '', 'skipped', NULL, '')")
+    orderstore._reread_cancels(store.db)
+    assert store.seen_ids() == {"<ad>"}
+    store.record_email(mail("<old>", "Your order was cancelled", "", ""), "skipped")
+    orderstore._reread_cancels(store.db)  # only once
+    assert store.seen_ids() == {"<ad>", "<old>"}
