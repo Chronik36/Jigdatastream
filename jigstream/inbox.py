@@ -25,7 +25,14 @@ LABELS = {
     "expense": ("Botting expense", {"kind": "botting_expense"}),
     "sale": ("Sale / payout", {"kind": "sale"}),
     "other": ("Not an order", {"kind": "other"}),
+    # Not an order either, saying what it is instead, so the AI learns what these look like.
+    "ad": ("Ad / newsletter", {"kind": "other", "what": "ad or newsletter"}),
+    "account": ("Account or security email", {"kind": "other", "what": "account or security email"}),
+    "bank": ("Bank or card alert", {"kind": "other", "what": "bank or card alert"}),
+    "survey": ("Review or survey request", {"kind": "other", "what": "review or survey request"}),
+    "personal": ("Personal email", {"kind": "other", "what": "personal email"}),
 }
+NOT_ORDER = [k for k, (_, t) in LABELS.items() if t["kind"] == "other"]
 QUICK_FILTERS = {
     "Purchases": "(order OR receipt OR invoice OR shipped OR delivered OR cancelled OR subscription)",
     "Shipping": "(shipped OR tracking OR \"in transit\" OR \"out for delivery\" OR delivered)",
@@ -49,11 +56,13 @@ def skipped(store, limit=50, offset=0):
     return [dict(r, spam=False) for r in rows[:limit]], (offset + limit if len(rows) > limit else None)
 
 
-def corrected_answer(raw, label):
-    """The model's own answer with your label applied; for 'not an order' only the kind remains."""
+def corrected_answer(raw, label, what=None):
+    """The model's own answer with your label applied; for 'not an order' only the kind remains, with what the
+    email is when you said (a label like "Ad / newsletter", or your own words)."""
     target = LABELS[label][1]
     if target["kind"] == "other":
-        return {"kind": "other"}
+        what = (what or "").strip()[:80] or target.get("what")
+        return {"kind": "other", "what": what} if what else {"kind": "other"}
     out = dict(raw)
     out.update(target)
     if target["kind"] in ("botting_expense", "sale"):
@@ -141,7 +150,7 @@ def _sale_fix(email, sale):
     return out
 
 
-def label_emails(config, store, llm, picks, label, sale=None):
+def label_emails(config, store, llm, picks, label, sale=None, what=None):
     """picks: [{"account", "message_id", "sender", "subject", "date"}]. Runs in the background.
     sale: a sale you typed for these emails (sales.from_order): {"id", "platform", "item", "sale_price", "fees",
     "payout"}. The AI learns the platform and every number the email shows, and the emails add no second sale."""
@@ -156,7 +165,7 @@ def label_emails(config, store, llm, picks, label, sale=None):
                 continue
             prompt = email_prompt(email, config.max_body_chars, platforms)
             raw, _ = extract_raw(llm, email, config.max_body_chars, examples, platforms)
-            corrected = corrected_answer(raw, label)
+            corrected = corrected_answer(raw, label, what)
             if sale:
                 corrected.update(_sale_fix(email, sale))
             store.add_inbox_example(email, prompt, raw, corrected, label)
