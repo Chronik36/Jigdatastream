@@ -188,7 +188,7 @@ def sheet(order_id):
     groups = {}
     for r in store.db.execute("SELECT name, group_name FROM profiles ORDER BY lower(name)"):
         groups.setdefault(r["group_name"] or "No group", []).append(r["name"])
-    from . import addresscheck, sales, stuck
+    from . import addresscheck, inbox, sales, stuck
     from .addresscheck import _line
     platform = sales.platform_in(store.db, o.get("retailer") or "") or ""
     # The bot checkouts behind this order and the profile it's tied to, with the address check.
@@ -199,7 +199,15 @@ def sheet(order_id):
     prof = store.db.execute("SELECT * FROM profiles WHERE name = ?", (o.get("profile_name"),)).fetchone() \
         if o.get("profile_name") else None
     profile = dict(name=prof["name"], group=prof["group_name"], email=prof["email"], address=_line(prof)) if prof else None
+    ids = o.get("message_ids") or []
+    marks = ",".join("?" * len(ids))
+    tagged = {r["message_id"]: r for r in store.db.execute(
+        f"SELECT message_id, label, state FROM inbox_labels WHERE message_id IN ({marks})", ids)} if ids else {}
+    mails = [dict(r, tag=dict(tagged[r["message_id"]]) if r["message_id"] in tagged else None) for r in store.db.execute(
+        f"SELECT message_id, account, sender, subject, date FROM emails WHERE message_id IN ({marks})"
+        " ORDER BY date DESC", ids)] if ids else []
     return render_template("_order_sheet.html", o=o, events=events, checkouts=checkouts, profile=profile,
+                           mails=mails, mail_labels=inbox.LABELS, not_order=inbox.NOT_ORDER,
                            wrong=addresscheck.check(store.db, [o]).get(order_id), shown=SHOWN, qty=quantity(o),
                            sale_platform=platform, sale_platforms=sales.platforms(store.db),
                            fee_pct=sales.fee_pct(store.db, platform or "eBay"),
@@ -383,6 +391,13 @@ def edit(order_id):
     f = request.form
     config = Config.from_env()
     kind = f.get("email_type", "order")
+    what = None
+    if kind.startswith("other:"):  # not an order, and you said what it is
+        sub = kind.split(":", 1)[1]
+        kind, what = "not_an_order", (f.get("what") if sub == "custom" else None)
+        label_key = sub if sub in inbox.NOT_ORDER else "other"
+    else:
+        label_key = None
     if kind in ("not_an_order", "expense", "sale"):
         ids = o.get("message_ids") or []
         mails = [dict(r) for r in store.db.execute(
@@ -392,10 +407,10 @@ def edit(order_id):
             store.dismiss_order(order_id)
         else:
             store.delete_order(order_id)
-        label = {"not_an_order": "other", "expense": "expense", "sale": "sale"}[kind]
+        label = label_key or {"not_an_order": "other", "expense": "expense", "sale": "sale"}[kind]
         if mails and config.accounts:  # the AI re-reads them as what you said they are, and learns from it
             threading.Thread(target=inbox.label_emails, args=(config, Store(_con()), from_config(config), mails, label),
-                             daemon=True).start()
+                             kwargs={"what": what}, daemon=True).start()
         flash({"not_an_order": "Removed: not an order. ", "expense": "Moved to Expenses. ", "sale": "Moved to Sales. "}[kind]
               + ("The AI re-reads its emails and learns from it." if mails else ""))
         return redirect(_back())
@@ -425,4 +440,39 @@ def edit(order_id):
         threading.Thread(target=teach, args=(config, order_id, taught, current_app.config.get("DB_PATH")),
                          daemon=True).start()
     flash("Saved." + (" The AI re-reads this order's emails and learns from your fixes." if taught else ""))
+    return redirect(_back())
+
+
+@bp.post("/orders/<int:order_id>/email")
+def label_email(order_id):
+    """One of the order's emails is something else ("This email is…"): it leaves the order (the order goes when it
+    was the last one) and the AI re-reads it as what you said, learning from it. An order label keeps it here."""
+    from . import inbox
+    from .config import Config
+    from .llm import from_config
+    from .orderstore import Store
+    store = Store(_con())
+    o = store.order(order_id)
+    label, message_id = request.form.get("label", ""), request.form.get("message_id", "")
+    if o is None or label not in inbox.LABELS or message_id not in (o.get("message_ids") or []):
+        flash("Couldn't label that email.")
+        return redirect(_back())
+    row = store.db.execute("SELECT message_id, account, sender, subject, date FROM emails WHERE message_id = ?",
+                           (message_id,)).fetchone()
+    name = inbox.LABELS[label][0]
+    if inbox.LABELS[label][1]["kind"] != "order":
+        left = [i for i in o["message_ids"] if i != message_id]
+        if left:
+            store.db.execute("UPDATE tracked_orders SET message_ids = ? WHERE id = ?", (json.dumps(left), order_id))
+            store.db.execute("UPDATE emails SET kind = 'not_an_order' WHERE message_id = ?", (message_id,))
+            store.db.commit()
+        else:
+            store.dismiss_order(order_id)
+        flash(f"That email is now \"{name}\"" + (" and left this order." if left else ", so the order is gone."))
+    else:
+        flash(f"That email is now \"{name}\".")
+    config = Config.from_env()
+    if row and config.accounts:
+        threading.Thread(target=inbox.label_emails, args=(config, Store(_con()), from_config(config), [dict(row)], label),
+                         kwargs={"what": request.form.get("what")}, daemon=True).start()
     return redirect(_back())
