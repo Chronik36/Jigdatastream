@@ -1,4 +1,5 @@
 import json
+import time
 import urllib.error
 
 import jigstream.app as appmod
@@ -53,3 +54,29 @@ def test_proxy_pages(tmp_path, monkeypatch):
     assert "120 ms" in detail and "hunter2" not in detail and "Find where it comes out" in detail
     c.post("/proxies/delete", data={"id": "1"})
     assert "No proxies yet" in c.get("/proxies").get_data(as_text=True)
+
+
+def test_group_test_shows_live_results(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    app = appmod.create_app(str(tmp_path / "s.db"))
+    c = app.test_client()
+    c.post("/proxies/add", data={"list": "1.2.3.4:80:jacob:hunter2\n5.6.7.8:80", "provider": "Leaf", "group": "ISP"})
+    con = proxies.ensure(db.connect(str(tmp_path / "s.db")))
+    con.execute("UPDATE proxies SET exit_geo = ?, entry_geo = ?",
+                (json.dumps({"city": "Ashburn", "countryCode": "US", "hosting": True}), json.dumps({"city": "Dallas"})))
+    con.commit()
+    monkeypatch.setattr(proxies, "speed", lambda p, site, fetch=None: {"ms": 90 if p["host"] == "5.6.7.8" else None,
+                        "status": 200, "result": "ok" if p["host"] == "5.6.7.8" else "dead", "error": ""})
+    r = c.post("/proxies/test", data={"group": "ISP", "site": "Target"})
+    assert r.headers["Location"].endswith("open=ISP#pxlive")
+    for _ in range(200):
+        if not proxies._state["running"]:
+            break
+        time.sleep(0.02)
+    s = c.get("/proxies/status").get_json()
+    assert (s["running"], s["done"], s["total"], s["ok"], s["what"], s["site"]) == (False, 2, 2, 1, "ISP", "Target")
+    assert s["results"][0]["ms"] == 90 and s["results"][1]["result"] == "dead"  # fastest first, failures last
+    assert "hunter2" not in json.dumps(s)
+    page = c.get("/proxies?open=ISP").get_data(as_text=True)
+    assert 'id="pxlive"' in page and "Dallas → Ashburn, US" in page and "Datacenter" in page
+    assert 'href="/proxies/1">Details' in page and "hunter2" not in page
