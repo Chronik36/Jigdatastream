@@ -51,8 +51,11 @@ button.linkish{background:none;border:0;padding:0;color:var(--accent);text-decor
 document.addEventListener('change', e => {
   const sel = e.target;
   if (sel.classList.contains('relabel')) {
-    if (sel.value !== 'not_an_order') sel.form.submit();
-    else btConfirm('Remove this from Orders? Its emails become examples of what is not an order.').then(ok => ok ? sel.form.submit() : sel.value = '');
+    const ask = {not_an_order: 'Remove this from Orders? Its emails become examples of what is not an order.',
+                 expense: 'Move this to Expenses as a botting expense? The AI re-reads its emails as one.',
+                 sale: 'Move this to Sales? The AI re-reads its emails as a sale.'}[sel.value];
+    if (!ask) sel.form.submit();
+    else btConfirm(ask).then(ok => ok ? sel.form.submit() : sel.value = '');
   } else if (sel.classList.contains('pick') && sel.value !== '__keep__') sel.form.submit();
 });
 </script>

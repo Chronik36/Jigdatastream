@@ -174,6 +174,7 @@ def page():
                            next_open=next((k for k in keys[i + 1:] + keys[:i] if k not in done), None) if at else None,
                            categories=EXPENSE_CATEGORIES,
                            statuses=["ordered", "in_transit", "out_for_delivery", "delivered", "cancelled", "returned"],
+                           moves=["expense", "sale"],
                            profile_names=[r[0] for r in con.execute("SELECT name FROM profiles ORDER BY name")])
 
 

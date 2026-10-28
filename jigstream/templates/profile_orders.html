@@ -51,8 +51,8 @@ function pickProfiles(sel) {
 <td>{% if o.tracking_number %}<a class="track" href="{{o|track_url}}" target="_blank" rel="noopener"><span class="muted">{{o.carrier or "Track"}}</span> {{o.tracking_number}} ↗</a>{% else %}<span class="muted">No tracking yet</span>{% endif %}</td>
 <td class="muted">{{o.profile_match or ""}}</td>
 <td>{% set bad = status in ("cancelled", "returned", "refunded") %}<form method="post" action="/orders/{{o.id}}/label" style="margin:0"><input type="hidden" name="back" value="1">
-<select name="status" onchange="const s = this; if (!s.value) return; if (s.value != 'not_an_order') s.form.submit(); else btConfirm('Remove this order? Its emails teach the AI to skip emails like it.').then(ok => ok ? s.form.submit() : s.selectedIndex = 0)" aria-label="Correct this order" title="Set it right; the AI learns from it">
-<option value="">{{"Bad" if bad else "Good"}} · change…</option>{% if bad %}<option value="ordered">Good (it went through)</option>{% else %}<option value="cancelled">Bad (cancelled)</option>{% endif %}<option value="not_an_order">Not an order</option></select></form></td></tr>
+<select name="status" onchange="const s = this; if (!s.value) return; if (!['not_an_order', 'expense', 'sale'].includes(s.value)) s.form.submit(); else btConfirm('Take this off Orders? Its emails teach the AI what they really are.').then(ok => ok ? s.form.submit() : s.selectedIndex = 0)" aria-label="Correct this order" title="Set it right; the AI learns from it">
+<option value="">{{"Bad" if bad else "Good"}} · change…</option>{% if bad %}<option value="ordered">Good (it went through)</option>{% else %}<option value="cancelled">Bad (cancelled)</option>{% endif %}<option value="not_an_order">Not an order</option><option value="expense">Botting expense</option><option value="sale">A sale / payout</option></select></form></td></tr>
 {% else %}<tr><td colspan="8" class="muted">No order emails matched to this profile yet.</td></tr>{% endfor %}</tbody></table>
 <h3>Checkouts on this profile</h3>{{ checkout_table(pick_checkouts or []) }}
 {% elif pick_name %}<div class="panel muted">There's no profile called {{pick_name}}.</div>

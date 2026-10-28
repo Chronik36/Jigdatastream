@@ -116,6 +116,7 @@ def base_details(con, res, base_id):
 
 @bp.get("/tracking")
 def page():
+    from .app import STATUS_CHOICES
     store = Store(db.connect(current_app.config.get("DB_PATH")))
     profilematch.match_orders(store.db)
     orders = store.orders()
@@ -181,5 +182,4 @@ def page():
                            cards=cards, shown_events=SHOWN_EVENTS, lanes=LANES, by_lane=by_lane, shops=shops, shop=shop, late={o["id"] for o in late},
                            can_check=bool(carriers.available(os.environ)), checking=carriers.state,
                            training=config.training_mode, labels=store.labels(),
-                           label_choices=["ordered", "in_transit", "out_for_delivery", "delivered", "cancelled", "returned",
-                                          "not_an_order"])
+                           label_choices=STATUS_CHOICES)
