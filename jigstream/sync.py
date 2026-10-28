@@ -117,6 +117,9 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None, sto
                 "whole mailbox" if config.full_history else f"days={config.days_back or 'auto'}")
     counts = {"order": 0, "botting_expense": 0, "other": 0, "skipped": 0, "error": 0, "failed_inboxes": []}
     platforms = sales.platforms(store.db)
+    moved = sales.move_misread(store.db, platforms)  # "you sold it" emails saved as orders before
+    if moved:
+        log(f"  {len(moved)} order(s) were really sales; moved to Sales")
     config.search_query = sales.with_terms(config.search_query, sales.custom_platforms(store.db))
     seen = store.seen_ids()
     examples = packs.picker(store, few_shot(store)) if config.use_examples else []
@@ -170,6 +173,10 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None, sto
         # A capped run (MAX_EMAILS) hasn't finished the range, so don't record it as synced.
         if not (config.max_emails and total["n"] >= config.max_emails):
             store.mark_synced(address, started, full=days is None)
+    if moved and not stop():  # the AI re-reads them as sales (payout, fees) and learns from it
+        from .inbox import label_emails
+        for sale, mails in moved:
+            label_emails(config, store, llm, mails, "sale", sale)
     counts.pop("streak", None)
     logger.info("sync %s: %s", "stopped" if counts.get("stopped") else "finished", summary(counts))
     return counts

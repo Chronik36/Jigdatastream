@@ -61,7 +61,7 @@ tr.off td{opacity:.55}
 {% for s in rows %}<tr class="{{'off' if not s.counted}}">
 <td>{{s.date or "-"}}</td>
 <td><b>{{s.item or "Payout"}}</b>{% if s.size %} <span class="muted">size {{s.size}}</span>{% endif %}<span class="sub">{% if s.order_id %}Bought: {{s.order_retailer}} {{s.order_ref or ""}}{% elif s.item %}No order linked{% else %}A lump payout{% endif %}{% if not s.counted %} · not counted{% endif %}</span></td>
-<td>{{s.platform}}<span class="sub">{{"from your bank" if s.source == "bank" else ("typed in" if s.source == "manual" else ("fixed from an order" if s.source == "fixed" else "email"))}}</span></td>
+<td>{{s.platform}}<span class="sub">{{"from your bank" if s.source == "bank" else ("typed in" if s.source == "manual" else ("fixed from an order" if s.source == "fixed" else ("was in Orders" if s.source == "moved" else "email")))}}</span></td>
 <td class="num">{{s.money_in|money(s.currency)}}{% if s.sale_price and s.payout is not none and s.sale_price != s.payout %}<span class="sub">sold {{s.sale_price|money}}{% if s.sale_price > 0 %} · fees {{((s.sale_price - s.payout) / s.sale_price * 100)|round(1)}}%{% endif %}</span>{% endif %}</td>
 <td class="num">{{s.cost|money if s.cost is not none else "-"}}</td>
 <td class="num {{'pos' if s.profit and s.profit > 0 else ('neg' if s.profit and s.profit < 0 else '')}}">{% if s.profit is not none %}{{"+" if s.profit > 0 else ("−" if s.profit < 0 else "")}}{{s.profit|abs|money}}{% else %}-{% endif %}</td>

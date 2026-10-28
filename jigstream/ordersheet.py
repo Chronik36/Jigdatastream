@@ -189,7 +189,7 @@ def sheet(order_id):
     for r in store.db.execute("SELECT name, group_name FROM profiles ORDER BY lower(name)"):
         groups.setdefault(r["group_name"] or "No group", []).append(r["name"])
     from . import sales
-    platform = "eBay" if "ebay" in (o.get("retailer") or "").lower() else ""
+    platform = sales.platform_in(store.db, o.get("retailer") or "") or ""
     return render_template("_order_sheet.html", o=o, events=events, shown=SHOWN, qty=quantity(o),
                            sale_platform=platform, sale_platforms=sales.platforms(store.db),
                            fee_pct=sales.fee_pct(store.db, platform or "eBay"),

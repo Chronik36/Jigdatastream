@@ -133,3 +133,58 @@ def test_the_teaching_example_gets_the_typed_sale(monkeypatch):
     assert fix == {"platform": "eBay", "sale_price": 120.0, "fees": 15.9, "payout": 104.1,
                    "items": [{"name": "Elite Trainer Box"}]}
     assert inbox._sale_fix(email, {"platform": "eBay", "payout": 99.0}) == {"platform": "eBay"}
+
+
+def test_sale_emails_from_any_platform_are_told_apart():
+    from jigstream.extract import as_sale, normalize, sale_signal
+    t = lambda sender, subject, body="": sale_signal(Email("<x>", sender, subject, "", body))  # noqa: E731
+    assert t("eBay <ebay@ebay.com>", "You made the sale for Pokemon ETB") == "eBay"
+    assert t("Vinted <no-reply@vinted.com>", "You sold an item!") == "Vinted"
+    assert t("Mercari <no-reply@mercari.com>", "Congrats! Your item sold") == "Mercari"
+    assert t("StockX <noreply@stockx.com>", "Your Ask Has Been Matched", "Ship your item by Oct 30") == "StockX"
+    assert t("eBay <ebay@ebay.com>", "Your payout has been sent") == "eBay"
+    assert t("eBay <ebay@ebay.com>", "Order confirmed: Pokemon ETB", "Sold by: cardshop") is None  # you bought it
+    assert t("Mercari <no-reply@mercari.com>", "Your order has shipped") is None
+    assert t("Target <orders@target.com>", "Your item sold out") is None  # not a selling platform
+    email = Email("<v>", "Vinted <no-reply@vinted.com>", "You sold an item!", "2026-10-20T10:00:00", "")
+    r = normalize(as_sale({"kind": "order", "retailer": "Vinted", "total": 35.0, "items": [{"name": "Hoodie"}],
+                           "shipping_status": "ordered"}, "Vinted"), email)
+    assert (r["kind"], r["platform"], r["item"], r["sale_price"], r["payout"]) == ("sale", "Vinted", "Hoodie", 35.0, None)
+
+
+def test_orders_that_were_sales_move_to_sales(tmp_path):
+    from jigstream import sales
+    con = Store(db.connect(str(tmp_path / "m.db"))).db
+    bought = _order(con, merge_key="t:1", order_date="2026-10-01", total=20.0, items=json.dumps([{"name": "Nike Tech Fleece Hoodie"}]),
+                    message_ids=json.dumps(["<buy>"]))
+    sold = _order(con, merge_key="v:1", retailer="Vinted", order_number=None, order_date="2026-10-20", total=55.0,
+                  items=json.dumps([{"name": "Nike Tech Fleece Hoodie"}]), message_ids=json.dumps(["<v1>", "<v2>"]))
+    real = _order(con, merge_key="e:1", retailer="eBay", order_number="9", total=10.0, message_ids=json.dumps(["<e1>"]))
+    con.executemany("INSERT INTO emails (message_id, sender, subject, kind) VALUES (?,?,?, 'order')",
+                    [("<buy>", "Target <o@target.com>", "Thanks for your order"),
+                     ("<v1>", "Vinted <no-reply@vinted.com>", "You sold an item!"),
+                     ("<v2>", "Vinted <no-reply@vinted.com>", "Your parcel was delivered"),
+                     ("<e1>", "eBay <ebay@ebay.com>", "Order confirmed: Charizard")])
+    con.commit()
+    moved = sales.move_misread(con)
+    assert [m[0]["platform"] for m in moved] == ["Vinted"] and len(moved[0][1]) == 2
+    left = {r[0] for r in con.execute("SELECT id FROM tracked_orders")}
+    assert left == {bought, real} and sold not in left
+    [s] = [dict(r) for r in con.execute("SELECT * FROM sales")]
+    assert (s["sale_price"], s["payout"], s["source"], s["order_id"], s["cost"]) == (55.0, 55.0, "moved", bought, 20.0)
+    assert con.execute("SELECT kind FROM emails WHERE message_id = '<v1>'").fetchone()[0] == "sale"
+    assert sales.move_misread(con) == []  # nothing left to move
+
+
+def test_a_sold_email_the_model_calls_an_order_is_saved_as_a_sale():
+    from jigstream.extract import extract_raw
+
+    class Model:
+        def chat_json(self, system, user, examples=None):
+            return {"kind": "order", "retailer": "eBay", "order_number": "12-1", "total": 120.0,
+                    "items": [{"name": "Charizard ex box"}], "shipping_status": "ordered"}
+    email = Email("<s>", "eBay <ebay@ebay.com>", "You made the sale for Charizard ex box", "2026-10-20", "Sold for $120.00")
+    raw, result = extract_raw(Model(), email)
+    assert raw["kind"] == "order" and (result["kind"], result["platform"], result["sale_price"]) == ("sale", "eBay", 120.0)
+    bought = Email("<b>", "eBay <ebay@ebay.com>", "Order confirmed: Charizard ex box", "2026-10-20", "Total $120.00")
+    assert extract_raw(Model(), bought)[1]["kind"] == "order"

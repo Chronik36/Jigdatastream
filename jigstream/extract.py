@@ -504,6 +504,35 @@ def trim(text, limit):
     return text[:head].rstrip() + "\n[...]\n" + text[-(limit - head - 7):].lstrip()
 
 
+# What a selling app says when YOU sold something or got paid ("Sold by: seller" on a purchase is not it).
+SOLD_WORDS = re.compile(
+    r"\b(you(?:'ve| have)? (?:just )?(?:sold|made (?:a|the|your first) sale)|(?:your|an) (?:item|listing|order)s? "
+    r"(?:has |have |was |were |just )?(?:been )?sold|item sold|it'?s sold|(?:got|have) a (?:new )?sale|new sale|sold!|"
+    r"congrat\w*,? (?:your|you)\b.{0,40}\bsold|ship (?:it|your item|the item|this item) (?:by|now|today)|"
+    r"(?:payout|earnings|funds|money) (?:has been |have been |is |are )?(?:sent|initiated|issued|on (?:its|the) way|"
+    r"available|released|transferred)|you(?:'ve| have)? been paid|cash(?:ed)? out|transferred to your (?:vinted |mercari )?balance|"
+    r"(?:a )?buyer (?:has )?(?:paid|purchased|bought)|sale (?:confirmed|complete))", re.I)
+
+
+def sale_signal(email, platforms=()):
+    """The selling platform, when an email from one says you sold something or were paid out, else None.
+    Turns such an email the model read as an order into a sale (eBay, Vinted, Mercari, StockX, GOAT, your own)."""
+    named = platforms_named(email, platforms)
+    if not named:
+        return None
+    head = f"{email.subject}\n{(email.body or '')[:1500]}"
+    return named[0] if SOLD_WORDS.search(head) else None
+
+
+def as_sale(raw, platform):
+    """The model's order answer for an email that is really a sale: its total is the sale price."""
+    out = dict(raw, kind="sale", platform=raw.get("platform") or platform)
+    out.pop("shipping_status", None)
+    if out.get("sale_price") is None and out.get("payout") is None and out.get("total") is not None:
+        out["sale_price"] = out["total"]
+    return out
+
+
 def email_prompt(email, max_body_chars=12000, platforms=()):
     user = (
         f"From: {email.sender}\nSubject: {email.subject}\nDate: {email.date}\n\n"
@@ -523,6 +552,8 @@ def extract_raw(llm, email, max_body_chars=12000, examples=(), platforms=()):
     """(the model's raw JSON, the cleaned result)."""
     user = email_prompt(email, max_body_chars, platforms)
     raw = llm.chat_json(SYSTEM_PROMPT, user, examples=examples) if examples else llm.chat_json(SYSTEM_PROMPT, user)
+    if raw.get("kind") == "order" and (platform := sale_signal(email, platforms)):
+        return raw, normalize(as_sale(raw, platform), email)  # a "you sold it" read as a purchase
     return raw, normalize(raw, email)
 
 
