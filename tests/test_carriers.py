@@ -119,3 +119,21 @@ def test_keys_win_over_pages(tmp_path, monkeypatch):
     monkeypatch.setitem(carriers.TRACKERS, "UPS", lambda n, env: ("in_transit", "On the Way"))
     monkeypatch.setattr(carriers.time, "sleep", lambda s: None)
     assert carriers.refresh(con, ENV) == (1, 1)
+
+
+def test_out_for_delivery_round_only_asks_about_those(tmp_path, monkeypatch):
+    con = db.connect(str(tmp_path / "t.db"))
+    store = Store(con)
+    order(store, "1Z999AA10123456784")
+    order(store, "1Z999AA10123456785", status="out_for_delivery")
+    asked = []
+
+    def fake_ups(number, env):
+        asked.append(number)
+        return "delivered", "Delivered"
+    monkeypatch.setitem(carriers.TRACKERS, "UPS", fake_ups)
+    monkeypatch.setattr(carriers.time, "sleep", lambda s: None)
+    assert carriers.out_for_delivery(con) == 1
+    carriers.run(con, ENV, ("out_for_delivery",))
+    assert asked == ["1Z999AA10123456785"]
+    assert carriers.out_for_delivery(con) == 0

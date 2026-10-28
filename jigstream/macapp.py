@@ -336,7 +336,9 @@ def main():
         check_every = float(os.environ.get("UPDATE_CHECK_HOURS", 6)) * 3600
         track_every = float(os.environ.get("TRACK_EVERY_HOURS", 1)) * 3600  # shipping alerts come from it too
         quick_every = float(os.environ.get("QUICK_CHECK_MINUTES", 1)) * 60  # newest few emails of each inbox
-        last_sync = last_check = last_track = 0
+        # packages out for delivery get looked at more often, so "Delivered" reaches the phone sooner
+        out_every = float(os.environ.get("OUT_FOR_DELIVERY_MINUTES", 15)) * 60
+        last_sync = last_check = last_track = last_out = 0
         last_quick = time.time()
         time.sleep(30)
         while True:
@@ -354,7 +356,14 @@ def main():
             if track_every > 0 and now - last_track >= track_every and carriers.available(os.environ):
                 # its own thread: reading tracking pages one at a time can take several minutes
                 threading.Thread(target=carriers.run, args=(db.connect(), dict(os.environ)), daemon=True).start()
-                last_track = now
+                last_track = last_out = now
+            elif (out_every > 0 and now - last_out >= out_every and not carriers.state["running"]
+                  and carriers.available(os.environ)):
+                last_out = now
+                con = db.connect()
+                if carriers.out_for_delivery(con):
+                    threading.Thread(target=carriers.run, args=(con, dict(os.environ), ("out_for_delivery",)),
+                                     daemon=True).start()
             if check_every > 0 and now - last_check >= check_every:
                 updater.check()
                 last_check = now
