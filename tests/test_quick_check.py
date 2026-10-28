@@ -58,6 +58,13 @@ class QuickCheckTests(unittest.TestCase):
         self.assertEqual([e.message_id for e in got], ["<m7@x>"])  # 8, 7, 6 are the newest three
         self.assertEqual(fake["imap"].fetched, [b"7"])
 
+    def test_reads_the_whole_last_day_by_default(self):
+        fake = {}
+        with mock.patch.object(mail.imaplib, "IMAP4_SSL", lambda host, timeout=None: fake.setdefault("imap", FakeIMAP(host))):
+            got = list(mail.newest_emails(Config(), "me@gmail.com", "pw",
+                                          known=lambda ids: {i for i in ids if i != "<m1@x>"}))
+        self.assertEqual([e.message_id for e in got], ["<m1@x>"])  # the oldest of the day is read too
+
     def test_quick_check_saves_new_orders_and_skips_known(self):
         store = Store(db.connect(":memory:"))
         store.record_email(email("Old order", mid="<old@x>"), "order")
@@ -75,7 +82,7 @@ class QuickCheckTests(unittest.TestCase):
         counts = quick_check(Config(accounts=[("me@gmail.com", "pw")], use_examples=False), store, llm=llm,
                              fetch=fetch)
         self.assertEqual(counts["order"], 1)
-        self.assertEqual(asked, [("me@gmail.com", 20)])
+        self.assertEqual(asked, [("me@gmail.com", 0)])
         self.assertEqual([o["order_number"] for o in store.orders()], ["Q1"])
 
     def test_stops_when_a_full_sync_starts(self):
