@@ -34,7 +34,10 @@ def test_backup_and_restore_everything(tmp_path, monkeypatch):
     assert [r[0] for r in db.connect(path).execute("SELECT name FROM profiles")] == ["Profile 1"]
     assert wallet.key() == old_key
     env = (tmp_path / ".env").read_text()
-    assert "GMAIL_ACCOUNTS=me@gmail.com:abcd" in env and "PORT=9999" in env  # this computer's port stays
+    assert "PORT=9999" in env and "me@gmail.com" not in env  # this computer's port stays; the inbox is sealed
+    from jigstream import config
+    sealed = next(line.split("=", 1)[1] for line in env.splitlines() if line.startswith("GMAIL_ACCOUNTS="))
+    assert config.unseal(sealed) == "me@gmail.com:abcd"
     assert os.environ["GMAIL_ACCOUNTS"] == "me@gmail.com:abcd"
 
 

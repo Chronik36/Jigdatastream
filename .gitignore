@@ -6,3 +6,4 @@ data/
 *.db
 dist/
 jigstream/developer.txt
+.card-key
