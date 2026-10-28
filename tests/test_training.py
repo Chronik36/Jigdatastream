@@ -77,10 +77,10 @@ def test_orders_page_dropdown_on_by_default(tmp_path, monkeypatch):
     o = order(Store(db.connect(path)))
     app = appmod.create_app(path)
     c = app.test_client()
-    page = c.get("/orders").get_data(as_text=True)
+    page = c.get("/orders?day=all").get_data(as_text=True)
     assert "Change status" in page and 'href="/training"' in page
     c.post("/setup/training", data={"use_examples": "on"})  # switched off on Setup
-    assert "Change status" not in c.get("/orders").get_data(as_text=True)
+    assert "Change status" not in c.get("/orders?day=all").get_data(as_text=True)
     c.post("/setup/training", data={"training": "on", "use_examples": "on"})
 
     started = []
@@ -89,7 +89,7 @@ def test_orders_page_dropdown_on_by_default(tmp_path, monkeypatch):
     c.post(f"/orders/{o['id']}/label", data={"status": "delivered"})
     assert Store(db.connect(path)).order(o["id"])["shipping_status"] == "delivered"
     assert started and started[0][1]["order_number"] == "C777"
-    assert "Searching..." in c.get("/orders").get_data(as_text=True)
+    assert "Searching..." in c.get("/orders?day=all").get_data(as_text=True)
     assert c.get("/training").status_code == 200
 
 
@@ -100,7 +100,7 @@ def test_in_transit_label_and_tracking_links(tmp_path):
     store.db.execute("UPDATE tracked_orders SET shipping_status='shipped', carrier='ups ground', tracking_number='1Z999AA10123456784' WHERE id=?", (o["id"],))
     store.db.execute("INSERT INTO tracked_orders (retailer, order_number, shipping_status, tracking_number) VALUES ('Shop', 'Z1', 'in_transit', 'XY123456789')")
     store.db.commit()
-    page = appmod.create_app(path).test_client().get("/orders").get_data(as_text=True)
+    page = appmod.create_app(path).test_client().get("/orders?day=all").get_data(as_text=True)
     assert page.count(">In transit</span>") == 2 and ">Shipped<" not in page
     assert "ups.com/track?tracknum=1Z999AA10123456784" in page
     assert "parcelsapp.com/en/tracking/XY123456789" in page  # unknown carrier still gets a link

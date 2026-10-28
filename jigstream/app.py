@@ -9,7 +9,7 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import accountkeys, backup, bases, devmail, jigexpr, ordersheet, peersync, pricecheck, proxylogin, proxysessions, undo
+from . import accountkeys, addresscheck, backup, bases, dropdays, devmail, jigexpr, ordersheet, peersync, pricecheck, proxylogin, proxysessions, undo
 from . import (analysis, bankpages, cardcheck, cardlocks, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
                packs, proxies, proxyaccounts, review, stock, stuck, tasks, tracking, training, updater, wallet, webtrain)
@@ -333,15 +333,26 @@ def create_app(db_path=None):
         profilematch.match_orders(store.db)
         config = Config.from_env()
         rows = store.orders()
+        wrong = addresscheck.check(store.db, rows)
+        # The page opens on one card per drop day; ?day= shows that day's orders, ?day=all every order.
+        day = request.args.get("day", "")
+        days = None
+        if not any(request.args.get(k) for k in ("day", "show", "q", "status", "base", "product", "profile")) and rows:
+            days = dropdays.by_day(rows, wrong)
+        elif day and day != "all":
+            rows = [o for o in rows if dropdays.day_of(o) == day]
         stats = store.stats(orders=rows)
-        # The cards at the top open their orders: ?show=spent|not_spent|moving|delivered.
+        stats["wrong_address"] = sum(1 for o in rows if o["id"] in wrong)
+        # The cards at the top open their orders: ?show=spent|not_spent|moving|delivered|wrong_address.
         show = request.args.get("show", "")
         from .orderstore import NOT_SPENT
-        keep = {"spent": lambda s: s not in NOT_SPENT, "not_spent": lambda s: s in NOT_SPENT,
-                "moving": lambda s: s in ("shipped", "in_transit", "out_for_delivery"),
-                "delivered": lambda s: s == "delivered"}.get(show)
+        keep = {"spent": lambda o: o["shipping_status"] not in NOT_SPENT,
+                "not_spent": lambda o: o["shipping_status"] in NOT_SPENT,
+                "moving": lambda o: o["shipping_status"] in ("shipped", "in_transit", "out_for_delivery"),
+                "delivered": lambda o: o["shipping_status"] == "delivered",
+                "wrong_address": lambda o: o["id"] in wrong}.get(show)
         if keep:
-            rows = [o for o in rows if keep(o["shipping_status"] or "unknown")]
+            rows = [o for o in rows if keep(o)]
         # Filters by base address and product (status, profile and search are there too), all on this page.
         res = bases.Resolver(store.db)
         base_of = {o["id"]: res.of_order(o) for o in rows} if res.bases else {}
@@ -354,7 +365,9 @@ def create_app(db_path=None):
         base_counts = {}
         for b in base_of.values():
             base_counts[b] = base_counts.get(b, 0) + 1
-        return render_template("orders.html", rows=rows, stats=stats, sync=sync_state, show=show if keep else "",
+        return render_template("orders.html", rows=[] if days else rows, stats=stats, sync=sync_state,
+                               show=show if keep else "", days=days, day=day, day_label=dropdays.label(day),
+                               day_groups=dropdays.GROUPS, wrong=wrong,
                                bases=res.bases, base_of=base_of, base_counts=base_counts,
                                products=sorted(products.items(), key=lambda p: (-p[1], p[0].lower()))[:300],
                                profile_names=[r[0] for r in store.db.execute("SELECT name FROM profiles ORDER BY name")],
@@ -369,6 +382,12 @@ def create_app(db_path=None):
             key = o["profile_name"] or ("?" if o["profile_candidates"] else "")
             counts[key] = counts.get(key, 0) + 1
         return counts
+
+    @app.post("/orders/<int:order_id>/address-ok")
+    def order_address_ok(order_id):
+        """"It's fine" on a wrong-address flag (or "Flag it again")."""
+        addresscheck.set_ok(con(), order_id, request.form.get("ok", "1") == "1")
+        return redirect(ordersheet._back(order_id))
 
     @app.post("/orders/<int:order_id>/profile")
     def order_profile(order_id):

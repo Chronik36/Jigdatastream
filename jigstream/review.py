@@ -61,6 +61,14 @@ def source(con, src, name="", year=""):
             abort(404)
         tied = [f"c{c['id']}" for c in drop.rows(con) if c.get("order") and c["order"]["id"] == int(name)]
         return f"{o['retailer'] or 'Order'} {o['order_number'] or ''} and what it's tied to", [f"o{name}", *tied]
+    if src == "day":  # a drop day: its orders, then every checkout that day or tied to one of them
+        from .dropdays import day_of, label
+        from .orderstore import Store
+        orders = [o["id"] for o in Store(con).orders() if day_of(o) == name]
+        mine = set(orders)
+        tied = [f"c{c['id']}" for c in drop.rows(con)
+                if c["day"] == name or (c.get("order") and c["order"]["id"] in mine)]
+        return f"Drop of {label(name)}: orders and checkouts", [f"o{i}" for i in orders] + tied
     if src == "proxy":
         ids = [f"c{c['id']}" for c in drop.rows(con) if c["proxy"] == name]
         tied = {c["order"]["id"] for c in drop.rows(con) if c["proxy"] == name and c.get("order")}

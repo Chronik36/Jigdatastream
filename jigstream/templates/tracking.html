@@ -6,7 +6,11 @@
 {% if checking.last %}<p class="muted" style="margin-top:-6px">{{checking.last}}</p>{% endif %}
 <div class="stats">{% for key, title, hint in lanes %}<a class="card lanecard l-{{key}}{{' on' if only == key}}" href="?lane={{key}}{{'&store=' ~ shop|urlencode if shop}}" title="See and fix these packages">{{title}} <b>{{lane_counts[key]}}</b></a>{% endfor %}
 {% if late %}<a class="card lanecard{{' on' if only == 'late'}}" style="--c:var(--orange)" href="?lane=late{{'&store=' ~ shop|urlencode if shop}}" title="The store's delivery estimate has passed and the package isn't marked delivered. Tap to see and fix them">Running late <b style="color:var(--orange)">{{late|length}}</b></a>{% endif %}</div>
-{% if overview is not none %}
+{% from "_days.html" import day_cards %}
+{% if days is not none %}
+<div class="thead" style="margin:22px 0 10px"><h3 style="margin:0">By drop date</h3><div class="tact">{% if has_bases %}<a class="btn ghost" href="?view=bases{{'&store=' ~ shop|urlencode if shop}}">By base address ›</a>{% endif %}<a class="btn ghost" href="?day=all{{'&store=' ~ shop|urlencode if shop}}">Every package ›</a></div></div>
+{% if days %}{{ day_cards(days, "?" ~ ("store=" ~ shop|urlencode ~ "&" if shop else "") ~ "day=", day_groups, "package") }}{% else %}<p class="muted">No packages yet.</p>{% endif %}
+{% elif overview is not none %}
 <div class="thead" style="margin:22px 0 10px"><h3 style="margin:0">By base address</h3><div class="tact"><a class="btn ghost" href="/bases">Base addresses</a><a class="btn ghost" href="?base=all">Every package ›</a></div></div>
 <div class="bover">{% for b in overview %}<a class="bcard" href="?base={{b.id}}{{'&store=' ~ shop|urlencode if shop}}" title="See these packages">
 <div class="bctop"><div class="bcname"><b>{{b.name}}</b>{% if b.full %}<div class="muted small" data-private>{{b.full}}</div>{% endif %}</div><span class="bctotal">{{b.total}}<small>package{{'s' if b.total != 1}}</small></span></div>
@@ -32,7 +36,8 @@
 })();
 </script>{% else %}<p class="muted small">No profiles ship here.</p>{% endif %}</div>
 {% elif only %}<div class="thead" style="margin:18px 0 0"><div><a class="small" href="/tracking">‹ Shipping</a><h3 style="margin:4px 0 0">{{ {"ordered": "Ordered", "moving": "On the way", "out": "Out for delivery", "delivered": "Delivered", "late": "Running late"}[only] }}</h3><p class="muted small" style="margin:2px 0 0">Tap a price or status to fix it, or a card to change anything else. Every fix teaches the AI.</p></div></div>
-{% elif base == "all" and has_bases %}<p><a class="small" href="/tracking">‹ All base addresses</a></p>{% endif %}
+{% elif day and day != "all" %}<p class="small"><a href="/tracking{{'?store=' ~ shop|urlencode if shop}}">‹ All drop dates</a> · <b>{{day_label}}</b> · <a href="/orders?day={{day}}">These orders ›</a> · <a href="/review?src=day&name={{day}}">Checkouts this day ›</a></p>
+{% elif base == "all" %}<p><a class="small" href="/tracking">‹ All drop dates</a></p>{% endif %}
 <div class="board">{% for key, title, hint in lanes %}{% if by_lane[key] or (key != "out" and not only) %}<section class="lane" id="lane-{{key}}"><h3><span class="dotl l-{{key}}"></span>{{title}} <span class="muted">{{by_lane[key]|length}}</span></h3><p class="muted hint">{{hint}}</p>
 <div class="sgrid">{% for o in by_lane[key] %}{% set status = o.shipping_status or "unknown" %}{% set c = cards[o.id] %}{% set late_o = o.id in late %}
 {% set stage = {"ordered": 1, "processing": 1, "unknown": 1, "shipped": 2, "in_transit": 3, "exception": 3, "out_for_delivery": 3, "delivered": 4}.get(status, 1) %}
@@ -55,6 +60,8 @@
 {% if o.tracking_number %}<a href="{{o|track_url}}" target="_blank" rel="noopener" title="Open the carrier's tracking page">Carrier ↗</a>{% endif %}
 <a href="/review?src=order&name={{o.id}}" title="Its checkouts, card charges, emails and profile">Linked ›</a>{% if o.status_manual %}<span class="muted" title="Status set by hand">✎</span>{% endif %}</div>
 {% if o.carrier_status %}<div class="muted small" title="From the carrier, checked {{o.carrier_checked_at}}">Carrier: {{o.carrier_status}}</div>{% endif %}
+{% set w = wrong.get(o.id) %}{% if w %}<div class="swrong" title="{{w.profiles|join(', ')}} ({{w.why}}) ships to {{w.expected}}"><b>Not the profile's address</b> · {{w.profiles[0]}} ships to <span data-private>{{w.expected}}</span>
+<form method="post" action="/orders/{{o.id}}/address-ok"><input type="hidden" name="back" value="{{request.full_path}}#order-{{o.id}}"><button class="ghost" title="This address is right; stop flagging it">It's fine</button></form></div>{% endif %}
 {% if training %}<form method="post" action="/orders/{{o.id}}/label" class="sfix"><input type="hidden" name="back" value="1"><select name="status" class="relabel" title="Wrong stage? Pick the right one; the AI learns from this order's emails"><option value="">Fix status…</option>{% for c2 in label_choices %}{% if c2 == "not_an_order" %}<option disabled>──────────</option>{% endif %}<option value="{{c2}}" {{"disabled" if c2 == status}}>{{c2|status_label}}</option>{% endfor %}</select></form>{% endif %}
 {% set lb = labels.get(o.id) %}{% if lb %}<div class="muted small">{{"Searching..." if lb.rescan == "pending" else lb.rescan}}</div>{% endif %}
 </article>{% else %}<p class="muted small empty">Nothing here.</p>{% endfor %}</div></section>{% endif %}{% endfor %}</div>{% endif %}
@@ -105,6 +112,8 @@
 .sfoot .num{font-weight:600}
 .sfix{margin:0}.sfix select{margin:0;padding:4px 8px;font-size:12px;width:100%}
 .small{font-size:12px}.empty{margin:4px 2px}
+.swrong{margin-top:8px;padding:8px 10px;border-radius:10px;border:1px solid var(--orange);font-size:12.5px;overflow-wrap:anywhere}.swrong b{color:var(--orange)}
+.swrong form{margin:6px 0 0}.swrong button{padding:3px 10px;font-size:12px}
 .bover{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:14px}
 .bcard{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:18px;background:var(--surface);border:1px solid var(--line);color:var(--text);transition:border-color .15s,transform .15s}
 .bcard:hover{border-color:var(--accent);color:var(--text);transform:translateY(-1px)}
