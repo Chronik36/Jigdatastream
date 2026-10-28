@@ -41,7 +41,7 @@ body dialog.osheet::-webkit-scrollbar{display:none}
 .osheet .os-editf .wide,.osheet .os-editf>button,.osheet .os-editf>p{grid-column:1/-1}
 .osheet .os-pop[hidden]{display:none}.osheet .os-pop input,.osheet .os-pop select{flex:1;min-width:180px;margin:0}.osheet .os-pop p{flex-basis:100%;margin:0}
 .osheet .os-h{margin:10px 2px 0;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
-.osheet .os-hrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}.osheet .os-hrow .os-h{margin:0 2px}.osheet .os-hrow form{margin:0}
+.osheet .os-hrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}.osheet .os-hbtns{display:flex;gap:6px;flex-wrap:wrap}.osheet .os-hrow .os-h{margin:0 2px}.osheet .os-hrow form{margin:0}
 .osheet .os-refresh{display:flex;align-items:center;gap:6px;border-radius:99px;padding:7px 14px;margin:0;background:var(--accent-soft);color:var(--accent);
   border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);box-shadow:none;font-weight:600}
 .osheet .os-kv{margin:0;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}
@@ -157,7 +157,7 @@ body dialog.osheet::-webkit-scrollbar{display:none}
       wrap.querySelectorAll('.os-pop').forEach(p => { if (p !== f) p.hidden = true; });
       f.hidden = !f.hidden;
       if (!f.hidden && f.matches('[data-os-sale]')) saleFill(f, 'price');
-      if (!f.hidden) { const i = f.querySelector('input:not([type=hidden]),select'); if (i) i.focus(); }
+      if (!f.hidden) { f.scrollIntoView({block: 'nearest', behavior: 'smooth'}); const i = f.querySelector('input:not([type=hidden]),select'); if (i) i.focus({preventScroll: true}); }
       return;
     }
     const s = e.target.closest('[data-os-share]');

@@ -92,7 +92,8 @@ def ledger_page():
 
 def _dialogs():
     """What the Add expense and Repeats dialogs need."""
-    return {"categories": EXPENSE_CATEGORIES, "periods": BILLING_PERIODS, "rec_periods": recurring.PERIODS}
+    return {"categories": EXPENSE_CATEGORIES, "periods": BILLING_PERIODS, "rec_periods": recurring.PERIODS,
+            "labels": inbox.LABELS}
 
 
 @pages.get("/expenses/recurring")
@@ -276,8 +277,27 @@ def sale_action(sale_id, action):
         f = _sale_form()
         if f["order_id"] and f["cost"] is None:
             f["cost"] = c.execute("SELECT total FROM tracked_orders WHERE id = ?", (f["order_id"],)).fetchone()[0]
+        before = c.execute("SELECT * FROM sales WHERE id = ?", (sale_id,)).fetchone()
         sales.update(c, sale_id, {k: v for k, v in f.items() if v is not None or k in ("order_id", "cost")})
-        flash("Sale saved.")
+        config = Config.from_env()
+        teach = before and before["source"] == "email" and config.accounts and \
+            any(f.get(k) is not None and f.get(k) != before[k] for k in ("platform", "item", "sale_price", "fees", "payout"))
+        if teach:
+            threading.Thread(target=teach_sale, args=(config, sale_id, current_app.config.get("DB_PATH")),
+                             daemon=True).start()
+        flash("Sale saved." + (" The AI re-reads its email and learns from your fix." if teach else ""))
+    elif action == "is":
+        label, what = _what_it_is()
+        row = c.execute("SELECT * FROM sales WHERE id = ?", (sale_id,)).fetchone()
+        if not row or not label or label == "sale":
+            flash("Pick what it really is.")
+            return _back()
+        sales.delete(c, sale_id)
+        taught = _relabel_email(c, row["message_id"], label, what)
+        flash(f"That isn't a sale, it's \"{what or inbox.LABELS[label][0]}\"."
+              + ({"order": " It moves to Orders.", "botting_expense": " It moves to Expenses."}.get(
+                  inbox.LABELS[label][1]["kind"], "") + " The AI re-reads its email and learns from it."
+                 if taught else " Removed from your sales."))
     elif action == "count":
         sales.update(c, sale_id, {"counted": 1 if request.form.get("counted") == "1" else 0})
     elif action == "delete":
@@ -363,16 +383,32 @@ def expense_new():
 
 @pages.post("/expenses/<int:expense_id>/edit")
 def expense_edit(expense_id):
-    store = Store(_con())
+    """Change anything about an expense. A fix to who you paid, the price, the category or how often it's billed
+    teaches the AI from its email, and "Repeats" starts tracking it as a subscription."""
+    c = _con()
+    store = Store(c)
     e = store.expense(expense_id)
     if e:
         f = _form()
         f["vendor"] = f["vendor"] or e["vendor"]
         if f["amount"] is None:
             f.pop("amount")
+        repeats = request.form.get("repeats", "")
+        if repeats in BILLING_PERIODS:
+            f["billing_period"] = repeats
+        changed = any(f.get(k) != e.get(k) for k in ("vendor", "amount", "category", "billing_period") if k in f)
         store.update_expense(expense_id, f)
-        logger.info("expense %s edited", expense_id)
-        flash(f"Saved {f['vendor']}.")
+        tracked = repeats in recurring.PERIODS and not e.get("subscription_id") and \
+            recurring.track(c, f["vendor"], repeats, category=f["category"], amount=f.get("amount", e["amount"]),
+                            expense_id=expense_id)
+        config = Config.from_env()
+        teach = changed and config.accounts and not (e["message_id"] or "").startswith("manual:")
+        if teach:
+            threading.Thread(target=teach_expense, args=(config, expense_id, current_app.config.get("DB_PATH")),
+                             daemon=True).start()
+        logger.info("expense %s edited (taught: %s, repeats: %s)", expense_id, bool(teach), repeats or "-")
+        flash(f"Saved {f['vendor']}." + (f" Tracked as {recurring.PERIODS[repeats].lower()} on Recurring." if tracked else "")
+              + (" The AI re-reads its email and learns from your fix." if teach else ""))
     return _back()
 
 
@@ -392,10 +428,31 @@ def expense_refunded(expense_id):
     return _back()
 
 
-@pages.post("/expenses/<int:expense_id>/not-expense")
-def not_expense(expense_id):
-    """'Not an expense': remove it, and when it came from an email, teach the AI that emails like it aren't
-    botting expenses (the email is re-read and saved as a training example, as on the Inbox tab)."""
+def _what_it_is():
+    """The "This is…" pickers: one of the Inbox labels, or "custom" with your own words for what it is."""
+    label, what = request.form.get("label", ""), _text("what")
+    if label == "custom":
+        return ("other", what) if what else (None, None)
+    return (label, None) if label in inbox.LABELS else (None, None)
+
+
+def _relabel_email(c, message_id, label, what=None):
+    """Re-read an email in the background as what you said it is: it moves to Orders, Sales or nowhere, and is
+    saved as a training example. False when there's no email to read (typed in by hand, or no inbox set up)."""
+    mail = c.execute("SELECT message_id, account, sender, subject, date FROM emails WHERE message_id = ?",
+                     (message_id,)).fetchone()
+    config = Config.from_env()
+    if not mail or not config.accounts:
+        return False
+    threading.Thread(target=inbox.label_emails, args=(config, Store(_con()), llm_for(config), [dict(mail)], label),
+                     kwargs={"what": what}, daemon=True).start()
+    return True
+
+
+MOVED = {"order": " It moves to Orders.", "sale": " It moves to your sales on Profit goal."}
+
+
+def _expense_is(expense_id, label, what=None):
     c = _con()
     store = Store(c)
     e = store.expense(expense_id)
@@ -403,18 +460,32 @@ def not_expense(expense_id):
         return _back()
     c.execute("UPDATE bank_transactions SET match_kind = NULL, match_id = NULL, match_how = NULL"
               " WHERE match_kind = 'expense' AND match_id = ?", (expense_id,))
-    mail = c.execute("SELECT message_id, account, sender, subject, date FROM emails WHERE message_id = ?",
-                     (e["message_id"],)).fetchone()
     store.delete_expense(expense_id)
-    config = Config.from_env()
-    if mail and config.accounts:
-        threading.Thread(target=inbox.label_emails, args=(config, Store(_con()), llm_for(config), [dict(mail)], "other"),
-                         daemon=True).start()
-        flash(f"Removed {e['vendor'] or 'that'}. Its email is saved as a \"not an expense\" example so the AI learns from it.")
-    else:
-        flash(f"Removed {e['vendor'] or 'that'}.")
-    logger.info("expense %s marked not an expense (email: %s)", expense_id, bool(mail))
+    taught = _relabel_email(c, e["message_id"], label, what)
+    name = what or inbox.LABELS[label][0]
+    flash(f"{e['vendor'] or 'That'} isn't an expense, it's \"{name}\"."
+          + ((MOVED.get(inbox.LABELS[label][1]["kind"], "") + " The AI re-reads its email and learns from it.")
+             if taught else " Removed from Expenses."))
+    logger.info("expense %s relabelled %s (email: %s)", expense_id, label, taught)
     return _back()
+
+
+@pages.post("/expenses/<int:expense_id>/is")
+def expense_is(expense_id):
+    """"This is…": an expense that is really something else (a sale, an order, an ad, a bank alert, or your own
+    words). It leaves Expenses, and its email is re-read as what you said so the AI learns from it."""
+    label, what = _what_it_is()
+    if not label or label == "expense":
+        flash("Pick what it really is.")
+        return _back()
+    return _expense_is(expense_id, label, what)
+
+
+@pages.post("/expenses/<int:expense_id>/not-expense")
+def not_expense(expense_id):
+    """'Not an expense': remove it, and when it came from an email, teach the AI that emails like it aren't
+    botting expenses (the email is re-read and saved as a training example, as on the Inbox tab)."""
+    return _expense_is(expense_id, "other")
 
 
 @pages.post("/expenses/<int:expense_id>/delete")
@@ -534,6 +605,27 @@ def teach_expense(config, expense_id, db_path=None):
                      description=e["description"] or raw.get("description"))
     store.add_inbox_example(email, email_prompt(email, config.max_body_chars), raw, corrected, "expense")
     logger.info("expense %s reviewed: saved as a training example", expense_id)
+    return True
+
+
+def teach_sale(config, sale_id, db_path=None):
+    """A sale fixed by hand becomes a training example: its email re-read by the model, with the platform and every
+    number the email shows set to yours. Only the example is saved; your sale is left as you typed it."""
+    from .extract import email_prompt, extract_raw
+    from .training import few_shot
+    store = Store(db.connect(db_path))
+    s = sales.ensure(store.db).execute("SELECT * FROM sales WHERE id = ?", (sale_id,)).fetchone()
+    if not s or not config.accounts:
+        return False
+    email = inbox.open_email(config, s["account"], s["message_id"])
+    if not email:
+        return False
+    platforms = sales.platforms(store.db)
+    raw, _ = extract_raw(llm_for(config), email, config.max_body_chars, few_shot(store), platforms)
+    corrected = dict(raw, kind="sale", **inbox._sale_fix(email, dict(s)))
+    corrected.pop("shipping_status", None)
+    store.add_inbox_example(email, email_prompt(email, config.max_body_chars, platforms), raw, corrected, "sale")
+    logger.info("sale %s fixed by hand: saved as a training example", sale_id)
     return True
 
 
