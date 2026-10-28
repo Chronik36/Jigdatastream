@@ -188,7 +188,12 @@ def sheet(order_id):
     groups = {}
     for r in store.db.execute("SELECT name, group_name FROM profiles ORDER BY lower(name)"):
         groups.setdefault(r["group_name"] or "No group", []).append(r["name"])
+    from . import sales
+    platform = sales.platform_in(store.db, o.get("retailer") or "") or ""
     return render_template("_order_sheet.html", o=o, events=events, shown=SHOWN, qty=quantity(o),
+                           sale_platform=platform, sale_platforms=sales.platforms(store.db),
+                           fee_pct=sales.fee_pct(store.db, platform or "eBay"),
+                           bought=[c for c in sales.order_choices(store.db) if c["id"] != order_id],
                            profile_groups=dict(sorted(groups.items(), key=lambda g: g[0].lower())),
                            date=nice(o["order_date"]), eta=nice(o["estimated_delivery"]),
                            title=first.get("name") or o.get("retailer") or "Order",
@@ -232,6 +237,52 @@ def refresh(order_id):
     threading.Thread(target=lambda: carriers.refresh(db.connect(path), dict(os.environ), only_id=order_id),
                      daemon=True).start()
     flash("Asking the carrier about this package. Open it again in a minute.")
+    return redirect(_back())
+
+
+def _pct(text):
+    v = _money(text)
+    return v if v is not None and 0 <= v < 100 else None
+
+
+@bp.post("/orders/<int:order_id>/sale")
+def as_sale(order_id):
+    """This "order" was a sale (an eBay "you sold it" email read as a purchase): it leaves Orders and becomes a sale
+    on Profit goal with what it sold for, the fees and what you got, tied to the order you bought the item with.
+    The AI re-reads its emails as a sale with your numbers and learns from it."""
+    from . import inbox, sales
+    from .config import Config
+    from .llm import from_config
+    from .orderstore import Store
+    store = Store(_con())
+    o = store.order(order_id)
+    if o is None:
+        flash("That order is gone.")
+        return redirect(_back())
+    f = request.form
+    fields = {"platform": (f.get("platform") or "").strip()[:40] or "eBay",
+              "item": (f.get("item") or "").strip()[:200] or None, "size": (f.get("size") or "").strip() or None,
+              "date": (f.get("date") or "").strip() or None, "sale_price": _money(f.get("sale_price")),
+              "fees": _money(f.get("fees")), "payout": _money(f.get("payout")), "fee_pct": _pct(f.get("fee_pct")),
+              "cost": _money(f.get("cost")), "order_id": f.get("bought", type=int) or None}
+    if fields["sale_price"] is None and fields["payout"] is None:
+        flash("Enter what it sold for or what you got.")
+        return redirect(_back())
+    ids = o.get("message_ids") or []
+    mails = [dict(r) for r in store.db.execute(
+        "SELECT message_id, account, sender, subject, date FROM emails WHERE message_id IN (%s)"
+        % ",".join("?" * len(ids)), ids)] if ids else []
+    store.delete_order(order_id)
+    sale_id = sales.from_order(store.db, o, fields)
+    s = dict(store.db.execute("SELECT * FROM sales WHERE id = ?", (sale_id,)).fetchone())
+    logger.info("order %s (%s) turned into a %s sale %s by hand", order_id, o.get("retailer"), s["platform"], sale_id)
+    config = Config.from_env()
+    if mails and config.accounts:
+        threading.Thread(target=inbox.label_emails, args=(config, Store(_con()), from_config(config), mails, "sale", s),
+                         daemon=True).start()
+    linked = " Linked to the order you bought it with." if s["order_id"] else ""
+    flash(f"Moved to Sales: {s['platform']} sale, you got ${s['payout'] or 0:,.2f}.{linked}"
+          + (" The AI re-reads its emails as a sale and learns from it." if mails else ""))
     return redirect(_back())
 
 
