@@ -47,6 +47,11 @@ def _now():
 def ensure(con):
     budget.ensure(con)
     con.executescript(SCHEMA)
+    have = {r[1] for r in con.execute("PRAGMA table_info(sales)")}
+    # covered_by: the lump payout a sale was paid out in. count_manual: Count it / Don't count was pressed.
+    for col in ("covered_by INTEGER", "count_manual INTEGER DEFAULT 0"):
+        if col.split()[0] not in have:
+            con.execute(f"ALTER TABLE sales ADD COLUMN {col}")
     con.commit()
     return con
 
@@ -264,6 +269,11 @@ def update(con, sale_id, fields):
     ensure(con)
     allowed = {k: v for k, v in fields.items() if k in ("platform", "item", "size", "sale_price", "fees", "payout",
                                                         "date", "cost", "order_id", "counted")}
+    if "counted" in allowed:
+        allowed["count_manual"] = 1
+    if any(k in allowed for k in ("platform", "item", "sale_price", "fees", "payout", "date")):
+        # Its amount or date changed: it's matched to a payout again from scratch.
+        con.execute("UPDATE sales SET covered_by = NULL WHERE covered_by = ? OR id = ?", (sale_id, sale_id))
     if "order_id" in allowed:
         allowed["link_manual"] = 1
     if allowed:
@@ -275,6 +285,7 @@ def update(con, sale_id, fields):
 def delete(con, sale_id):
     ensure(con)
     con.execute("DELETE FROM sales WHERE id = ?", (sale_id,))
+    con.execute("UPDATE sales SET covered_by = NULL WHERE covered_by = ?", (sale_id,))
     con.commit()
 
 
@@ -295,6 +306,86 @@ def add_deposit(con, tx_id, platform=None):
 def platform_in(con, text):
     squashed = _key(text)
     return next((p for p in platforms(con) if len(_key(p)) >= 4 and _key(p) in squashed), None)
+
+
+PAYOUT_DAYS = 21  # a payout pays out sales from up to three weeks before it
+
+
+def _day(text):
+    try:
+        return date.fromisoformat((text or "")[:10])
+    except ValueError:
+        return None
+
+
+def _adds_up(items, target, limit=200000):
+    """The ids of the items (id, cents) whose cents add up to target, newest first, or None."""
+    sums = {0: ()}
+    for sid, cents in items:
+        for total, ids in list(sums.items()):
+            t = total + cents
+            if t <= target and t not in sums:
+                sums[t] = ids + (sid,)
+                if len(sums) > limit:
+                    return None
+        if target in sums:
+            return sums[target]
+    return sums.get(target)
+
+
+def match_payouts(con):
+    """A lump payout (no item) is matched to the sales it pays out: same platform, sold in the three weeks before
+    it, whose payouts add up to it to the cent. Those sales point at it (covered_by) and the payout stops counting
+    on its own, so nothing counts twice; Count it / Don't count by hand always wins. Returns how many matched."""
+    ensure(con)
+    matched = 0
+    payouts = [dict(r) for r in con.execute(
+        "SELECT * FROM sales WHERE item IS NULL AND date IS NOT NULL ORDER BY date")]
+    for p in payouts:
+        day, target = _day(p["date"]), round(money_in(p) * 100)
+        if not day or target <= 0 or con.execute("SELECT 1 FROM sales WHERE covered_by = ?", (p["id"],)).fetchone():
+            continue
+        items = []
+        for r in con.execute("SELECT * FROM sales WHERE item IS NOT NULL AND covered_by IS NULL AND id != ?"
+                             " AND date IS NOT NULL ORDER BY date DESC", (p["id"],)):
+            d = _day(r["date"])
+            if d and 0 <= (day - d).days <= PAYOUT_DAYS and _key(r["platform"]) == _key(p["platform"]) \
+                    and money_in(r) > 0:
+                items.append((r["id"], round(money_in(r) * 100)))
+        ids = _adds_up(items[:24], target)
+        if not ids:
+            continue
+        con.executemany("UPDATE sales SET covered_by = ? WHERE id = ?", [(p["id"], i) for i in ids])
+        if not p["count_manual"]:
+            con.execute("UPDATE sales SET counted = 0 WHERE id = ?", (p["id"],))
+            con.executemany("UPDATE sales SET counted = 1 WHERE id = ? AND COALESCE(count_manual, 0) = 0",
+                            [(i,) for i in ids])
+        matched += 1
+        logger.info("payout %s matched to %d sale(s)", p["id"], len(ids))
+    con.commit()
+    return matched
+
+
+def nearby_emails(con, sale_id):
+    """Emails from a sale's platform around it (three weeks before to two days after), to find the sale emails a
+    payout pays out, or one that was misread: each with what BotTrack made of it."""
+    s = ensure(con).execute("SELECT * FROM sales WHERE id = ?", (sale_id,)).fetchone()
+    day = _day(s["date"]) if s else None
+    if not day or not _key(s["platform"]):
+        return []
+    key = _key(s["platform"])
+    lo, hi = (day - timedelta(days=PAYOUT_DAYS)).isoformat(), (day + timedelta(days=2)).isoformat()
+    made = {r["message_id"]: dict(r) for r in con.execute("SELECT id, message_id, item, payout, covered_by FROM sales")}
+    out = []
+    for e in con.execute("SELECT message_id, account, sender, subject, date, kind FROM emails"
+                         " WHERE substr(date, 1, 10) BETWEEN ? AND ? AND message_id != ? ORDER BY date DESC",
+                         (lo, hi, s["message_id"] or "")):
+        if key not in _key(e["sender"]) and key not in _key(e["subject"]):
+            continue
+        d = dict(e)
+        d["sale"] = made.get(e["message_id"])
+        out.append(d)
+    return out[:40]
 
 
 def match_deposits(con):
@@ -425,6 +516,11 @@ def rows(con, month=None):
         d["money_in"] = money_in(d)
         d["profit"] = round(d["money_in"] - d["cost"], 2) if d["cost"] is not None and d["item"] else None
         out.append(d)
+    # A lump payout lists the sales it paid out; a sale says which payout it came in.
+    every = {r["id"]: dict(r) for r in con.execute("SELECT id, item, date, payout, sale_price, fees, covered_by FROM sales")}
+    for d in out:
+        d["covers"] = [dict(c, money_in=money_in(c)) for c in every.values() if c["covered_by"] == d["id"]]
+        d["paid_in"] = every.get(d["covered_by"]) if d["covered_by"] else None
     return out
 
 
