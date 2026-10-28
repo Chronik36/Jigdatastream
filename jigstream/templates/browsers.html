@@ -1,6 +1,7 @@
 {% extends "base.html" %}{% block body %}
 {% macro proxy_options(selected=None) %}<option value="">No proxy (your own connection)</option>{% for g, ps in groups %}<optgroup label="{{g}}">{% for p in ps %}<option value="{{p.id}}" {{"selected" if p.id == selected}}>{{p.label}}{% if p.exit %} · {{p.exit.get("city") or p.exit.get("countryCode") or ""}}{% endif %}</option>{% endfor %}</optgroup>{% endfor %}{% endmacro %}
 {% macro account_options(selected=None) %}<option value="">No account</option>{% for a in accounts %}<option value="{{a.id}}" {{"selected" if a.id == selected}}>{{a.site}} · {{a.email}}</option>{% endfor %}{% endmacro %}
+{% if on_phone %}{% include "_browsers_phone.html" %}{% else %}
 <style>
 .phead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.phead h2{margin:0;flex:1}
 .toolbar button{margin:0;padding:6px 12px}
@@ -78,4 +79,5 @@ function openEdit(b) {
   editdlg.showModal();
 }
 </script>
+{% endif %}
 {% endblock %}

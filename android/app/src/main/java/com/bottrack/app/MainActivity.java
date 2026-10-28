@@ -236,6 +236,7 @@ public class MainActivity extends Activity {
                 Uri u = req.getUrl();
                 if ("bottrack".equals(u.getScheme())) {
                     if ("update".equals(u.getHost())) update(u.getQueryParameter("url"));
+                    else if ("browse".equals(u.getHost())) browse(u.getQueryParameter("id"));
                     else scan();
                     return true;
                 }
@@ -341,6 +342,50 @@ public class MainActivity extends Activity {
         } else {
             registerReceiver(done, filter);
         }
+    }
+
+    /**
+     * Open one of BotTrack's browsers (the Browsers tab's Open button): ask the Mac for its proxy and start page,
+     * signed in as this phone, then show it in its own screen.
+     */
+    private void browse(String id) {
+        if (id == null || !id.matches("\\d+")) return;
+        final String base = address();
+        final String cookies = CookieManager.getInstance().getCookie(base);
+        final String agent = web == null ? "" : web.getSettings().getUserAgentString();
+        new Thread(() -> {
+            HttpURLConnection c = null;
+            String body = null, problem = null;
+            try {
+                c = (HttpURLConnection) new URL(base + "browsers/" + id + "/config.json").openConnection();
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(15000);
+                if (cookies != null) c.setRequestProperty("Cookie", cookies);
+                c.setRequestProperty("User-Agent", agent);
+                int code = c.getResponseCode();
+                StringBuilder sb = new StringBuilder();
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(
+                        code < 400 ? c.getInputStream() : c.getErrorStream(), StandardCharsets.UTF_8))) {
+                    for (String line; (line = r.readLine()) != null; ) sb.append(line);
+                }
+                org.json.JSONObject j = new org.json.JSONObject(sb.toString());
+                if (code >= 400 || j.has("error")) problem = j.optString("error", "Couldn't open that browser.");
+                else body = sb.toString();
+            } catch (Exception e) {
+                problem = "Couldn't reach your Mac to open that browser.";
+            } finally {
+                if (c != null) c.disconnect();
+            }
+            final String cfg = body, err = problem;
+            runOnUiThread(() -> {
+                if (err != null) {
+                    Toast.makeText(this, err, Toast.LENGTH_LONG).show();
+                    return;
+                }
+                startActivity(new Intent(this, BrowserActivity.class).putExtra("config", cfg)
+                        .putExtra("mac", Uri.parse(base).getHost()));
+            });
+        }).start();
     }
 
     /** The Mac didn't answer: ask its private topic for a newer link, once, before giving up. */
