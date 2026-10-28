@@ -1,0 +1,81 @@
+{% extends "base.html" %}{% block body %}
+{% macro proxy_options(selected=None) %}<option value="">No proxy (your own connection)</option>{% for g, ps in groups %}<optgroup label="{{g}}">{% for p in ps %}<option value="{{p.id}}" {{"selected" if p.id == selected}}>{{p.label}}{% if p.exit %} · {{p.exit.get("city") or p.exit.get("countryCode") or ""}}{% endif %}</option>{% endfor %}</optgroup>{% endfor %}{% endmacro %}
+{% macro account_options(selected=None) %}<option value="">No account</option>{% for a in accounts %}<option value="{{a.id}}" {{"selected" if a.id == selected}}>{{a.site}} · {{a.email}}</option>{% endfor %}{% endmacro %}
+<style>
+.phead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.phead h2{margin:0;flex:1}
+.toolbar button{margin:0;padding:6px 12px}
+.brow-on{color:var(--green);font-weight:600}.brow-off{color:var(--muted)}
+.tog{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:13px;cursor:pointer}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:13px;overflow-wrap:anywhere}
+td .sub{display:block;font-size:12px;margin-top:2px}
+dialog{width:min(560px,94vw)}dialog .db{padding:18px 22px}dialog form{display:block;margin:0}
+.ag{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px}
+.ag label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}.ag input,.ag select{margin:0;width:100%;color:var(--text)}
+.ag .wide{grid-column:1/-1}.ag label.tog{flex-direction:row;color:var(--text)}.ag label.tog input{width:auto}
+</style>
+<div class="phead"><h2>Browsers <span class="muted" style="font-size:15px;font-weight:500">{{browsers|length}}{% if open_n %} · {{open_n}} open{% endif %}</span></h2>
+<button type="button" onclick="adddlg.showModal()">+ Add browsers</button></div>
+<p class="muted" style="margin-top:-6px">Each browser opens Chrome through its own proxy, with its own cookies and sign-ins. With <b>Save session</b> on, closing it keeps you signed in for next time; off, it starts clean every time. WebRTC only uses the proxy, so it can't show your home IP.</p>
+{% if not chrome %}<section class="panel" style="border-color:var(--orange)"><b>No Chrome found on this computer.</b> Install <a href="https://www.google.com/chrome/" target="_blank" rel="noopener">Google Chrome</a> (or Chromium, Brave or Edge), or pick the browser app below.</section>{% endif %}
+<details class="panel" style="margin-bottom:14px"><summary style="cursor:pointer"><b>Browser to use</b> <span class="muted">{{chrome or "none found"}}</span></summary>
+<form method="post" action="/browsers/app" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0">
+<input name="path" value="{{app_path or ''}}" placeholder="Blank: find Chrome, Chromium, Brave or Edge" style="flex:1;min-width:min(100%,260px);margin:0">
+<button>Save</button></form>
+<p class="muted small" style="margin:6px 0 0">Any Chrome-based browser: on a Mac, the app's program inside it, like /Applications/Google Chrome.app/Contents/MacOS/Google Chrome. You can also drop the .app path and BotTrack finds the program in it.</p></details>
+
+{% if browsers %}
+<form method="post" action="/browsers/run" id="runform">
+<div class="toolbar">
+  <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" onclick="document.querySelectorAll('input.pick').forEach(c => c.checked = this.checked)"> All</label>
+  <button name="action" value="open">Open ticked</button><button class="ghost" name="action" value="open_all">Open all</button>
+  <button class="ghost" name="action" value="close">Close ticked</button>
+  <button class="ghost" name="action" value="clear" data-confirm="Clear the saved sessions of the ticked browsers? They open signed out next time.">Clear session</button>
+  <button class="danger" name="action" value="delete" data-confirm="Delete the ticked browsers and their saved sessions?">Delete</button>
+</div>
+<table><thead><tr><th></th><th>Browser</th><th>Proxy</th><th>Account</th><th>Save session</th><th>Status</th><th></th></tr></thead><tbody>
+{% for b in browsers %}<tr>
+<td><input type="checkbox" class="pick" name="ids" value="{{b.id}}"></td>
+<td><b>{{b.name}}</b>{% if b.start_url %}<span class="sub muted mono">{{b.start_url}}</span>{% endif %}</td>
+<td>{% if b.proxy %}<span class="mono">{{b.proxy}}</span><span class="sub muted">{{b.grp or ""}}</span>{% else %}<span class="muted">No proxy</span>{% endif %}</td>
+<td>{% if b.email %}{{b.site}}<span class="sub muted">{{b.username or b.email}}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+<td><label class="tog"><input type="checkbox" {{"checked" if b.keep_session}} form="keep-{{b.id}}" name="keep" value="1" onchange="this.form.requestSubmit()"> {{"Saved" if b.keep_session else "Fresh each time"}}</label></td>
+<td>{% if b.running %}<span class="brow-on">● Open</span>{% else %}<span class="brow-off">Closed</span>{% if b.last_opened %}<span class="sub muted">{{b.last_opened[:16]|replace("T", " ")}}</span>{% endif %}{% endif %}</td>
+<td><div class="acts">{% if b.running %}<button class="ghost" formaction="/browsers/{{b.id}}/close" formnovalidate>Close</button>
+{% else %}<button formaction="/browsers/{{b.id}}/open" formnovalidate>Open</button>{% endif %}
+<button type="button" class="ghost" onclick='openEdit({{ {"id": b.id, "name": b.name, "proxy_id": b.proxy_id, "account_id": b.account_id, "start_url": b.start_url, "keep": b.keep_session}|tojson }})'>Edit</button></div></td>
+</tr>{% endfor %}</tbody></table>
+</form>
+{% for b in browsers %}<form id="keep-{{b.id}}" method="post" action="/browsers/{{b.id}}/keep" hidden></form>{% endfor %}
+{% else %}<section class="panel"><p style="margin:0">No browsers yet. <a href="#" onclick="adddlg.showModal();return false">Add one or a batch</a>: give each a proxy, or a proxy group to spread them over.</p></section>{% endif %}
+
+<dialog id="adddlg"><div class="dh"><h3>Add browsers</h3><button class="x" type="button" onclick="adddlg.close()">×</button></div>
+<form method="post" action="/browsers/add" class="db"><div class="ag">
+<label>Name<input name="name" placeholder="e.g. Target"></label>
+<label>How many<input name="count" type="number" min="1" max="50" value="1"></label>
+<label class="wide">Proxy group <span class="muted">(each browser takes the next proxy in it)</span><select name="group"><option value="">Pick one proxy below instead</option>{% for g, ps in groups %}<option value="{{g}}">{{g}} · {{ps|length}} prox{{"y" if ps|length == 1 else "ies"}}</option>{% endfor %}</select></label>
+<label class="wide">Or one proxy<select name="proxy_id">{{ proxy_options() }}</select></label>
+<label class="wide">Account<select name="account_id">{{ account_options() }}</select></label>
+<label class="wide">Opens at<input name="start_url" placeholder="https://… (blank: the account's store, or a new tab)"></label>
+<label class="tog wide"><input type="checkbox" name="keep" value="1" checked> Save session when it closes</label>
+</div><div style="margin-top:12px"><button>Add</button></div></form></dialog>
+
+<dialog id="editdlg"><div class="dh"><h3>Edit browser</h3><button class="x" type="button" onclick="editdlg.close()">×</button></div>
+<form method="post" action="" class="db" id="editform"><div class="ag">
+<label class="wide">Name<input name="name" required></label>
+<label class="wide">Proxy<select name="proxy_id">{{ proxy_options() }}</select></label>
+<label class="wide">Account<select name="account_id">{{ account_options() }}</select></label>
+<label class="wide">Opens at<input name="start_url" placeholder="https://…"></label>
+<label class="tog wide"><input type="checkbox" name="keep" value="1"> Save session when it closes</label>
+</div><div style="margin-top:12px"><button>Save</button></div></form></dialog>
+
+<script>
+const adddlg = document.getElementById('adddlg'), editdlg = document.getElementById('editdlg');
+function openEdit(b) {
+  const f = document.getElementById('editform');
+  f.action = '/browsers/' + b.id + '/edit';
+  f.elements.name.value = b.name || ''; f.elements.proxy_id.value = b.proxy_id || ''; f.elements.account_id.value = b.account_id || '';
+  f.elements.start_url.value = b.start_url || ''; f.elements.keep.checked = !!b.keep;
+  editdlg.showModal();
+}
+</script>
+{% endblock %}
