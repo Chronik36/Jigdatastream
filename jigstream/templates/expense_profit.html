@@ -65,7 +65,7 @@ tr.off td{opacity:.55}
 <td class="num">{{s.money_in|money(s.currency)}}{% if s.sale_price and s.payout is not none and s.sale_price != s.payout %}<span class="sub">sold {{s.sale_price|money}}{% if s.sale_price > 0 %} · fees {{((s.sale_price - s.payout) / s.sale_price * 100)|round(1)}}%{% endif %}</span>{% endif %}</td>
 <td class="num">{{s.cost|money if s.cost is not none else "-"}}</td>
 <td class="num {{'pos' if s.profit and s.profit > 0 else ('neg' if s.profit and s.profit < 0 else '')}}">{% if s.profit is not none %}{{"+" if s.profit > 0 else ("−" if s.profit < 0 else "")}}{{s.profit|abs|money}}{% else %}-{% endif %}</td>
-<td><div class="acts"><button type="button" class="ghost" onclick='openSale({{ {"id": s.id, "platform": s.platform, "item": s.item, "size": s.size, "sale_price": s.sale_price, "fees": s.fees, "payout": s.payout, "date": s.date, "cost": s.cost, "order_id": s.order_id}|tojson }})'>Edit</button>
+<td><div class="acts"><button type="button" class="ghost" onclick='openSale({{ {"id": s.id, "platform": s.platform, "item": s.item, "size": s.size, "sale_price": s.sale_price, "fees": s.fees, "payout": s.payout, "date": s.date, "cost": s.cost, "order_id": s.order_id, "message_id": s.message_id if s.source == "email" else None, "account": s.account}|tojson }})'>Edit</button>
 <form method="post" action="/expenses/sales/{{s.id}}/count"><input type="hidden" name="counted" value="{{0 if s.counted else 1}}"><button class="ghost" title="{{'Leave it out, e.g. a payout of sales already counted one by one' if s.counted else 'Count it toward this month'}}">{{"Don't count" if s.counted else "Count it"}}</button></form></div></td></tr>
 {% else %}<tr><td colspan="7" class="muted">No sales in {{p.name}}. They come from sale and payout emails on the next sync, or press Add sale.</td></tr>{% endfor %}
 </tbody></table></div></div>
@@ -119,7 +119,17 @@ tr.off td{opacity:.55}
 <label>Bought with order<br><select name="order_id" id="s-order_id" style="width:100%"><option value="">No order (type the cost)</option>{% for o in orders %}<option value="{{o.id}}">{{o.label}}</option>{% endfor %}</select></label>
 <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button>Save</button><span style="flex:1"></span>
 <button type="submit" class="danger" id="s-delete" formnovalidate data-confirm="Delete this sale?">Delete</button></div>
-</form></dialog>
+<p class="muted small" id="s-teach" hidden style="margin:6px 0 0">Fixing where you sold it, the item or the numbers teaches the AI from its email.</p>
+</form>
+<div class="db" style="display:block;padding-top:0;margin:0">
+<details id="s-mail" hidden style="margin-top:10px"><summary style="cursor:pointer;color:var(--accent);font-weight:600">Read the email</summary>
+<div id="s-mailtext" class="muted" style="white-space:pre-wrap;font-size:13px;margin-top:8px;padding:10px;border-radius:10px;background:var(--surface-2);overflow-wrap:anywhere">Loading…</div></details>
+<form method="post" id="s-is" action="" style="display:none;margin:12px 0 0;gap:8px;flex-wrap:wrap;align-items:center" data-confirm="Not a sale? It leaves your sales, and its email teaches the AI what it really is.">
+<select name="label" required aria-label="What this really is" style="flex:1 1 100%;min-width:0;margin:0"><option value="">Not a sale? It's…</option>
+{% for k, v in labels.items() if k != "sale" %}{% if k == "ordered" %}<optgroup label="An order">{% elif k == "expense" %}<optgroup label="Money out">{% elif k == "other" %}<optgroup label="Neither">{% endif %}<option value="{{k}}">{{"Not a sale (nothing)" if k == "other" else v[0]}}</option>{% if k in ("returned", "expense") %}</optgroup>{% endif %}{% endfor %}<option value="custom">Something else (type it)</option></optgroup></select>
+<input name="what" maxlength="80" placeholder="What is it? e.g. Discord invite" hidden style="flex:1 1 100%;min-width:0;margin:0">
+<button class="ghost danger">Move it</button></form></div>
+</dialog>
 <datalist id="plist">{% for pl in platforms %}<option value="{{pl}}">{% endfor %}</datalist>
 <script>
 const goaldlg = document.getElementById('goaldlg'), saledlg = document.getElementById('saledlg');
@@ -146,8 +156,30 @@ function openSale(s) {
   document.getElementById('stitle').textContent = s.id ? 'Edit sale' : 'Add sale';
   const del = document.getElementById('s-delete');
   del.style.display = s.id ? '' : 'none'; del.formAction = s.id ? '/expenses/sales/' + s.id + '/delete' : '';
+  // A sale read from an email: read it, and say what it really is when it isn't a sale.
+  const email = s.id && s.message_id && s.account;
+  document.getElementById('s-teach').hidden = !email;
+  const mail = document.getElementById('s-mail');
+  mail.hidden = !email; mail.open = false; delete mail.dataset.loaded;
+  mail.dataset.account = s.account || ''; mail.dataset.id = s.message_id || '';
+  const is = document.getElementById('s-is');
+  is.style.display = email ? 'flex' : 'none'; is.action = s.id ? '/expenses/sales/' + s.id + '/is' : '';
+  is.elements.label.value = ''; is.elements.what.hidden = true;
   saledlg.showModal();
 }
+document.getElementById('s-is').addEventListener('change', e => {
+  const f = e.currentTarget;
+  f.elements.what.hidden = f.elements.label.value !== 'custom'; f.elements.what.required = !f.elements.what.hidden;
+});
+document.getElementById('s-mail').addEventListener('toggle', e => {
+  const d = e.target;
+  if (!d.open || d.dataset.loaded) return;
+  d.dataset.loaded = 1;
+  const box = document.getElementById('s-mailtext'); box.textContent = 'Loading…';
+  fetch('/inbox/view?account=' + encodeURIComponent(d.dataset.account) + '&id=' + encodeURIComponent(d.dataset.id))
+    .then(r => r.json()).then(j => { box.textContent = j.body || j.error || 'Empty email.'; })
+    .catch(() => { box.textContent = "Couldn't open the email."; });
+});
 </script>
 {% include "_expense_dialog.html" %}
 {% endblock %}

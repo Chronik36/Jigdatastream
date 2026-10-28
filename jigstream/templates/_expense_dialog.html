@@ -1,4 +1,5 @@
-{# Add or edit one botting expense. openExpense() for a new one, openExpense(row) to edit. #}
+{# Add or edit one botting expense. openExpense() for a new one, openExpense(row) to edit: then its email can be read,
+   it can be tracked as a repeat, and "This is…" says what it really is (a sale, an order, an ad...), teaching the AI. #}
 <dialog id="expdlg"><div class="dh"><h3 id="xtitle">Add expense</h3><button class="x" type="button" onclick="expdlg.close()">×</button></div>
 <form method="post" id="xform" action="/expenses/new" class="db" style="display:block;margin:0">
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px">
@@ -10,9 +11,21 @@
 <label>Currency<br><input name="currency" id="x-currency" value="USD" maxlength="3" style="width:100%"></label>
 </div>
 <label>What you bought<br><input name="description" id="x-description" style="width:100%" placeholder="e.g. 10 GB residential proxies"></label>
+<label id="x-repeatl">Repeats<br><select name="repeats" id="x-repeats" style="width:100%"><option value="">No, just this once</option>{% for k, v in rec_periods.items() if k != "custom" %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></label>
+<p class="muted small" id="x-tracked" hidden style="margin:4px 0 0">Tracked on <a href="/expenses/recurring">Recurring</a>.</p>
 <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button>Save</button><span class="grow" style="flex:1"></span>
 <button type="submit" class="danger" id="x-delete" formaction="" formnovalidate data-confirm="Delete this expense?">Delete</button></div>
-</form></dialog>
+<p class="muted small" id="x-teach" hidden style="margin:6px 0 0">Fixing who you paid, the price, the category or how often it bills teaches the AI from its email.</p>
+</form>
+<div class="db" style="display:block;padding-top:0;margin:0">
+<details id="x-mail" hidden style="margin-top:10px"><summary style="cursor:pointer;color:var(--accent);font-weight:600">Read the email</summary>
+<div id="x-mailtext" class="muted" style="white-space:pre-wrap;font-size:13px;margin-top:8px;padding:10px;border-radius:10px;background:var(--surface-2);overflow-wrap:anywhere">Loading…</div></details>
+<form method="post" id="x-is" action="" style="display:none;margin:12px 0 0;gap:8px;flex-wrap:wrap;align-items:center">
+<select name="label" id="x-label" required aria-label="What this really is" style="flex:1 1 100%;min-width:0;margin:0"><option value="">Not an expense? It's…</option>
+{% for k, v in labels.items() if k != "expense" %}{% if k == "sale" %}<optgroup label="Money in">{% elif k == "ordered" %}<optgroup label="An order">{% elif k == "other" %}<optgroup label="Neither">{% endif %}<option value="{{k}}">{{"Not an expense (nothing)" if k == "other" else v[0]}}</option>{% if k in ("sale", "returned") %}</optgroup>{% endif %}{% endfor %}<option value="custom">Something else (type it)</option></optgroup></select>
+<input name="what" id="x-what" maxlength="80" placeholder="What is it? e.g. Discord invite" hidden style="flex:1 1 100%;min-width:0;margin:0">
+<button class="ghost danger">Move it</button></form></div>
+</dialog>
 <script>
 const expdlg = document.getElementById('expdlg');
 function openExpense(e) {
@@ -26,6 +39,33 @@ function openExpense(e) {
   document.getElementById('xtitle').textContent = e.id ? 'Edit expense' : 'Add expense';
   const del = document.getElementById('x-delete');
   del.style.display = e.id ? '' : 'none'; del.formAction = e.id ? '/expenses/' + e.id + '/delete' : '';
+  set('repeats', '');
+  document.getElementById('x-repeatl').hidden = !!e.subscription_id;
+  document.getElementById('x-tracked').hidden = !e.subscription_id;
+  const email = e.id && e.message_id && !String(e.message_id).startsWith('manual:') && (e.email_account || e.account);
+  document.getElementById('x-teach').hidden = !email;
+  const mail = document.getElementById('x-mail');
+  mail.hidden = !email; mail.open = false; delete mail.dataset.loaded;
+  mail.dataset.account = email || ''; mail.dataset.id = e.message_id || '';
+  const is = document.getElementById('x-is');
+  is.style.display = e.id ? 'flex' : 'none'; is.action = e.id ? '/expenses/' + e.id + '/is' : '';
+  set('label', ''); document.getElementById('x-what').hidden = true;
   expdlg.showModal();
 }
+// The in-page confirm names what it becomes.
+['change', 'input'].forEach(t => document.getElementById('x-is').addEventListener(t, () => {
+  const pick = document.getElementById('x-label'), what = document.getElementById('x-what');
+  what.hidden = pick.value !== 'custom'; what.required = !what.hidden;
+  document.getElementById('x-is').dataset.confirm = 'Move it out of Expenses as "' + (pick.value === 'custom' ? what.value : pick.selectedOptions[0].text)
+    + '"? The AI re-reads its email and learns from it.';
+}));
+document.getElementById('x-mail').addEventListener('toggle', ev => {
+  const d = ev.target;
+  if (!d.open || d.dataset.loaded) return;
+  d.dataset.loaded = 1;
+  const box = document.getElementById('x-mailtext'); box.textContent = 'Loading…';
+  fetch('/inbox/view?account=' + encodeURIComponent(d.dataset.account) + '&id=' + encodeURIComponent(d.dataset.id))
+    .then(r => r.json()).then(j => { box.textContent = j.body || j.error || 'Empty email.'; })
+    .catch(() => { box.textContent = "Couldn't open the email."; });
+});
 </script>
