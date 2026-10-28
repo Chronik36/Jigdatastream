@@ -54,10 +54,13 @@
   <label>Order #<input name="order_number" value="{{o.order_number or ''}}"></label>
   <label>Order date<input type="date" name="order_date" value="{{(o.order_date or '')[:10]}}"></label>
   <label>Total<input name="total" inputmode="decimal" value="{{'%.2f'|format(o.total) if o.total is not none else ''}}"></label>
-  <label>Status<select name="status">{% for c in choices if c != "not_an_order" %}<option value="{{c}}" {{"selected" if c == status}}>{{c|status_label}}</option>{% endfor %}</select></label>
-  <label>Profile<select name="profile"><option value="">No profile</option>{% for g, names in profile_groups.items() %}<optgroup label="{{g}}">{% for n in names %}<option {{"selected" if n == o.profile_name}}>{{n}}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+  <label>Status<select name="status">{% for c in choices %}{% if c == "not_an_order" %}<option disabled>──────────</option>{% endif %}<option value="{{c}}" {{"selected" if c == status}}>{{c|status_label}}</option>{% endfor %}</select></label>
+  <label>Profile<select name="profile" data-os-profile><option value="">No profile</option>{% for g, names in profile_groups.items() %}<optgroup label="{{g}}">{% for n in names %}<option {{"selected" if n == o.profile_name}}>{{n}}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
   <label>Ship to name<input name="shipping_name" value="{{o.shipping_name or ''}}" data-private></label>
-  <label class="wide">Ship to address<input name="shipping_address" value="{{o.shipping_address or ''}}" data-private></label>
+  <label class="wide">Ship to address <span class="muted">(type, or pick a profile's or one used before)</span><input name="shipping_address" value="{{o.shipping_address or ''}}" list="os-addrs" autocomplete="off" data-private></label>
+  <div class="wide os-useaddr" data-os-useaddr-row hidden><button type="button" class="ghost" data-os-useaddr>Use the profile's address</button></div>
+  <datalist id="os-addrs">{% for a, who in addresses.items() %}<option value="{{a}}">{{who}}</option>{% endfor %}</datalist>
+  <script type="application/json" id="os-paddr">{{profile_addr|tojson}}</script>
   <label>Carrier<input name="carrier" value="{{o.carrier or ''}}"></label>
   <label>Tracking #<input name="tracking_number" value="{{o.tracking_number or ''}}"></label>
   <label>Est. delivery<input type="date" name="estimated_delivery" value="{{(o.estimated_delivery or '')[:10]}}"></label>
@@ -92,24 +95,35 @@
 .os-mtop{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}.os-msubj{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}
 .os-mtag{color:var(--accent)}.os-mopen{padding:5px 12px;font-size:12px;flex:none}.os-mlabel select{width:100%;margin:0;font-size:12.5px;padding:6px 8px}
 .os-mview{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12.5px;line-height:1.5;border-top:1px solid var(--line);padding-top:8px;max-height:none}
+.os-src{display:block;margin-top:4px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}.os-src b{color:var(--accent);font-weight:600}
+.os-src q{display:block;font-style:normal;margin-top:2px;padding:4px 8px;border-left:2px solid var(--line-2)}.os-src.none{color:var(--orange)}
+.os-mini{padding:2px 10px;font-size:12px;min-height:0;margin-left:6px}.os-useaddr button{padding:5px 12px;font-size:12.5px;margin:0}
 .os-checkouts{list-style:none;padding:0;margin:0 0 6px;display:flex;flex-direction:column;gap:8px}.os-checkouts li{display:flex;flex-direction:column;gap:2px;overflow-wrap:anywhere}</style>
-<h4 class="os-h">Details</h4>
+<div class="os-hrow"><h4 class="os-h">Details</h4>
+  <div class="os-hbtns"><button type="button" class="os-refresh" data-os-src="{{o.id}}" title="Opens this order's emails and shows which one each detail was read from">{{ os_icon("open") }}Where from?</button>
+  <button type="button" class="os-refresh" data-os-toggle="os-edit">{{ os_icon("edit") }}Fix</button></div></div>
 <dl class="os-kv">
-  <div><dt>Retailer</dt><dd>{{o.retailer or "-"}}</dd></div>
-  {% if o.order_number %}<div><dt>Order #</dt><dd><span data-copy>{{o.order_number}}</span></dd></div>{% endif %}
-  <div><dt>Order date</dt><dd>{{date or "-"}}</dd></div>
+  <div><dt>Product</dt><dd data-src="items">{{title}}</dd></div>
+  <div><dt>Retailer</dt><dd data-src="retailer">{{o.retailer or "-"}}</dd></div>
+  <div><dt>Order #</dt><dd data-src="order_number">{% if o.order_number %}<span data-copy>{{o.order_number}}</span>{% else %}-{% endif %}</dd></div>
+  <div><dt>Order date</dt><dd data-src="order_date">{{date or "-"}}</dd></div>
   {% if qty %}<div><dt>Quantity</dt><dd>{{qty}}</dd></div>{% endif %}
-  <div><dt>Total</dt><dd class="os-money"><span data-edit-price="{{o.id}}" data-value="{{o.total if o.total is not none else ''}}">{{o.total|money(o.currency)}}</span>{% if o.total_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}</dd></div>
-  {% if o.profile_name %}<div><dt>Profile</dt><dd><a href="/profile-orders?profile={{o.profile_name|urlencode}}">{{o.profile_name}}</a></dd></div>{% endif %}
+  <div><dt>Total</dt><dd class="os-money" data-src="total"><span data-edit-price="{{o.id}}" data-value="{{o.total if o.total is not none else ''}}">{{o.total|money(o.currency)}}</span>{% if o.total_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}</dd></div>
   {% if o.account %}<div><dt>Account</dt><dd><span data-copy>{{o.recipient_email or o.account}}</span></dd></div>{% endif %}
 </dl>
 {% if o["items"]|length > 1 %}<ul class="os-items">{% for i in o["items"] %}<li>{{i.name}}{% if i.quantity and i.quantity != 1 %} <span class="muted">x{{i.quantity}}</span>{% endif %}{% if i.price %}<span class="muted">{{i.price|money(o.currency) if i.price is number else i.price}}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
 
-{% if o.shipping_address or o.shipping_name %}<h4 class="os-h">Ships to</h4>
+<div class="os-hrow"><h4 class="os-h">Ships to</h4>
+  <div class="os-hbtns"><button type="button" class="os-refresh" data-os-toggle="os-edit" data-os-focus="shipping_address" title="Wrong address or name? Fix it and the AI learns where to read it">{{ os_icon("edit") }}Fix address</button></div></div>
 {% set al = o|address_label %}
-<a class="os-addr" {% if al %}href="/address?name={{al|urlencode}}"{% endif %} data-private>
+{% if o.shipping_address or o.shipping_name %}<a class="os-addr" {% if al %}href="/address?name={{al|urlencode}}"{% endif %} data-private>
   <span class="os-pin">{{ os_icon("pin") }}</span>
-  <span>{% if o.shipping_name %}{{o.shipping_name}}, {% endif %}{{o.shipping_address or ""}}</span></a>{% endif %}
+  <span>{% if o.shipping_name %}{{o.shipping_name}}, {% endif %}{{o.shipping_address or ""}}</span></a>
+{% else %}<p class="muted small">No ship-to address read from its emails. Tap Fix address to add it.</p>{% endif %}
+<dl class="os-kv"><div><dt>Address from</dt><dd data-src="shipping_address"><span class="muted small">Tap Where from? above</span></dd></div>
+  <div><dt>Name from</dt><dd data-src="shipping_name"><span class="muted small">-</span></dd></div>
+  <div><dt>Profile</dt><dd>{% if o.profile_name %}<a href="/profile-orders?profile={{o.profile_name|urlencode}}">{{o.profile_name}}</a>{% if o.profile_match %} <span class="muted small">· {{"matched by " ~ o.profile_match if o.profile_match != "set by hand" else "set by hand"}}</span>{% endif %}{% else %}<span class="muted">None</span>{% endif %}
+  <button type="button" class="os-mini" data-os-toggle="os-edit" data-os-focus="profile">Change</button></dd></div></dl>
 
 {% if wrong %}<div class="os-wrong"><b>Not the profile's address</b><span>{{wrong.profiles|join(", ")}} ({{wrong.why}}) ships to <span data-private>{{wrong.expected}}</span>. The store may have used the account's saved address.</span>
 <form method="post" action="/orders/{{o.id}}/address-ok"><input type="hidden" name="back" value="1"><button class="ghost">It's fine</button></form></div>{% endif %}
@@ -128,9 +142,9 @@
   <div class="os-hbtns"><button type="button" class="os-refresh" data-os-toggle="os-edit" title="Wrong carrier, tracking number or delivery date? Fix it and the AI learns">{{ os_icon("edit") }}Fix</button>
   <form method="post" action="{{url_for('ordersheet.refresh', order_id=o.id)}}"><button class="os-refresh">{{ os_icon("refresh") }}Refresh</button></form></div></div>
 <dl class="os-kv">
-  <div><dt>Carrier</dt><dd>{{o.carrier or "-"}}</dd></div>
-  <div><dt>Tracking #</dt><dd>{% if o.tracking_number %}<span data-copy>{{o.tracking_number}}</span>{% else %}<span class="muted">None yet</span>{% endif %}</dd></div>
-  {% if o.estimated_delivery %}<div><dt>Est. delivery</dt><dd>{{eta}}</dd></div>{% endif %}
+  <div><dt>Carrier</dt><dd data-src="carrier">{{o.carrier or "-"}}</dd></div>
+  <div><dt>Tracking #</dt><dd data-src="tracking_number">{% if o.tracking_number %}<span data-copy>{{o.tracking_number}}</span>{% else %}<span class="muted">None yet</span>{% endif %}</dd></div>
+  {% if o.estimated_delivery %}<div><dt>Est. delivery</dt><dd data-src="estimated_delivery">{{eta}}</dd></div>{% endif %}
   {% if o.carrier_status %}<div><dt>Carrier says</dt><dd>{{o.carrier_status}}</dd></div>{% endif %}
 </dl>
 <h4 class="os-h">Emails{% if mails %} <span class="muted">{{mails|length}}</span>{% endif %}</h4>

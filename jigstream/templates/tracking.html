@@ -59,6 +59,7 @@
 {% set al = o|address_label %}{% if al %}<a href="/address?name={{al|urlencode}}" data-private title="Everything at this address: {{o.shipping_address}}">{{al}}</a>{% endif %}
 {% if o.tracking_number %}<a href="{{o|track_url}}" target="_blank" rel="noopener" title="Open the carrier's tracking page">Carrier ↗</a>{% endif %}
 <a href="/review?src=order&name={{o.id}}" title="Its checkouts, card charges, emails and profile">Linked ›</a>{% if o.status_manual %}<span class="muted" title="Status set by hand">✎</span>{% endif %}</div>
+<div class="sship"><svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg><span class="saddr" data-private>{% if o.shipping_address %}{{o.shipping_address}}{% else %}<span class="muted">No ship-to address read</span>{% endif %}</span><button type="button" class="ghost sfixbtn" data-sheet-fix="{{o.id}}" data-field="shipping_address" title="Wrong address, name or profile? Fix it; the AI learns where to read it">Fix</button></div>
 {% if o.carrier_status %}<div class="muted small" title="From the carrier, checked {{o.carrier_checked_at}}">Carrier: {{o.carrier_status}}</div>{% endif %}
 {% set w = wrong.get(o.id) %}{% if w %}<div class="swrong" title="{{w.profiles|join(', ')}} ({{w.why}}) ships to {{w.expected}}"><b>Not the profile's address</b> · {{w.profiles[0]}} ships to <span data-private>{{w.expected}}</span>
 <form method="post" action="/orders/{{o.id}}/address-ok"><input type="hidden" name="back" value="{{request.full_path}}#order-{{o.id}}"><button class="ghost" title="This address is right; stop flagging it">It's fine</button></form></div>{% endif %}
@@ -75,6 +76,8 @@
 .sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr));gap:14px;align-items:start}
 .scard{--c:var(--accent);background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
 .scard.done{--c:var(--green)}.scard.late{--c:var(--orange);border-color:color-mix(in srgb,var(--orange) 50%,var(--line))}
+.sship{display:flex;align-items:center;gap:10px;font-size:13px;min-width:0}.sship svg{width:18px;height:18px;flex:none;fill:none;stroke:var(--muted);stroke-width:1.8}
+.sship .saddr{flex:1;min-width:0;overflow-wrap:anywhere}.sship .sfixbtn{padding:4px 12px;font-size:12px;min-height:0;margin:0;flex:none}
 .shead{display:flex;gap:12px;align-items:flex-start;min-width:0}
 .sthumb{width:58px;height:58px;border-radius:14px;object-fit:cover;flex:none;background:#fff}
 .sthumb.blank{display:grid;place-items:center;background:var(--surface-2);border:1px solid var(--line)}
@@ -134,8 +137,11 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   const sel = e.target;
   if (!sel.classList.contains('relabel') || !sel.value) return;
-  if (sel.value !== 'not_an_order') sel.form.submit();
-  else btConfirm('Remove this from Orders? Its emails become examples of what is not an order.').then(ok => ok ? sel.form.submit() : sel.value = '');
+  const ask = {not_an_order: 'Remove this from Orders? Its emails become examples of what is not an order.',
+               expense: 'Move this to Expenses as a botting expense? The AI re-reads its emails as one.',
+               sale: 'Move this to Sales? The AI re-reads its emails as a sale.'}[sel.value];
+  if (!ask) sel.form.submit();
+  else btConfirm(ask).then(ok => ok ? sel.form.submit() : sel.value = '');
 });
 </script>
 {% endblock %}
