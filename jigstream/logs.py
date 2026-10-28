@@ -32,13 +32,13 @@ FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
 
 def secrets():
+    """Every saved password, key, token and private channel name, so none of them is ever written to a log."""
+    from .config import SEALED_KEYS
     words = [pw for _, pw in parse_accounts(os.environ.get("GMAIL_ACCOUNTS", ""))]
-    if os.environ.get("DISCORD_BOT_TOKEN"):
-        words.append(os.environ["DISCORD_BOT_TOKEN"].strip())
-    if os.environ.get("GITHUB_TOKEN"):
-        words.append(os.environ["GITHUB_TOKEN"].strip())
     if os.environ.get("GMAIL_APP_PASSWORD"):
         words.append(os.environ["GMAIL_APP_PASSWORD"].replace(" ", ""))
+    words += [os.environ[k].strip() for k in sorted(SEALED_KEYS - {"GMAIL_ACCOUNTS", "GMAIL_APP_PASSWORD"})
+              if os.environ.get(k)]
     return [w for w in words if len(w) >= 6]
 
 
@@ -56,6 +56,8 @@ def redact(text):
 CARD_RE = re.compile(r"(?<![\d-])\d(?:[ -]?\d){12,18}(?![\d-])")
 TOKEN_RE = re.compile(r"\b(access|public|link)-(sandbox|development|production)-[0-9a-f-]{8,}", re.I)
 BEARER_RE = re.compile(r"(?i)(authorization:\s*bearer\s+|\bbearer\s+)[A-Za-z0-9._~+/=-]{12,}")
+LINK_RE = re.compile(r"https?://[a-z0-9-]+\.trycloudflare\.com", re.I)  # where this computer can be reached
+PAIR_RE = re.compile(r"([?&](?:k|t)=)[A-Za-z0-9_-]{12,}")  # a pairing link's key and channel
 
 
 def _luhn(digits):
@@ -76,6 +78,8 @@ def scrub(text):
     text = redact(text)
     text = CARD_RE.sub(_mask_card, text)
     text = TOKEN_RE.sub("[plaid token]", text)
+    text = LINK_RE.sub("[phone link]", text)
+    text = PAIR_RE.sub(lambda m: m.group(1) + "********", text)
     return BEARER_RE.sub(lambda m: m.group(1) + "********", text)
 
 

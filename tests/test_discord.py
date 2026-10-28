@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import jigstream.app as appmod
 from jigstream import db, discord, logs
-from jigstream.config import Config
+from jigstream.config import Config, plain_text
 
 
 BASE = int(discord.snowflake_for(datetime.now(timezone.utc))) - (86400_000 << 22)  # a day ago
@@ -110,7 +110,7 @@ def test_setup_connects_bot_and_saves_channels(tmp_path, monkeypatch):
     r = c.post("/setup/discord/token", data={"token": "nope"}, follow_redirects=True)
     assert "rejected" in r.get_data(as_text=True)
     c.post("/setup/discord/token", data={"token": "Bot " + token})
-    assert f"DISCORD_BOT_TOKEN={token}" in (tmp_path / ".env").read_text()
+    assert f"DISCORD_BOT_TOKEN={token}" in plain_text(tmp_path / ".env")
     page = c.get("/setup").get_data(as_text=True)
     assert "Connected as Order Tracker" in page and "#success-webhooks" in page and "client_id=555" in page
 
