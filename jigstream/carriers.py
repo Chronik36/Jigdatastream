@@ -164,8 +164,9 @@ def carrier_of(order):
     return None
 
 
-def refresh(con, env, only_id=None):
-    """Ask the carriers about every open order with a tracking number. Returns (checked, changed)."""
+def refresh(con, env, only_id=None, statuses=None):
+    """Ask the carriers about every open order with a tracking number (only those in `statuses`, if given).
+    Returns (checked, changed)."""
     keyed, ready = set(configured(env)), set(available(env))
     if not ready:
         return 0, 0
@@ -178,6 +179,9 @@ def refresh(con, env, only_id=None):
     if only_id is not None:
         q += " AND id = ?"
         args.append(only_id)
+    if statuses:
+        q += " AND shipping_status IN (%s)" % ",".join("?" * len(statuses))
+        args += list(statuses)
     checked = changed = 0
     for order in con.execute(q, args).fetchall():
         carrier = carrier_of(order)
@@ -225,13 +229,21 @@ def refresh(con, env, only_id=None):
     return checked, changed
 
 
-def run(con, env):
-    """Background refresh for the timer and the Check now button; one at a time."""
+def out_for_delivery(con):
+    """How many open orders are out for delivery right now."""
+    Store(con)
+    return con.execute("SELECT COUNT(*) FROM tracked_orders WHERE shipping_status = 'out_for_delivery'"
+                       " AND tracking_number IS NOT NULL AND tracking_number != ''").fetchone()[0]
+
+
+def run(con, env, statuses=None):
+    """Background refresh for the timer and the Check now button; one at a time. `statuses` limits it,
+    like the quick look at packages out for delivery."""
     if state["running"]:
         return
     state["running"] = True
     try:
-        checked, changed = refresh(con, env)
+        checked, changed = refresh(con, env, statuses=statuses)
         state["last"] = (f"{datetime.now().strftime('%b %d %H:%M')}: checked {checked} package(s), "
                          f"{changed} status change(s)")
     except Exception as e:
