@@ -9,7 +9,7 @@ from urllib.parse import quote
 from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import address as A
-from . import accountkeys, addresscheck, backup, bases, dropdays, devmail, jigexpr, ordersheet, peersync, pricecheck, proxylogin, proxysessions, storeaccounts, browsers, undo
+from . import accountkeys, addresscheck, filevault, backup, bases, dropdays, devmail, jigexpr, ordersheet, peersync, pricecheck, proxylogin, proxysessions, storeaccounts, browsers, undo
 from . import (analysis, bankpages, cardcheck, cardlocks, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
                packs, proxies, proxyaccounts, review, stock, stuck, tasks, tracking, training, updater, wallet, webtrain)
@@ -50,6 +50,7 @@ def create_app(db_path=None):
     had_data = os.path.exists(path) and os.path.getsize(path) > 0  # before this run makes the database
     mobile.init_app(app)
     accountkeys.init_app(app, had_data)
+    filevault.init_app(app)
     undo.init_app(app)
     app.register_blueprint(stock.bp)
     app.register_blueprint(devmail.bp)
