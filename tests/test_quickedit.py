@@ -12,9 +12,9 @@ def test_prices_and_statuses_are_editable_everywhere(tmp_path, monkeypatch):
                       " VALUES ('t:1', 'Target', '1', ?, 45.0, 'ordered', '[]')", (json.dumps([{"name": "ETB"}]),)).lastrowid
     con.commit()
     c = app.test_client()
-    for page in ("/orders", "/tracking", f"/orders/{oid}/sheet"):
+    for page in ("/orders?day=all", "/tracking?day=all", f"/orders/{oid}/sheet"):
         html = c.get(page).get_data(as_text=True)
         assert f'data-edit-price="{oid}"' in html and f'data-edit-status="{oid}"' in html, page
-    assert 'id="qe"' in c.get("/orders").get_data(as_text=True)
+    assert 'id="qe"' in c.get("/orders?day=all").get_data(as_text=True)
     c.post(f"/prices/order/{oid}", data={"price": "54.99", "back": "/tracking"})
     assert tuple(con.execute("SELECT total, total_manual FROM tracked_orders WHERE id=?", (oid,)).fetchone()) == (54.99, 1)

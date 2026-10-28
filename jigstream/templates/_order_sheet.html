@@ -83,6 +83,9 @@
   <button>Save status</button>
   <p class="muted small">The AI also re-reads this order's emails and learns from the fix.</p></form>
 
+<style>.os-wrong{margin:12px 0;padding:10px 12px;border-radius:12px;border:1px solid var(--orange);display:flex;flex-direction:column;gap:6px;font-size:13px;overflow-wrap:anywhere}
+.os-wrong b{color:var(--orange)}.os-wrong button{padding:4px 12px;font-size:12px}
+.os-checkouts{list-style:none;padding:0;margin:0 0 6px;display:flex;flex-direction:column;gap:8px}.os-checkouts li{display:flex;flex-direction:column;gap:2px;overflow-wrap:anywhere}</style>
 <h4 class="os-h">Details</h4>
 <dl class="os-kv">
   <div><dt>Retailer</dt><dd>{{o.retailer or "-"}}</dd></div>
@@ -100,6 +103,19 @@
 <a class="os-addr" {% if al %}href="/address?name={{al|urlencode}}"{% endif %} data-private>
   <span class="os-pin">{{ os_icon("pin") }}</span>
   <span>{% if o.shipping_name %}{{o.shipping_name}}, {% endif %}{{o.shipping_address or ""}}</span></a>{% endif %}
+
+{% if wrong %}<div class="os-wrong"><b>Not the profile's address</b><span>{{wrong.profiles|join(", ")}} ({{wrong.why}}) ships to <span data-private>{{wrong.expected}}</span>. The store may have used the account's saved address.</span>
+<form method="post" action="/orders/{{o.id}}/address-ok"><input type="hidden" name="back" value="1"><button class="ghost">It's fine</button></form></div>{% endif %}
+
+<h4 class="os-h">Checkouts{% if checkouts %} <span class="muted">{{checkouts|length}}</span>{% endif %}</h4>
+{% if checkouts %}<ul class="os-checkouts">{% for c in checkouts %}<li><b>{{c.site or "Checkout"}}</b>{% if c.product %} · {{c.product|truncate(60)}}{% endif %}
+<span class="muted small">{{(c.ts or "")[:16]|replace("T", " ")}}{% if c.profile_key %} · profile <a href="/profile-orders?profile={{c.profile_key|urlencode}}">{{c.profile_key}}</a>{% endif %}{% if c.bot %} · {{c.bot}}{% endif %}{% if c.matched_on %} · matched on {{c.matched_on}}{% endif %}</span></li>{% endfor %}</ul>
+{% else %}<p class="muted small">No bot checkout tied to this order. <a href="/review?src=order&name={{o.id}}">Find and link one ›</a></p>{% endif %}
+
+{% if profile %}<h4 class="os-h">Profile</h4>
+<dl class="os-kv"><div><dt>Name</dt><dd><a href="/profile-orders?profile={{profile.name|urlencode}}">{{profile.name}}</a>{% if profile.group %} <span class="muted">· {{profile.group}}</span>{% endif %}</dd></div>
+{% if profile.email %}<div><dt>Email</dt><dd><span data-copy>{{profile.email}}</span></dd></div>{% endif %}
+{% if profile.address %}<div><dt>Address</dt><dd data-private>{{profile.address}}</dd></div>{% endif %}</dl>{% endif %}
 
 <div class="os-hrow"><h4 class="os-h">Tracking</h4>
   <form method="post" action="{{url_for('ordersheet.refresh', order_id=o.id)}}"><button class="os-refresh">{{ os_icon("refresh") }}Refresh</button></form></div>

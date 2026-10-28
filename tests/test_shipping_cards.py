@@ -27,7 +27,7 @@ def test_cards_show_events_dropdown(tmp_path):
     for i in range(8):
         ordersheet.note_carrier(store.db, oid, f"Event number {i}")
     store.db.commit()
-    page = create_app(path).test_client().get("/tracking").get_data(as_text=True)
+    page = create_app(path).test_client().get("/tracking?day=all").get_data(as_text=True)
     assert "Squishmallow Reindoh" in page and "Latest events" in page
     assert 'data-copy="9200190267338800109270748"' in page
     assert "+ 3 more" in page  # 8 carrier lines + the order email, 6 shown

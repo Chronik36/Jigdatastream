@@ -53,6 +53,8 @@ def test_shipping_and_drops_open_on_bases(tmp_path):
     cl.post("/bases", data={"name": "Home", "line1": "123 Main St", "zip": "78701"})
     home = bases.listing(c)[0]["id"]
     page = cl.get("/tracking").get_data(as_text=True)
+    assert "By drop date" in page and "By base address" in page and 'class="scard' not in page  # opens on drop days
+    page = cl.get("/tracking?view=bases").get_data(as_text=True)
     assert "By base address" in page and "Not matched to a base" in page and 'class="scard' not in page
     ids = {o["retailer"]: f'id="order-{o["id"]}"' for o in store.orders()}
     page = cl.get(f"/tracking?base={home}").get_data(as_text=True)

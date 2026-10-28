@@ -188,9 +188,19 @@ def sheet(order_id):
     groups = {}
     for r in store.db.execute("SELECT name, group_name FROM profiles ORDER BY lower(name)"):
         groups.setdefault(r["group_name"] or "No group", []).append(r["name"])
-    from . import sales
+    from . import addresscheck, sales, stuck
+    from .addresscheck import _line
     platform = sales.platform_in(store.db, o.get("retailer") or "") or ""
-    return render_template("_order_sheet.html", o=o, events=events, shown=SHOWN, qty=quantity(o),
+    # The bot checkouts behind this order and the profile it's tied to, with the address check.
+    try:
+        checkouts = [c for c in stuck.cross_reference(store.db) if c.get("order") and c["order"]["id"] == order_id]
+    except Exception:
+        checkouts = []
+    prof = store.db.execute("SELECT * FROM profiles WHERE name = ?", (o.get("profile_name"),)).fetchone() \
+        if o.get("profile_name") else None
+    profile = dict(name=prof["name"], group=prof["group_name"], email=prof["email"], address=_line(prof)) if prof else None
+    return render_template("_order_sheet.html", o=o, events=events, checkouts=checkouts, profile=profile,
+                           wrong=addresscheck.check(store.db, [o]).get(order_id), shown=SHOWN, qty=quantity(o),
                            sale_platform=platform, sale_platforms=sales.platforms(store.db),
                            fee_pct=sales.fee_pct(store.db, platform or "eBay"),
                            bought=[c for c in sales.order_choices(store.db) if c["id"] != order_id],

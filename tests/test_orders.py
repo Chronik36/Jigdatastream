@@ -165,7 +165,7 @@ class SyncTests(unittest.TestCase):
                    "description": "Cook group monthly", "amount": 50.0, "currency": "USD", "date": "2026-10-01",
                    "order_number": None})
         client = create_app(path).test_client()
-        page = client.get("/orders").get_data(as_text=True)
+        page = client.get("/orders?day=all").get_data(as_text=True)
         self.assertIn("Dunk Low x2", page)
         self.assertIn("ups.com/track?tracknum=1Z999AA10123456784", page)
         self.assertIn("$262.40", page)
@@ -202,7 +202,7 @@ class StatusTests(unittest.TestCase):
         self.order(store, "b", "2026-10-04T00:00:00", "delivered")
         self.order(store, "c", "2026-10-05T00:00:00", "shipped")  # e.g. a re-sent shipping notice
         self.assertEqual(store.orders()[0]["shipping_status"], "delivered")
-        page = create_app(path).test_client().get("/orders").get_data(as_text=True)
+        page = create_app(path).test_client().get("/orders?day=all").get_data(as_text=True)
         self.assertIn("src=email", page)
 
 
