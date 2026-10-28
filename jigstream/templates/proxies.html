@@ -16,12 +16,27 @@ details.pxg[open]>summary{border-bottom:1px solid var(--line)}
 .ms{font-variant-numeric:tabular-nums;font-weight:600}
 .r-ok{color:var(--green)}.r-blocked,.r-login{color:var(--orange)}.r-dead,.r-error{color:var(--red)}
 .pxrow{cursor:pointer}.pxrow td:first-child a{color:var(--text);font-weight:500}
-#pxprog{display:none}#pxprog.on{display:flex}
+.pxlive{margin:0 0 16px;scroll-margin-top:calc(var(--top,60px) + 16px)}.pxlh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.pxlh h3{margin:0}.pxlh .grow{flex:1}
+.pxlh button{padding:4px 12px;font-size:12px;min-height:0}
+.pxtrack{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin:12px 0 10px}.pxtrack i{display:block;height:100%;background:var(--grad,var(--accent));transition:width .4s}
+.pxsum{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13px;margin-bottom:10px}.pxsum b{font-size:15px}
+.pxres{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.pxres li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:center;padding:9px 12px;border:1px solid var(--line);border-radius:12px}
+.pxres li a{color:var(--text);font-weight:500;overflow-wrap:anywhere}.pxres .st{grid-column:1/-1;font-size:12px;color:var(--muted)}
+.pxres .ms{text-align:right}
+.pxgeo{font-size:12.5px;line-height:1.4}.pxgeo small{display:block;color:var(--muted)}
+.pxacts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}.pxacts form{margin:0}
+.pxacts .ghost{padding:3px 9px;font-size:12px;min-height:0}
 </style>
 <p class="muted">Paste proxies one per line, give them a provider and a group, then test how fast they reach a retail site.
 A test opens the site's home page once through each proxy. Click a proxy for where it really comes out.</p>
+<section class="panel pxlive" id="pxlive" {{"hidden" if not (live.running or live.results)}} aria-live="polite">
+<div class="pxlh"><h3>Speed test</h3><span class="muted" id="pxwhat"></span><span class="grow"></span><button type="button" class="ghost" id="pxhide">Hide</button></div>
+<div class="pxtrack"><i id="pxfill" style="width:0"></i></div>
+<div class="pxsum" id="pxsum"></div>
+<ol class="pxres" id="pxres"></ol>
+</section>
 {% include "_proxy_accounts.html" %}
-<div class="banner" id="pxprog"><span>Testing: <b id="pxdone">{{state.done}}</b> of <b id="pxtotal">{{state.total}}</b></span></div>
 <div class="pxgrid">
 <section class="panel"><h3 style="margin-top:0">Add proxies</h3>
 <form method="post" action="/proxies/add" class="pxf">
@@ -37,35 +52,50 @@ A test opens the site's home page once through each proxy. Click a proxy for whe
 <button {{"disabled" if state.running or not groups}}>Test every proxy</button>
 <span class="muted" style="font-size:12px">or test a group or one proxy below</span></form>
 {% for g in groups %}
-<details class="pxg"{{" open" if groups|length == 1}}><summary>
+<details class="pxg"{{" open" if groups|length == 1 or g.name == open_group}} id="g-{{loop.index}}"><summary>
 <b>{{g.name}}</b><span class="meta">{{g.proxies|length}} prox{{"y" if g.proxies|length == 1 else "ies"}} · {{g.providers|sort|join(", ")}}</span>
 <span class="grow"></span>
 {% if g.tested %}<span class="meta">{{g.ok}}/{{g.tested}} ok{% if g.avg %} · <span class="ms">{{g.avg}} ms</span> avg{% endif %}</span>{% endif %}
 <form method="post" action="/proxies/test" onsubmit="this.site.value=document.getElementById('pxsite').value"><input type="hidden" name="group" value="{{g.name}}"><input type="hidden" name="site"><button class="ghost" {{"disabled" if state.running}}>Test group</button></form>
 <form method="post" action="/proxies/delete" data-confirm="Remove every proxy in {{g.name}}?"><input type="hidden" name="group" value="{{g.name}}"><button class="danger">Remove</button></form>
 </summary>
-<table><thead><tr><th>Proxy</th><th>Provider</th><th>Exit</th><th class="num">Avg</th><th>Last results</th><th></th></tr></thead><tbody>
+<table><thead><tr><th>Proxy</th><th>Provider</th><th>Entry → exit</th><th class="num">Avg</th><th>Last results</th><th></th></tr></thead><tbody>
 {% for p in g.proxies %}<tr class="pxrow" onclick="if(!event.target.closest('form,a'))location='/proxies/{{p.id}}'">
 <td><a href="/proxies/{{p.id}}" class="pv">{{p.label}}</a></td><td>{{p.provider or "-"}}</td>
-<td>{% if p.exit %}{{p.exit.countryCode}}{% if p.exit.city %} · {{p.exit.city}}{% endif %}{% else %}<span class="muted">-</span>{% endif %}</td>
+<td class="pxgeo">{% if p.exit or p.entry %}{{place(p.entry) or "?"}} → {{place(p.exit) or "?"}}{% if kind(p.exit) %}<small>{{kind(p.exit)}}{% if p.exit.isp %} · {{p.exit.isp}}{% endif %}</small>{% endif %}{% else %}<span class="muted">not located yet</span>{% endif %}</td>
 <td class="num ms">{{p.avg ~ " ms" if p.avg else "-"}}</td>
 <td style="font-size:12px">{% for s, t in p.tests|dictsort %}<span class="r-{{t.result}}" title="{{t.error or ''}}">{{s}} {{(t.ms ~ "ms") if t.result == "ok" else t.result}}</span>{{ " · " if not loop.last }}{% else %}<span class="muted">not tested</span>{% endfor %}</td>
-<td><form method="post" action="/proxies/test" onsubmit="this.site.value=document.getElementById('pxsite').value"><input type="hidden" name="id" value="{{p.id}}"><input type="hidden" name="site"><button class="ghost" style="padding:3px 9px;font-size:12px;min-height:0" {{"disabled" if state.running}}>Test</button></form></td></tr>
+<td><div class="pxacts"><a class="btn ghost" href="/proxies/{{p.id}}">Details</a><form method="post" action="/proxies/test" onsubmit="this.site.value=document.getElementById('pxsite').value"><input type="hidden" name="id" value="{{p.id}}"><input type="hidden" name="site"><button class="ghost" {{"disabled" if state.running}}>Test</button></form></div></td></tr>
 {% endfor %}</tbody></table></details>
 {% else %}<div class="panel muted">No proxies yet. Paste a list on the left.</div>{% endfor %}
 </section></div>
 <script>
 (function () {
-  const bar = document.getElementById('pxprog');
-  {% if state.running %}bar.classList.add('on');{% endif %}
-  if (!bar.classList.contains('on')) return;
-  (function poll() {
+  // The latest speed test, live: each proxy's result shows up as it comes in, fastest first.
+  const box = document.getElementById('pxlive'), WORDS = {ok: 'OK', blocked: 'Site turned it away', login: 'Login rejected', dead: 'No answer', error: 'Error'};
+  const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
+  function draw(s) {
+    document.getElementById('pxwhat').textContent = (s.what ? s.what + ' on ' : '') + s.site;
+    document.getElementById('pxfill').style.width = (s.total ? Math.round(100 * s.done / s.total) : 0) + '%';
+    const bad = s.results.length - s.ok;
+    document.getElementById('pxsum').innerHTML = (s.running ? '<span>Testing <b>' + s.done + '</b> of <b>' + s.total + '</b></span>' : '<span><b>Done</b></span>')
+      + '<span class="r-ok"><b>' + s.ok + '</b> ok</span>' + (bad ? '<span class="r-dead"><b>' + bad + '</b> failed</span>' : '')
+      + (s.avg != null ? '<span><b class="ms">' + s.avg + ' ms</b> avg</span>' : '')
+      + (s.fastest ? '<span>Fastest <b class="ms">' + s.fastest.ms + ' ms</b></span>' : '');
+    document.getElementById('pxres').innerHTML = s.results.map(r =>
+      '<li><a href="/proxies/' + r.id + '" class="pv">' + esc(r.label) + '</a><span class="ms r-' + esc(r.result) + '">'
+      + (r.result === 'ok' ? r.ms + ' ms' : esc(WORDS[r.result] || r.result)) + '</span>'
+      + '<span class="st">' + esc(r.site) + (r.error ? ' · ' + esc(r.error) : '') + '</span></li>').join('');
+  }
+  draw({{ live|tojson }});
+  document.getElementById('pxhide').onclick = () => { box.hidden = true; };
+  {% if live.running %}(function poll() {
     fetch('/proxies/status', {cache: 'no-store'}).then(r => r.json()).then(s => {
-      document.getElementById('pxdone').textContent = s.done; document.getElementById('pxtotal').textContent = s.total;
-      if (!s.running) return location.reload();
+      draw(s);
+      if (!s.running) return location.reload();  // the lists below catch up; the results stay up top
       setTimeout(poll, 1000);
     }).catch(() => setTimeout(poll, 3000));
-  })();
+  })();{% endif %}
 })();
 </script>
 {% endblock %}

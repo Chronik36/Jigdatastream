@@ -154,7 +154,7 @@ def run_tests(con, ids, sites, state=None, fetch=None):
     rows = [dict(r) for r in con.execute(f"SELECT * FROM proxies WHERE id IN ({','.join('?' * len(ids))})", ids)] if ids else []
     jobs = [(p, s) for p in rows for s in sites]
     if state is not None:
-        state.update(total=len(jobs), done=0, running=True, started=now())
+        state.update(total=len(jobs), done=0, running=True, started=now(), results=[])
     lock = threading.Lock()
 
     def one(job):
@@ -164,6 +164,7 @@ def run_tests(con, ids, sites, state=None, fetch=None):
             save_test(con, p["id"], site, r)
             if state is not None:
                 state["done"] += 1
+                state["results"].append(dict(r, id=p["id"], label=masked(p), site=site))
         return r
 
     try:
@@ -238,6 +239,7 @@ def groups(con):
         good = [t["ms"] for t in p["tests"].values() if t["result"] == "ok" and t["ms"] is not None]
         p["avg"] = round(sum(good) / len(good)) if good else None
         p["exit"] = json.loads(p["exit_geo"]) if p["exit_geo"] else {}
+        p["entry"] = json.loads(p["entry_geo"]) if p["entry_geo"] else {}
         g = out.setdefault(p["grp"] or "No group", {"name": p["grp"] or "No group", "providers": set(), "proxies": []})
         g["providers"].add(p["provider"] or "?")
         g["proxies"].append(p)
@@ -264,7 +266,17 @@ def checkout_record(con, p):
 
 # ---- pages ----
 
-_state = {"running": False, "total": 0, "done": 0}
+_state = {"running": False, "total": 0, "done": 0, "results": [], "what": "", "site": ""}
+
+
+def live(state):
+    """The latest speed test as the page shows it: what was tested, how far it got, and each result, fastest first
+    (the ones that failed after)."""
+    res = sorted(state.get("results") or [], key=lambda r: (r["result"] != "ok", r["ms"] is None, r["ms"] or 0))
+    oks = [r["ms"] for r in res if r["result"] == "ok" and r["ms"] is not None]
+    return {"running": bool(state.get("running")), "total": state.get("total") or 0, "done": state.get("done") or 0,
+            "what": state.get("what") or "", "site": state.get("site") or "", "results": res, "ok": len(oks),
+            "avg": round(sum(oks) / len(oks)) if oks else None, "fastest": res[0] if oks else None}
 
 
 def _con():
@@ -276,7 +288,8 @@ def page():
     con = _con()
     from . import proxyaccounts, proxylogin, proxysessions
     proxyaccounts.ensure(con)
-    return render_template("proxies.html", groups=groups(con), sites=list(SITES), state=_state,
+    return render_template("proxies.html", groups=groups(con), sites=list(SITES), state=_state, live=live(_state), place=place, kind=kind,
+                           open_group=request.args.get("open", ""),
                            site=request.args.get("site", ""), accounts=proxyaccounts.accounts(con), auths=proxyaccounts.AUTHS,
                            presets=proxyaccounts.PRESETS, login=proxylogin.available(),
                            learning=request.args.get("learning", type=int), ttl_choices=proxysessions.TTLS,
@@ -306,6 +319,7 @@ def test():
     sites = [site] if site in SITES else []
     if not sites:
         abort(400)
+    g = None
     if request.form.get("id"):
         ids = [int(request.form["id"])]
     elif request.form.get("group") is not None:
@@ -317,15 +331,18 @@ def test():
     if request.form.get("wait"):  # one proxy on one site: answer right away
         run_tests(con, ids, sites)
     else:
-        _state.update(running=True, total=len(ids) * len(sites), done=0)
+        what = g if g is not None else ("Every proxy" if not request.form.get("id") else masked(get(con, ids[0])))
+        _state.update(running=True, total=len(ids) * len(sites), done=0, results=[], what=what, site=site)
         threading.Thread(target=lambda: run_tests(ensure(db.connect(path)), ids, sites, _state), daemon=True).start()
     back = request.form.get("back")
-    return redirect(back if back and back.startswith("/proxies") else url_for("proxies.page", site=site))
+    if back and back.startswith("/proxies"):
+        return redirect(back)
+    return redirect(url_for("proxies.page", site=site, open=g or None) + "#pxlive")
 
 
 @bp.get("/proxies/status")
 def status():
-    return jsonify({k: _state.get(k) for k in ("running", "total", "done")})
+    return jsonify(live(_state))
 
 
 @bp.get("/proxies/<int:pid>")
