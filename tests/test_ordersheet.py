@@ -188,3 +188,34 @@ def test_a_sold_email_the_model_calls_an_order_is_saved_as_a_sale():
     assert raw["kind"] == "order" and (result["kind"], result["platform"], result["sale_price"]) == ("sale", "eBay", 120.0)
     bought = Email("<b>", "eBay <ebay@ebay.com>", "Order confirmed: Charizard ex box", "2026-10-20", "Total $120.00")
     assert extract_raw(Model(), bought)[1]["kind"] == "order"
+
+
+def test_sheet_lists_its_emails_and_labels_one(tmp_path, monkeypatch):
+    from jigstream import inbox
+    app = create_app(str(tmp_path / "e.db"))
+    con = Store(db.connect(str(tmp_path / "e.db"))).db
+    oid = _order(con, message_ids=json.dumps(["<a>", "<b>"]))
+    con.execute("INSERT INTO emails (message_id, account, sender, subject, date, kind) VALUES"
+                " ('<a>', 'me@gmail.com', 'Target', 'Thanks for your order!', '2026-10-15T14:03:00+00:00', 'order'),"
+                " ('<b>', 'me@gmail.com', 'Target', 'Rate your purchase', '2026-10-20T14:03:00+00:00', 'order')")
+    con.commit()
+    taught = []
+    monkeypatch.setattr(inbox, "label_emails", lambda *a, **k: taught.append((a[3], a[4], k.get("what"))))
+    monkeypatch.setattr(ordersheet.threading, "Thread", lambda target, args, kwargs=None, daemon=None:
+                        type("T", (), {"start": lambda self: target(*args, **(kwargs or {}))})())
+    monkeypatch.setenv("GMAIL_ACCOUNTS", "me@gmail.com:pw")
+    c = app.test_client()
+    html = c.get(f"/orders/{oid}/sheet").get_data(as_text=True)
+    assert "Rate your purchase" in html and 'data-os-mail="&lt;b&gt;"' in html and "Review or survey request" in html
+    c.post(f"/orders/{oid}/email", data={"message_id": "<b>", "label": "survey"})
+    assert Store(con).order(oid)["message_ids"] == ["<a>"]
+    assert taught[-1][0][0]["message_id"] == "<b>" and taught[-1][1] == "survey"
+    c.post(f"/orders/{oid}/edit", data={"email_type": "other:custom", "what": "Discord invite"})
+    assert Store(con).order(oid) is None and taught[-1][1] == "other" and taught[-1][2] == "Discord invite"
+
+
+def test_not_an_order_labels_say_what_it_is():
+    from jigstream.inbox import corrected_answer
+    assert corrected_answer({"kind": "order"}, "ad") == {"kind": "other", "what": "ad or newsletter"}
+    assert corrected_answer({"kind": "order"}, "other", "Discord invite") == {"kind": "other", "what": "Discord invite"}
+    assert corrected_answer({"kind": "order"}, "other") == {"kind": "other"}
