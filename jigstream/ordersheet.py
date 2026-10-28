@@ -331,6 +331,15 @@ def _shows(body, field, value):
     if field == "items":
         words = [w for w in re.findall(r"[A-Z0-9]{3,}", value.upper())][:3]
         return bool(words) and all(w in text for w in words)
+    if field in ("order_date", "estimated_delivery"):
+        try:
+            d = datetime.strptime(str(value)[:10], "%Y-%m-%d")
+        except ValueError:
+            return False
+        month = d.strftime("%B").upper()
+        # "October 30", "Oct 30", "10/30" or "2026-10-30", as emails write delivery dates.
+        return bool(re.search(rf"\b({month}|{month[:3]})\.?\s+0?{d.day}\b", text)) or \
+            bool(re.search(rf"\b0?{d.month}/0?{d.day}\b", text)) or d.strftime("%Y-%m-%d") in text
     return str(value).upper() in text
 
 
@@ -435,7 +444,8 @@ def edit(order_id):
     if status and status != (o.get("shipping_status") or ""):
         current_app.relabel(store, o, status)
     taught = {k: (name if k == "items" else v) for k, v in fields.items()
-              if k in ("retailer", "order_number", "total", "shipping_address", "tracking_number", "carrier", "items")}
+              if k in ("retailer", "order_number", "order_date", "total", "shipping_name", "shipping_address",
+                       "tracking_number", "carrier", "estimated_delivery", "items")}
     if taught and config.accounts:
         threading.Thread(target=teach, args=(config, order_id, taught, current_app.config.get("DB_PATH")),
                          daemon=True).start()

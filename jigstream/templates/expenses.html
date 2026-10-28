@@ -72,7 +72,7 @@
 
 <div class="xgrid">
 <div class="panel"><h4>Recent receipts<span class="sp"></span><a href="/expenses/ledger">All →</a></h4>
-<table class="mini"><tbody>{% for r in recent %}<tr><td>{{r.date or "-"}}</td><td><b>{{r.name or "-"}}</b> <span class="muted">{{r.detail or (r.category or "")|replace("_", " ")}}</span></td><td class="num">{{r.amount|money(r.currency)}}</td></tr>
+<table class="mini"><tbody>{% for r in recent %}<tr class="tap" title="Open it: fix it, read its email or say what it really is" onclick='openExpense({{r.expense|tojson}})'><td>{{r.date or "-"}}</td><td><b>{{r.name or "-"}}</b> <span class="muted">{{r.detail or (r.category or "")|replace("_", " ")}}</span></td><td class="num">{{r.amount|money(r.currency)}}</td></tr>
 {% else %}<tr><td class="muted">No botting receipts yet.</td></tr>{% endfor %}</tbody></table></div>
 <div class="panel"><h4>Top vendors<span class="sp"></span><span class="muted" style="font-weight:400">last 90 days</span></h4>
 <table class="mini"><tbody>{% for v in o.vendors %}<tr><td><b>{{v.vendor or "?"}}</b> <span class="muted">{{(v.category or "")|replace("_", " ")}}</span></td><td class="num muted">{{v.n}}×</td><td class="num">{{v.total|money}}</td></tr>
@@ -81,4 +81,5 @@
 {% include "sync.html" %}
 {% include "_expense_dialog.html" %}
 {% include "_recurring_dialog.html" %}
+<style>tr.tap{cursor:pointer}tr.tap:hover td{background:var(--surface-2)}</style>
 {% endblock %}
