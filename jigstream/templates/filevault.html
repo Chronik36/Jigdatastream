@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% block body %}
+<div style="max-width:560px;margin:4vh auto 0">
+<h2>Turn on FileVault to use BotTrack</h2>
+<p>FileVault is required. BotTrack keeps your Gmail app passwords, your card numbers, store logins, proxy accounts and every
+order and address on this Mac. Without FileVault, anyone who gets your Mac, or just its drive (lost, stolen, sold, or
+in for repair), can copy all of that without knowing your password. With FileVault on, the disk is unreadable without your Mac password.</p>
+<p class="muted">It's free, built into macOS, and you only set it up once. Your orders and settings stay exactly as they are,
+and BotTrack opens by itself as soon as FileVault is on.</p>
+<section class="panel" id="fv-steps">
+<ol style="margin:0;padding-left:20px;line-height:1.7">
+<li>Press <b>Open System Settings</b> below (or open System Settings, then <b>Privacy &amp; Security</b>).</li>
+<li>Scroll to <b>FileVault</b> and press <b>Turn On…</b>, then enter your Mac password.</li>
+<li>Choose how to unlock your disk if you forget your password: your Apple Account, or a recovery key. Write the recovery key down and keep it somewhere safe.</li>
+<li>Restart if macOS asks. Encryption keeps running in the background while you use the Mac.</li>
+</ol>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+<a class="btn" href="{{settings_url}}" id="fv-open">Open System Settings</a>
+{% if mode != "block" %}<form method="post" action="{{url_for('filevault.later')}}"><input type="hidden" name="csrf" value="{{csrf_token()}}">
+<input type="hidden" name="next" value="{{next}}"><button class="ghost">Remind me tomorrow</button></form>{% endif %}
+</div>
+<p class="muted small" id="fv-look" style="margin:10px 0 0">{% if on %}FileVault is on. Opening BotTrack…{% elif on is none %}This Mac didn't say whether FileVault is on.{% else %}Checking every few seconds; BotTrack opens by itself once FileVault is on.{% endif %}</p>
+</section>
+{% if mode == "block" %}<p class="muted small">Phones paired with this Mac open again too once FileVault is on.</p>{% endif %}
+</div>
+<script>
+(function () {
+  var next = {{ next|tojson }};
+  if ({{ 'true' if on else 'false' }}) { location.href = next; return; }
+  document.getElementById("fv-open").addEventListener("click", function () {
+    fetch("{{url_for('filevault.open_settings')}}", {method: "POST", headers: {"X-CSRF-Token": "{{csrf_token()}}"}});
+  });
+  setInterval(function () {
+    fetch("{{url_for('filevault.status')}}").then(function (r) { return r.json(); }).then(function (s) {
+      if (s.on) { document.getElementById("fv-look").textContent = "FileVault is on. Opening BotTrack…"; location.href = next; }
+    }).catch(function () {});
+  }, 4000);
+})();
+</script>
+{% endblock %}
