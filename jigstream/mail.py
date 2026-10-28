@@ -384,17 +384,19 @@ def fetch_emails(config, address, password, days=None, skip_ids=(), on_total=Non
             pass
 
 
-def newest_emails(config, address, password, n=20, known=lambda ids: set()):
-    """The n newest matching emails of the last two days in All Mail and in Spam, minus the ones known(ids)
-    says were already read. Only their headers are looked at until one is new, so a quiet inbox costs one login."""
+def newest_emails(config, address, password, n=0, known=lambda ids: set(), days=1):
+    """The matching emails of the last `days` day(s) in All Mail and in Spam (only the n newest of each when n is
+    set), minus the ones known(ids) says were already read. Only their Message-ID headers are looked at until one
+    is new, so a quiet inbox costs one login and one header read."""
     imap = imaplib.IMAP4_SSL(config.imap_host, timeout=60)
     try:
         try:
             login(imap, address, password)
         except imaplib.IMAP4.error as e:
             raise RuntimeError(f"Gmail login failed for {address}: check the app password ({e})") from e
-        folders = [(config.mailbox, config.search_query + " newer_than:2d"),
-                   (spam_folder(imap), config.search_query.replace("-in:spam", "").strip() + " in:spam newer_than:2d")]
+        since = f" newer_than:{days}d"
+        folders = [(config.mailbox, config.search_query + since),
+                   (spam_folder(imap), config.search_query.replace("-in:spam", "").strip() + " in:spam" + since)]
         for folder, query in folders:
             status, _ = imap.select(folder, readonly=True)
             if status != "OK":
@@ -402,18 +404,20 @@ def newest_emails(config, address, password, n=20, known=lambda ids: set()):
             status, data = imap.uid("SEARCH", "X-GM-RAW", _quote(query))
             if status != "OK" or not data or not data[0]:
                 continue
-            uids = data[0].split()[::-1][:n]
-            status, data = imap.uid("FETCH", b",".join(uids), "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
-            if status != "OK":
-                continue
+            uids = data[0].split()[::-1]
+            uids = uids[:n] if n else uids
             ids = {}
-            for i, part in enumerate(data):
-                if not isinstance(part, tuple):
+            for batch in _batches(uids, 500):
+                status, data = imap.uid("FETCH", b",".join(batch), "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+                if status != "OK":
                     continue
-                after = data[i + 1] if i + 1 < len(data) and isinstance(data[i + 1], bytes) else b""
-                m = re.search(rb"UID (\d+)", part[0]) or re.search(rb"UID (\d+)", after)
-                if m:
-                    ids[m.group(1)] = str(email.message_from_bytes(part[1])["Message-ID"] or "").strip()
+                for i, part in enumerate(data):
+                    if not isinstance(part, tuple):
+                        continue
+                    after = data[i + 1] if i + 1 < len(data) and isinstance(data[i + 1], bytes) else b""
+                    m = re.search(rb"UID (\d+)", part[0]) or re.search(rb"UID (\d+)", after)
+                    if m:
+                        ids[m.group(1)] = str(email.message_from_bytes(part[1])["Message-ID"] or "").strip()
             seen = known([i for i in ids.values() if i])
             for uid in uids:
                 if uid not in ids or (ids[uid] and ids[uid] in seen):
