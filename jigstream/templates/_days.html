@@ -1,0 +1,21 @@
+{# Drop-day cards: days = dropdays.by_day(...); each card opens prefix ~ its day. #}
+{% macro day_cards(days, prefix, groups, unit="order") %}
+<div class="dover">{% for d in days %}<a class="dcard" href="{{ prefix ~ d.day }}" title="See this day's {{unit}}s">
+<div class="dctop"><div class="dcname"><b>{{d.label}}</b><div class="muted small">{% for s, n in d.shops[:4] %}{{s}}{% if n > 1 %} ×{{n}}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}{% if d.shops|length > 4 %} · +{{d.shops|length - 4}} more{% endif %}</div></div>
+<span class="dctotal">{{d.orders}}<small>{{unit}}{{'s' if d.orders != 1}}</small></span></div>
+<div class="dclanes">{% for key, title, _ in groups %}<span class="g-{{key}}"><i></i>{{title}} <b>{{d[key]}}</b></span>{% endfor %}</div>
+<div class="dcfoot">{% if d.wrong %}<span class="warnt" title="Shipped to a different address than the profile's">{{d.wrong}} wrong address</span>{% endif %}<span class="muted">{{d.spend|money}} spent</span><span class="dcgo">Open ›</span></div></a>
+{% endfor %}</div>
+<style>
+.dover{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:14px;margin-top:10px}
+.dcard{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:18px;background:var(--surface);border:1px solid var(--line);color:var(--text);text-decoration:none;transition:border-color .15s,transform .15s}
+.dcard:hover{border-color:var(--accent);color:var(--text);transform:translateY(-1px)}
+.dctop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.dcname{min-width:0;overflow-wrap:anywhere}.dcname b{font-size:15px}
+.dctotal{display:flex;flex-direction:column;align-items:flex-end;font-size:24px;font-weight:700;line-height:1;color:var(--accent)}.dctotal small{font-size:11px;font-weight:500;color:var(--muted);margin-top:3px}
+.dclanes{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12.5px;color:var(--muted)}
+.dclanes span{display:flex;align-items:center;gap:7px}.dclanes i{width:8px;height:8px;border-radius:50%;background:var(--muted)}.dclanes b{margin-left:auto;color:var(--text)}
+.dclanes .g-moving i{background:var(--blue)}.dclanes .g-delivered i{background:var(--green)}.dclanes .g-cancelled i{background:var(--red)}.dclanes .g-ordered i{background:var(--accent)}
+.dcfoot{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12.5px;align-items:center}.dcgo{margin-left:auto;color:var(--accent);font-weight:600}
+.dcfoot .warnt{color:var(--orange);font-weight:600}
+</style>
+{% endmacro %}

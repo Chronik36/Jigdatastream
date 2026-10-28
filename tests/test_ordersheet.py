@@ -50,7 +50,7 @@ def test_the_sheet_shows_the_order_and_its_timeline(tmp_path):
                  'data-copy="1020"', "Lakeview"):
         assert want in html, want
     assert c.get("/orders/999/sheet").status_code == 404
-    assert 'data-sheet="%d"' % oid in c.get("/orders").get_data(as_text=True)
+    assert 'data-sheet="%d"' % oid in c.get("/orders?day=all").get_data(as_text=True)
 
 
 def test_rename_and_delete_from_the_sheet(tmp_path):

@@ -138,6 +138,21 @@ def page():
         by_lane = {k: ([o for o in v if o["id"] in late_ids] if only == "late" else v if k == only else [])
                    for k, v in by_lane.items()}
         base = base or "all"
+    # The page opens on one card per drop day; ?day= shows that day's packages (every base), ?view=bases the
+    # base address cards.
+    from . import addresscheck, dropdays
+    wrong = addresscheck.check(store.db, [o for lane in by_lane.values() for o in lane])
+    day, view = request.args.get("day", ""), request.args.get("view", "")
+    days = None
+    if day and day != "all":
+        by_lane = {k: [o for o in v if dropdays.day_of(o) == day] for k, v in by_lane.items()}
+        lane_counts = {k: len(v) for k, v in by_lane.items()}
+        late = [o for o in late if dropdays.day_of(o) == day]
+        base = base or "all"
+    elif not (base or only or day or view):
+        days = dropdays.by_day([o for lane in by_lane.values() for o in lane], wrong)
+        by_lane = {k: [] for k in by_lane}
+        base = "all"
     overview, place = None, None
     if res.bases and not base:
         live = [o for lane in by_lane.values() for o in lane]
@@ -161,7 +176,8 @@ def page():
     except Exception:
         products = []
     cards = {o["id"]: card(store.db, o, products) for lane in by_lane.values() for o in lane}
-    return render_template("tracking.html", overview=overview, place=place, lane_counts=lane_counts, only=only, base=base, has_bases=bool(res.bases),
+    return render_template("tracking.html", days=days, day=day, day_label=dropdays.label(day), wrong=wrong,
+                           day_groups=dropdays.GROUPS, overview=overview, place=place, lane_counts=lane_counts, only=only, base=base, has_bases=bool(res.bases),
                            cards=cards, shown_events=SHOWN_EVENTS, lanes=LANES, by_lane=by_lane, shops=shops, shop=shop, late={o["id"] for o in late},
                            can_check=bool(carriers.available(os.environ)), checking=carriers.state,
                            training=config.training_mode, labels=store.labels(),

@@ -1,15 +1,20 @@
 {% extends "base.html" %}{% block body %}
-<h2>Orders</h2><div class="stats ostats">{% macro tile(key, cls="") %}<a class="card {{cls}}{{' on' if show == key}}" href="/orders{{ ('?' ~ (['show=' ~ key] if key and show != key else [])|join('&')) if key and show != key else '' }}{{ ('&' if key and show != key else '?') ~ 'profile=' ~ request.args.get('profile')|urlencode if request.args.get('profile') else '' }}" title="{{'Show every order' if not key or show == key else 'Show these orders: tap one to change anything about it'}}">{{ caller() }}</a>{% endmacro %}
+{% from "_days.html" import day_cards %}
+<h2>Orders</h2>{% if day and day != "all" %}<p class="small" style="margin:-8px 0 12px"><a href="/orders">‹ All drop dates</a> · <b>{{day_label}}</b> · <a href="/review?src=day&name={{day}}" title="This day's checkouts, profiles and charges">Checkouts this day ›</a></p>{% endif %}
+<div class="stats ostats">{% macro tile(key, cls="") %}{% set on = show == key %}{% set qs = ([] if on or not key else ['show=' ~ key]) + (['day=' ~ day|urlencode] if day else []) + (['profile=' ~ request.args.get('profile')|urlencode] if request.args.get('profile') else []) %}<a class="card {{cls}}{{' on' if on}}" href="/orders{{ ('?' ~ qs|join('&')) if qs else ('?day=all' if key else '') }}" title="{{'Show every order' if not key or on else 'Show these orders: tap one to change anything about it'}}">{{ caller() }}</a>{% endmacro %}
 {% call tile("") %}Orders <b>{{stats.order_count}}</b>{% endcall %}
-{% call tile("spent") %}Spend <b>{{stats.order_total|money}}</b>{% if stats.not_spent %}<span class="muted ns" data-href="/orders?show=not_spent">{{stats.not_spent}} cancelled or refunded not counted</span>{% endif %}{% endcall %}
-{% call tile("moving") %}On the way <b>{{stats.in_flight}}</b>{% endcall %}{% call tile("delivered", "ok") %}Delivered <b>{{stats.by_status.get("delivered", 0)}}</b>{% endcall %}</div>
-{% if show %}<p class="oshow"><b>{{ {"spent": "Orders counted in Spend", "not_spent": "Cancelled, refunded and returned orders", "moving": "On the way", "delivered": "Delivered"}[show] }}</b> · {{rows|length}} · tap an order to change anything about it, it stays on this list · <a href="/orders">Show all</a></p>{% endif %}
+{% call tile("spent") %}Spend <b>{{stats.order_total|money}}</b>{% if stats.not_spent %}<span class="muted ns" data-href="/orders?show=not_spent{{'&day=' ~ day|urlencode if day}}">{{stats.not_spent}} cancelled or refunded not counted</span>{% endif %}{% endcall %}
+{% call tile("moving") %}On the way <b>{{stats.in_flight}}</b>{% endcall %}{% call tile("delivered", "ok") %}Delivered <b>{{stats.by_status.get("delivered", 0)}}</b>{% endcall %}
+{% if stats.wrong_address %}{% call tile("wrong_address", "bad") %}Wrong address <b>{{stats.wrong_address}}</b>{% endcall %}{% endif %}</div>
+{% if show %}<p class="oshow"><b>{{ {"spent": "Orders counted in Spend", "not_spent": "Cancelled, refunded and returned orders", "moving": "On the way", "delivered": "Delivered", "wrong_address": "Shipped to a different address than the profile's"}[show] }}</b> · {{rows|length}} · tap an order to change anything about it, it stays on this list · <a href="/orders{{'?day=' ~ day|urlencode if day else '?day=all'}}">Show all</a></p>{% endif %}
 <style>.ostats .ns{font-size:12px;text-transform:none;letter-spacing:0;text-decoration:underline dotted}.oshow{margin:-8px 0 14px}</style>
 <script>document.querySelectorAll('.ostats .ns').forEach(n => n.addEventListener('click', e => { e.preventDefault(); location.href = n.dataset.href; }));</script>
 {% if not configured %}<div class="flash">No Gmail inbox connected yet. <a href="/setup">Add one on the Setup page</a> to start finding orders.</div>{% endif %}
 {% include "sync.html" %}
 {% if accounts %}<p class="muted">{% for a in accounts %}{{a.address}}: synced {{(a.last_synced_at or "never")[:16]|replace("T", " ")}}{% if a.backfilled_at %}, whole mailbox done{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
-<input id="q" data-param="q" value="{{request.args.get('q', '')}}" placeholder="Search retailer, item, tracking, address" size="40">
+{% if days %}<div class="thead" style="margin:18px 0 0"><h3 style="margin:0">By drop date</h3><div class="tact"><a class="btn ghost" href="/orders?day=all">Every order ›</a></div></div>
+{{ day_cards(days, "/orders?day=", day_groups) }}
+{% else %}<input id="q" data-param="q" value="{{request.args.get('q', '')}}" placeholder="Search retailer, item, tracking, address" size="40">
 <select id="f" data-filter data-param="status"><option value="">All statuses</option>{% for s, n in status_counts.items() %}<option value="{{s}}" {{"selected" if request.args.get("status") == s}}>{{s|status_label}} ({{n}})</option>{% endfor %}</select>
 {% if bases %}<select id="bf" data-filter data-param="base"><option value="">All base addresses</option>{% for b in bases %}{% if base_counts.get(b.id) %}<option value="{{b.id}}" {{"selected" if request.args.get("base") == b.id|string}}>{{b.name}} ({{base_counts[b.id]}})</option>{% endif %}{% endfor %}{% if base_counts.get(None) %}<option value="none" {{"selected" if request.args.get("base") == "none"}}>No base ({{base_counts[None]}})</option>{% endif %}</select>{% endif %}
 {% if products %}<select id="prf" data-filter data-param="product" style="max-width:260px"><option value="">All products</option>{% for n, c in products %}<option value="{{n|lower}}" {{"selected" if (request.args.get("product") or "")|lower == n|lower}}>{{n|truncate(60)}} ({{c}})</option>{% endfor %}</select>{% endif %}
@@ -29,12 +34,18 @@
 {% elif o.profile_candidates %}<span style="color:var(--orange)" title="These profiles share the address, name and email on this order">Could be {{o.profile_candidates|join(", ")}}</span>
 {% else %}<span class="muted">{{"None of yours" if o.profile_manual else "No match"}}</span>{% endif %}
 {% if profile_names %}<form class="rowpick" method="post" action="/orders/{{o.id}}/profile"><select name="profile" class="pick" title="Pick the profile this order was placed with"><option value="__keep__">{{"Pick profile…" if o.profile_candidates else "Change…"}}</option>{% for n in o.profile_candidates %}<option value="{{n}}">{{n}}</option>{% endfor %}{% if o.profile_candidates %}<option disabled>──────────</option>{% endif %}<option disabled data-all>──────────</option><option value="">None of my profiles</option>{% if o.profile_manual %}<option value="__auto__">Match automatically</option>{% endif %}</select></form>{% endif %}</td>
-<td><div class="shipto" data-private>{% if o.shipping_name %}<b>{{o.shipping_name}}</b><br>{% endif %}{% set al = o|address_label %}{% if al %}<a href="/address?name={{al|urlencode}}" title="Every profile, checkout and order at this address">{{o.shipping_address}}</a>{% else %}{{o.shipping_address or "-"}}{% endif %}<div class="muted" style="font-size:12px">{% if o.recipient_email %}sent to <span data-copy>{{o.recipient_email}}</span>{% if o.account and o.account != o.recipient_email %} · {% endif %}{% endif %}{% if o.account and o.account != o.recipient_email %}<span data-copy>{{o.account}}</span>{% endif %}</div></div></td></tr>
-{% else %}<tr><td colspan="7" class="muted">No orders yet. Press Sync Gmail.</td></tr>{% endfor %}</tbody></table>
+<td><div class="shipto" data-private>{% if o.shipping_name %}<b>{{o.shipping_name}}</b><br>{% endif %}{% set al = o|address_label %}{% if al %}<a href="/address?name={{al|urlencode}}" title="Every profile, checkout and order at this address">{{o.shipping_address}}</a>{% else %}{{o.shipping_address or "-"}}{% endif %}<div class="muted" style="font-size:12px">{% if o.recipient_email %}sent to <span data-copy>{{o.recipient_email}}</span>{% if o.account and o.account != o.recipient_email %} · {% endif %}{% endif %}{% if o.account and o.account != o.recipient_email %}<span data-copy>{{o.account}}</span>{% endif %}</div></div>
+{% set w = wrong.get(o.id) %}{% if w %}<div class="wrongaddr"><b>Not the profile's address</b><span class="small">{{w.profiles|join(", ")}} ({{w.why}}) ships to <span data-private>{{w.expected}}</span>. The store may have used the account's saved address.</span>
+<form method="post" action="/orders/{{o.id}}/address-ok"><input type="hidden" name="back" value="{{request.full_path}}#order-{{o.id}}"><button class="ghost" title="This address is right; stop flagging it">It's fine</button></form></div>
+{% elif o.address_ok %}<form class="small muted" method="post" action="/orders/{{o.id}}/address-ok">Address marked fine · <input type="hidden" name="ok" value="0"><input type="hidden" name="back" value="{{request.full_path}}#order-{{o.id}}"><button class="linkish" title="Check this order's address against its profile again">Check again</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">No orders yet. Press Sync Gmail.</td></tr>{% endfor %}</tbody></table>{% endif %}
 <style>.rowpick{display:block;margin:6px 0 0}.rowpick.st{margin-top:8px}.rowpick select{margin:0;padding:4px 8px;font-size:12px;width:100%;min-width:120px;max-width:180px}
 /* Room goes to the item names; tracking numbers wrap between groups instead of letter by letter. */
 .otable td:nth-child(2){min-width:180px}.otable td:nth-child(5){min-width:130px}.otable td:nth-child(5) a.track{word-break:normal;overflow-wrap:anywhere}
-.otable td:nth-child(7){min-width:140px;overflow-wrap:anywhere}.linked{font-size:12px;display:inline-block;margin-top:4px}</style>
+.otable td:nth-child(7){min-width:140px;overflow-wrap:anywhere}
+.wrongaddr{margin-top:8px;padding:8px 10px;border-radius:10px;border:1px solid var(--orange);color:var(--text);display:flex;flex-direction:column;gap:4px}
+.wrongaddr b{color:var(--orange)}.wrongaddr form{margin:2px 0 0}.wrongaddr button{padding:3px 10px;font-size:12px}
+button.linkish{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;cursor:pointer;font-size:inherit}.linked{font-size:12px;display:inline-block;margin-top:4px}</style>
 <script>
 // The status and profile pickers in each row save as soon as you choose.
 document.addEventListener('change', e => {
@@ -65,5 +76,5 @@ function fillPicker(e) {
 document.addEventListener('mousedown', fillPicker, true);
 document.addEventListener('focusin', fillPicker);
 </script>
-{% include "filter.html" %}
+{% if not days %}{% include "filter.html" %}{% endif %}
 {% endblock %}
