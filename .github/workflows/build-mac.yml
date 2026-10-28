@@ -99,27 +99,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && env.RELEASES_TOKEN != ''
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.BOTTRACK }}
-        run: |
-          tag="build-${{ github.run_number }}-${GITHUB_SHA::7}"
-          repo="${{ vars.RELEASES_REPO || 'Chronik36/BotTrack-releases' }}"
-          # Patch notes: every change since the last release (its tag ends in that build's commit id).
-          prev=$(gh release list -R "$repo" -L 1 --json tagName -q '.[0].tagName' 2>/dev/null || true)
-          range="-1"
-          if [ -n "$prev" ] && git cat-file -e "${prev##*-}^{commit}" 2>/dev/null; then range="${prev##*-}..HEAD"; fi
-          git log $range --no-merges --pretty='- %s' | sed -E 's/ \(#[0-9]+\)$//' | head -40 > notes.txt
-          [ -s notes.txt ] || git log -1 --pretty='- %s' > notes.txt
-          # The page shows how to install first, then what's new; README.md and the Manual are attached too.
-          { echo "**New to BotTrack?** Read **README.md** below for how to install (Mac, Windows, Android, iPhone), and open **BotTrack-Manual.html** for the full manual."
-            echo; echo "### What's new"; cat notes.txt; } > body.txt
-          cp packaging/README.md README.md
-          shopt -s nullglob
-          gh release create "$tag" dist/BotTrack.dmg dist/bottrack-code.zip apk/*.apk win/*.exe README.md dist/BotTrack-Manual*.html \
-            -R "$repo" \
-            --title "BotTrack build ${{ github.run_number }}" --notes-file body.txt
-          # The releases repository's front page shows the same README.
-          sha=$(gh api "repos/$repo/contents/README.md" -q .sha 2>/dev/null || true)
-          gh api -X PUT "repos/$repo/contents/README.md" -f message="README for build ${{ github.run_number }}" \
-            -f content="$(base64 < README.md | tr -d '\n')" ${sha:+-f sha="$sha"} >/dev/null || echo "README update failed"
+        run: bash packaging/publish_release.sh "${{ github.run_number }}" "${{ vars.RELEASES_REPO || 'Chronik36/BotTrack-releases' }}"
       # Each release with its patch notes in your Discord channel, when the DISCORD_RELEASES_WEBHOOK secret is set
       # (Discord channel > Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL).
       - name: Post the release to Discord
@@ -130,4 +110,75 @@ jobs:
         run: |
           shopt -s nullglob
           python3 packaging/discord_post.py "${{ github.run_number }}" "${{ vars.RELEASES_REPO || 'Chronik36/BotTrack-releases' }}" notes.txt \
+            "$( [ -n "$(echo win/*.exe)" ] && echo windows )" "$( [ -n "$(echo apk/*.apk)" ] && echo android )"
+
+  # GitHub sometimes has no Mac machine free for hours ("The job was not acquired by Runner"), so the Mac job never
+  # runs and nothing is released. Then this publishes the same code for the in-app Update, with the Windows
+  # installer, the Android app and the last Mac installer (it updates itself to this code when opened).
+  code-release:
+    needs: [android, windows, build]
+    if: ${{ always() && github.ref == 'refs/heads/main' && needs.build.result != 'success' && needs.build.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.BOTTRACK }}
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASES_WEBHOOK }}
+      REPO: ${{ vars.RELEASES_REPO || 'Chronik36/BotTrack-releases' }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Only for the newest commit on main (a newer push builds and releases itself)
+        id: latest
+        run: |
+          head=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$head" = "$GITHUB_SHA" ] && [ -n "$RELEASES_TOKEN" ]; then echo "go=1" >> "$GITHUB_OUTPUT"; else echo "Skipping: main is now $head"; fi
+      - uses: actions/setup-python@v5
+        if: steps.latest.outputs.go == '1'
+        with: {python-version: "3.12"}
+      - name: Tests (the Mac job's smoke test didn't run)
+        if: steps.latest.outputs.go == '1'
+        run: |
+          python -m pip install --quiet -r requirements.txt pytest
+          python -m pytest -q
+      - name: Code for in-app updates, and the Manual
+        if: steps.latest.outputs.go == '1'
+        env:
+          BOTTRACK_DEVELOPER_EMAIL: ${{ secrets.BOTTRACK_LOGS_TO }}
+        run: |
+          mkdir -p dist code/bottrack
+          cp -R jigstream run.py requirements.txt code/bottrack/
+          [ -n "${BOTTRACK_DEVELOPER_EMAIL:-}" ] && echo "$BOTTRACK_DEVELOPER_EMAIL" > code/bottrack/jigstream/developer.txt
+          find code -name "__pycache__" -prune -exec rm -rf {} +
+          (cd code && zip -qr ../dist/bottrack-code.zip bottrack)
+          python packaging/export_manual.py dist/BotTrack-Manual.html || echo "manual export failed"
+      - name: The last Mac installer
+        if: steps.latest.outputs.go == '1'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.BOTTRACK }}
+        run: |
+          tag=$(gh release list -R "$REPO" -L 30 --json tagName -q '.[].tagName' | while read -r t; do
+            if gh release view "$t" -R "$REPO" --json assets -q '.assets[].name' | grep -qx BotTrack.dmg; then echo "$t"; break; fi; done)
+          [ -n "$tag" ] && gh release download "$tag" -R "$REPO" -p BotTrack.dmg -D dist
+      - uses: actions/download-artifact@v4
+        if: steps.latest.outputs.go == '1'
+        continue-on-error: true
+        with: {name: BotTrack-android, path: apk}
+      - uses: actions/download-artifact@v4
+        if: steps.latest.outputs.go == '1'
+        continue-on-error: true
+        with: {name: BotTrack-windows, path: win}
+      - name: Publish release
+        if: steps.latest.outputs.go == '1'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || secrets.BOTTRACK }}
+        run: |
+          bash packaging/publish_release.sh "${{ github.run_number }}" "$REPO" \
+            "_No Mac build machine was free at GitHub, so this release has the new code (Update in the app picks it up) and the last Mac installer, which updates itself when opened._"
+      - name: Post the release to Discord
+        if: steps.latest.outputs.go == '1' && env.DISCORD_WEBHOOK != ''
+        continue-on-error: true
+        run: |
+          shopt -s nullglob
+          python3 packaging/discord_post.py "${{ github.run_number }}" "$REPO" notes.txt \
             "$( [ -n "$(echo win/*.exe)" ] && echo windows )" "$( [ -n "$(echo apk/*.apk)" ] && echo android )"
