@@ -51,10 +51,11 @@ CREATE TABLE IF NOT EXISTS sync_peers (
 # Bookkeeping that belongs to one computer: its Undo history, the phone's change counter, the price re-check
 # cursor, and the AI adapters trained here (their files are on this computer only).
 LOCAL_TABLES = {"undo_log", "undo_steps", "change_count", "price_recheck", "sqlite_sequence", "ai_adapters",
-                "store_fixes"}
+                "store_fixes", "browser_settings"}
 LOCAL_COLUMNS = {"ai_tasks": {"adapter_id"}}
 # Numbers that point at another table's row.
-LINKS = {("ai_task_examples", "task_id"): "ai_tasks", ("bank_transactions", "account_id"): "bank_accounts", ("base_matches", "base_id"): "base_addresses",
+LINKS = {("ai_task_examples", "task_id"): "ai_tasks", ("browsers", "proxy_id"): "proxies",
+         ("browsers", "account_id"): "store_accounts", ("bank_transactions", "account_id"): "bank_accounts", ("base_matches", "base_id"): "base_addresses",
          ("checkout_verdicts", "checkout_id"): "checkouts", ("expenses", "subscription_id"): "subscriptions",
          ("labels", "order_id"): "tracked_orders", ("ledger_rejects", "tx_id"): "bank_transactions",
          ("profiles", "card_id"): "cards", ("proxy_settings", "account_id"): "proxy_accounts",
@@ -66,7 +67,7 @@ KIND_LINKS = {("bank_transactions", "match_id"): "match_kind", ("ledger_rejects"
 KIND_TABLES = {"order": "tracked_orders", "expense": "expenses", "expense_refund": "expenses", "sale": "sales",
                "checkout": "checkouts"}
 # Encrypted with this computer's card key.
-SEALED = {("cards", "secret"), ("plaid_items", "token"), ("proxy_accounts", "site_session"), ("plaid_settings", "value")}
+SEALED = {("cards", "secret"), ("store_accounts", "password"), ("plaid_items", "token"), ("proxy_accounts", "site_session"), ("plaid_settings", "value")}
 BATCH = 400
 EVERY = 60  # seconds between swaps
 INVITE_HOURS = 1

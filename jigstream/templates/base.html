@@ -206,6 +206,8 @@ body .fl{color:#7884b3}
 </style></head><body>
 {% set path = "/drop" if request.path.startswith(("/checkouts", "/stuck", "/drop/")) else request.path %}{# Drops holds every checkout page #}
 {% set icons = {
+  "globe": '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  "key": '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M17 6l3 3M14.5 8.5l2.5 2.5"/>',
   "dash": '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
   "orders": '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
   "inbox": '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
@@ -237,7 +239,7 @@ body .fl{color:#7884b3}
 {% set sections = [
   ("Overview", [("/", "Dashboard", "dash")]),
   ("Tracking", [("/orders", "Orders", "orders"), ("/tracking", "Shipping", "truck"), ("/bases", "Base addresses", "pin"), ("/profile-orders", "Profile orders", "profiles"), ("/inbox", "Inbox", "inbox"), ("/expenses", "Expenses", "expenses"), ("/bank", "Bank", "bank"), ("/imports", "Imports", "upload"), ("/training", "Training", "training")]),
-  ("Bot tools", [("/drop", "Drops", "drop"), ("/profiles", "Profiles", "profiles"), ("/cards", "Cards", "cards"), ("/emails", "Emails", "emails"), ("/proxies", "Proxies", "proxies"), ("/keywords", "Keywords", "keywords"), ("/products", "Products", "products")]),
+  ("Bot tools", [("/drop", "Drops", "drop"), ("/profiles", "Profiles", "profiles"), ("/cards", "Cards", "cards"), ("/accounts", "Accounts", "key"), ("/browsers", "Browsers", "globe"), ("/emails", "Emails", "emails"), ("/proxies", "Proxies", "proxies"), ("/keywords", "Keywords", "keywords"), ("/products", "Products", "products")]),
 ] %}
 {% set footer = [("/manual", "Manual", "manual"), ("/m/app", "App & updates", "setup")] if on_phone else [("/manual", "Manual", "manual"), ("/logs", "Logs", "logs"), ("/setup", "Setup", "setup")] %}
 {% if dev_mail %}{% set footer = [("/developer/mail", "Logs & ideas", "inbox")] + footer %}{% endif %}
