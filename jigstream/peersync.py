@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS sync_peers (
 """
 # Bookkeeping that belongs to one computer: its Undo history, the phone's change counter, the price re-check
 # cursor, and the AI adapters trained here (their files are on this computer only).
-LOCAL_TABLES = {"undo_log", "undo_steps", "change_count", "price_recheck", "sqlite_sequence", "ai_adapters"}
+LOCAL_TABLES = {"undo_log", "undo_steps", "change_count", "price_recheck", "sqlite_sequence", "ai_adapters",
+                "store_fixes"}
 LOCAL_COLUMNS = {"ai_tasks": {"adapter_id"}}
 # Numbers that point at another table's row.
 LINKS = {("ai_task_examples", "task_id"): "ai_tasks", ("bank_transactions", "account_id"): "bank_accounts", ("base_matches", "base_id"): "base_addresses",

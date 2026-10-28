@@ -182,7 +182,7 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None, sto
     return counts
 
 
-def quick_check(config, store, llm=None, newest=5, stop=None, fetch=None):
+def quick_check(config, store, llm=None, newest=20, stop=None, fetch=None):
     """Read the newest few emails of every inbox, so new orders, shipping and cancels show up within minutes
     instead of waiting for the next full sync. Emails already read are skipped by Message-ID before anything
     is downloaded. fetch replaces Gmail in tests. Returns the counts, like run_sync."""
