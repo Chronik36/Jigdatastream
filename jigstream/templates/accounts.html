@@ -1,0 +1,125 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.phead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.phead h2{margin:0;flex:1}
+.acards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr));gap:10px;margin-bottom:14px}
+.acard{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--line);color:var(--text)}
+.acard:hover,.acard.on{border-color:var(--accent);color:var(--text)}.acard b{font-size:22px}.acard span{font-size:12px;color:var(--muted)}
+.achips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.toolbar select,.toolbar input,.toolbar button{margin:0}.toolbar button{padding:6px 12px}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:13px;overflow-wrap:anywhere}
+td .sub{display:block;font-size:12px;margin-top:2px}
+.cp{cursor:pointer}.cp:hover{color:var(--accent)}
+.pw{display:inline-flex;align-items:center;gap:6px}.pw button{padding:3px 8px;font-size:12px;margin:0}
+.st-active{color:var(--green)}.st-locked{color:var(--orange)}.st-banned{color:var(--red)}.st-unused{color:var(--muted)}
+dialog{width:min(560px,94vw)}dialog .db{padding:18px 22px}dialog form{display:block;margin:0}
+.ag{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px}
+.ag label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}.ag input,.ag select{margin:0;width:100%;color:var(--text)}
+.ag .wide{grid-column:1/-1}
+dialog textarea{font:13px/1.6 ui-monospace,Menlo,monospace;width:100%;height:150px;background:var(--surface-2);color:var(--text);border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;resize:vertical}
+</style>
+<div class="phead"><h2>Store accounts <span class="muted" style="font-size:15px;font-weight:500">{{accounts|length}}{% if site or status %} of {{total}}{% endif %}</span></h2>
+<button type="button" onclick="openAdd()">+ Add accounts</button></div>
+<p class="muted" style="margin-top:-6px">The logins you check out with, per store. Passwords are encrypted on this computer and only shown when you press Show or Copy. Accounts whose email matches a profile show that profile and its orders.</p>
+
+{% if site_counts %}<div class="acards">
+<a class="acard{{' on' if not site}}" href="/accounts{{'?status=' ~ status if status}}"><span>All stores</span><b>{{total}}</b><span>{{by_status.get('active', 0)}} active</span></a>
+{% for s in site_counts %}<a class="acard{{' on' if site and site|lower == s.site|lower}}" href="/accounts?site={{s.site|urlencode}}{{'&status=' ~ status if status}}" title="See the {{s.site}} accounts"><span>{{s.site}}</span><b>{{s.n}}</b><span>{{s.active or 0}} active</span></a>{% endfor %}
+</div>
+<div class="achips"><a class="pill{{' s-shipped' if not status}}" href="/accounts{{'?site=' ~ site|urlencode if site}}">Any status</a>
+{% for k, v in statuses.items() %}<a class="pill{{' s-shipped' if status == k}}" href="/accounts?status={{k}}{{'&site=' ~ site|urlencode if site}}">{{v}} {{by_status.get(k, 0)}}</a>{% endfor %}</div>{% endif %}
+
+{% if accounts %}
+<form id="bulk" method="post" action="/accounts/bulk">
+<div class="toolbar">
+  <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" onclick="document.querySelectorAll('input.pick').forEach(c => c.checked = this.checked)"> All</label>
+  <input id="q" placeholder="Search email, username or store" size="24">
+  <select name="action" onchange="if (this.value) { if (this.value !== 'delete' || true) this.form.requestSubmit(); }" aria-label="Do with the ticked accounts">
+    <option value="">Ticked accounts…</option>{% for k, v in statuses.items() %}<option value="{{k}}">Mark {{v|lower}}</option>{% endfor %}</select>
+  <button class="danger" name="action" value="delete" data-confirm="Delete the ticked accounts and their saved passwords?">Delete</button>
+</div>
+<table><thead><tr><th></th><th>Store</th><th>Email</th><th>Username</th><th>Password</th><th>Profile</th><th>Status</th><th></th></tr></thead><tbody>
+{% for a in accounts %}<tr data-q="{{(a.site ~ ' ' ~ a.email ~ ' ' ~ (a.username or '') ~ ' ' ~ (a.profile or ''))|lower}}">
+<td><input type="checkbox" class="pick" name="ids" value="{{a.id}}"></td>
+<td><b>{{a.site}}</b>{% if a.notes %}<span class="sub muted">{{a.notes}}</span>{% endif %}</td>
+<td class="mono"><span class="cp" data-copy title="Copy">{{a.email}}</span></td>
+<td class="mono">{% if a.username %}<span class="cp" data-copy title="Copy">{{a.username}}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+<td>{% if a.has_pw %}<span class="pw"><span class="mono" data-pw="{{a.id}}">••••••••</span><button type="button" class="ghost" data-show="{{a.id}}" title="Show">Show</button><button type="button" class="ghost" data-copypw="{{a.id}}" title="Copy the password">Copy</button></span>{% else %}<span class="muted">None saved</span>{% endif %}</td>
+<td>{% if a.profile %}<a href="/profile-orders?profile={{a.profile|urlencode}}">{{a.profile}}</a><span class="sub muted">{{a.orders}} order{{'' if a.orders == 1 else 's'}}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+<td><span class="st-{{a.status}}">{{statuses.get(a.status, a.status)}}</span></td>
+<td><div class="acts"><button type="button" title="Open this account in its own browser through a proxy" onclick='openBrowser({{ {"id": a.id, "label": a.site ~ " · " ~ a.email, "proxy_id": browser_proxy.get(a.id)}|tojson }})'>Open</button><button type="button" class="ghost" onclick='openEdit({{ {"id": a.id, "site": a.site, "email": a.email, "username": a.username, "status": a.status, "notes": a.notes}|tojson }})'>Edit</button></div></td>
+</tr>{% endfor %}</tbody></table>
+</form>
+{% else %}<section class="panel"><p style="margin:0">{{"No accounts here." if total else "No store accounts yet."}} <a href="#" onclick="openAdd();return false">Add some</a>: one at a time, or paste a list.</p></section>{% endif %}
+
+<datalist id="sitelist">{% for s in presets %}<option value="{{s}}">{% endfor %}{% for s in site_counts %}{% if s.site not in presets %}<option value="{{s.site}}">{% endif %}{% endfor %}</datalist>
+
+<dialog id="adddlg"><div class="dh"><h3>Add accounts</h3><button class="x" type="button" onclick="adddlg.close()">×</button></div>
+<form method="post" action="/accounts/add" class="db" id="addform"><div class="ag">
+<label class="wide">Store<input name="site" list="sitelist" required placeholder="Target, Walmart, Riot…" value="{{site or ''}}" data-site></label>
+<label>Email<input name="email" type="email" autocomplete="off"></label>
+<label>Password<input name="password" type="password" autocomplete="new-password"></label>
+<label data-user>Username <span class="muted" data-userhint>(optional)</span><input name="username" autocomplete="off"></label>
+<label>Status<select name="status">{% for k, v in statuses.items() %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></label>
+<label class="wide">Notes<input name="notes" placeholder="e.g. made Oct 20, phone verified"></label>
+<label class="wide">Or paste many, one per line
+<textarea name="lines" placeholder="email:password&#10;email:password:username&#10;username:email:password"></textarea></label>
+</div><div style="display:flex;gap:8px;margin-top:12px"><button>Save</button><span class="muted small" style="align-self:center">Saving an email the store already has updates its password.</span></div></form></dialog>
+
+<dialog id="editdlg"><div class="dh"><h3>Edit account</h3><button class="x" type="button" onclick="editdlg.close()">×</button></div>
+<form method="post" action="" class="db" id="editform"><div class="ag">
+<label class="wide">Store<input name="site" list="sitelist" required data-site></label>
+<label>Email<input name="email" type="email" required autocomplete="off"></label>
+<label>New password <span class="muted">(blank keeps it)</span><input name="password" type="password" autocomplete="new-password"></label>
+<label data-user>Username <span class="muted" data-userhint>(optional)</span><input name="username" autocomplete="off"></label>
+<label>Status<select name="status">{% for k, v in statuses.items() %}<option value="{{k}}">{{v}}</option>{% endfor %}</select></label>
+<label class="wide">Notes<input name="notes"></label>
+</div><div style="margin-top:12px"><button>Save</button></div></form></dialog>
+
+<dialog id="brdlg"><div class="dh"><h3>Open in a browser</h3><button class="x" type="button" onclick="brdlg.close()">×</button></div>
+<form method="post" action="" class="db" id="brform"><p class="muted" id="br-label" style="margin-top:0"></p><div class="ag">
+<label class="wide">Through proxy<select name="proxy_id"><option value="">No proxy (your own connection)</option>{% for g, ps in proxy_groups %}<optgroup label="{{g}}">{% for p in ps %}<option value="{{p.id}}">{{p.label}}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+</div><p class="muted small">It gets its own browser on the <a href="/browsers">Browsers</a> page, with its session saved so it stays signed in.</p><button>Open</button></form></dialog>
+<script>
+const brdlg = document.getElementById('brdlg');
+function openBrowser(a) {
+  const f = document.getElementById('brform');
+  f.action = '/accounts/' + a.id + '/browser'; f.elements.proxy_id.value = a.proxy_id || '';
+  document.getElementById('br-label').textContent = a.label; brdlg.showModal();
+}
+const adddlg = document.getElementById('adddlg'), editdlg = document.getElementById('editdlg');
+// Riot signs in with a username: the field becomes required for it.
+function siteRules(form) {
+  const site = form.querySelector('[data-site]').value.toLowerCase(), need = site.includes('riot');
+  const hint = form.querySelector('[data-userhint]'), user = form.querySelector('[name=username]');
+  hint.textContent = need ? '(needed for Riot)' : '(optional)';
+  user.required = need && !(form.querySelector('[name=lines]') || {}).value;
+}
+['addform', 'editform'].forEach(id => document.getElementById(id).addEventListener('input', e => siteRules(e.currentTarget)));
+function openAdd() { const f = document.getElementById('addform'); siteRules(f); adddlg.showModal(); }
+function openEdit(a) {
+  const f = document.getElementById('editform');
+  f.action = '/accounts/' + a.id + '/edit';
+  ['site', 'email', 'username', 'status', 'notes'].forEach(k => f.elements[k].value = a[k] || (k === 'status' ? 'active' : ''));
+  f.elements.password.value = '';
+  siteRules(f); editdlg.showModal();
+}
+async function getPw(id) {
+  const r = await fetch('/accounts/' + id + '/password'), j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'Not available here.');
+  return j.password;
+}
+document.addEventListener('click', async e => {
+  const show = e.target.closest('[data-show]'), cp = e.target.closest('[data-copypw]');
+  if (!show && !cp) return;
+  const id = (show || cp).dataset.show || (show || cp).dataset.copypw, box = document.querySelector('[data-pw="' + id + '"]');
+  try {
+    if (show) {
+      if (show.dataset.on) { box.textContent = '••••••••'; delete show.dataset.on; show.textContent = 'Show'; return; }
+      box.textContent = await getPw(id); show.dataset.on = 1; show.textContent = 'Hide';
+    } else { await navigator.clipboard.writeText(await getPw(id)); cp.textContent = 'Copied'; setTimeout(() => cp.textContent = 'Copy', 1200); }
+  } catch (err) { box.textContent = err.message; }
+});
+const q = document.getElementById('q');
+if (q) q.addEventListener('input', () => document.querySelectorAll('tbody tr[data-q]').forEach(tr => tr.style.display = tr.dataset.q.includes(q.value.toLowerCase()) ? '' : 'none'));
+</script>
+{% endblock %}
