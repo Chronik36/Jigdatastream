@@ -113,12 +113,13 @@ def _checkout_profiles(con, names):
     """order number -> profile name, from successful bot checkouts."""
     out = {}
     from .profiles import resolver
+    from .stuck import _number
     resolve = resolver(con)
     for r in con.execute("SELECT order_number, profile, site FROM checkouts WHERE status='success' AND order_number != ''"
                          " AND order_number IS NOT NULL AND profile IS NOT NULL"):
         key = resolve(r["profile"], r["site"])
         if key in names:
-            out[re.sub(r"[^A-Za-z0-9]", "", r["order_number"]).upper()] = key
+            out[_number(r["order_number"])] = key
     return out
 
 

@@ -28,7 +28,10 @@ SITE_FILLER = re.compile(r"^(www\.)|\.(com|net|co|us|ca|co\.uk)$|\s+(us|usa|stor
 
 @lru_cache(maxsize=50000)  # pure string helpers called for every checkout and order on each page load
 def _number(s):
-    return re.sub(r"[^A-Za-z0-9]", "", s or "").upper()
+    # A bot can send the number as a markdown link ("[P0000000001](https://…/orders/P0000000001?postalCode=…)"):
+    # only the link's text is the number.
+    s = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", s or "")
+    return re.sub(r"[^A-Za-z0-9]", "", s).upper()
 
 
 @lru_cache(maxsize=20000)
