@@ -35,7 +35,7 @@ LOCK_AFTER, LOCK_WINDOW = 5, 15 * 60  # failed sign-ins per address, and for how
 # Pages a phone never opens, even signed in: they hold inbox passwords, API keys, bank links and logs,
 # show full card numbers, or export cards. Everything else in BotTrack works from a phone.
 PHONE_BLOCKED = ("/setup", "/logs", "/bank/plaid", "/update/rollback", "/profiles/export", "/m/api/link")
-PHONE_BLOCKED_ENDPOINTS = {"cards_reveal"}
+PHONE_BLOCKED_ENDPOINTS = {"cards_reveal", "storeaccounts.reveal"}
 # Inside a blocked path but fine from a phone: sending the (scrubbed) logs, without browsing them.
 PHONE_ALLOWED = {"send_logs_page", "send_logs"}
 failures = {}  # ip -> [times of recent failed sign-ins]
