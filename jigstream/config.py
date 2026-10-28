@@ -1,5 +1,6 @@
 """Settings, read from environment variables or a local .env file."""
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,24 +19,103 @@ DEFAULT_QUERY = (
 )
 
 
-def load_dotenv(path=".env"):
-    """Load KEY=VALUE lines into os.environ without overriding real env vars."""
-    p = Path(path)
-    if not p.exists():
-        return
+# Settings that unlock something (inboxes, phones, backups, your signing key, API accounts). In .env they're kept
+# sealed with the card key (wallet.py: the Keychain on a Mac, DPAPI on Windows), so the file alone gives none of
+# them away; BotTrack opens them when it loads its settings.
+SEALED_KEYS = {"GMAIL_ACCOUNTS", "GMAIL_APP_PASSWORD", "BOTTRACK_SIGNING_KEY", "PHONE_SECRET_KEY", "PHONE_PAIR_KEY",
+               "PHONE_PAIR_TOPIC", "SYNC_TOPIC", "BACKUP_PASSWORD", "GITHUB_TOKEN", "DISCORD_BOT_TOKEN",
+               "EBAY_CLIENT_SECRET", "BESTBUY_API_KEY", "USPS_CLIENT_SECRET", "UPS_CLIENT_SECRET", "FEDEX_SECRET_KEY"}
+SEALED_PREFIX = "sealed:"
+_sealed_checked = set()  # .env files already moved to sealed values in this run
+
+
+def _fernet():
+    from cryptography.fernet import Fernet
+    from . import wallet
+    return Fernet(wallet.key())
+
+
+def seal(value):
+    return SEALED_PREFIX + _fernet().encrypt(str(value).encode()).decode()
+
+
+def unseal(value):
+    """The plain value of a sealed setting (unchanged if it isn't sealed). Raises if the card key doesn't open it."""
+    if not str(value).startswith(SEALED_PREFIX):
+        return value
+    return _fernet().decrypt(value[len(SEALED_PREFIX):].encode()).decode()
+
+
+def plain_text(path=".env"):
+    """The .env file as text with its sealed values opened (for checking what's saved)."""
+    lines = []
+    for line in Path(path).read_text().splitlines():
+        key, eq, value = line.partition("=")
+        lines.append(f"{key}={unseal(value)}" if eq and value.startswith(SEALED_PREFIX) else line)
+    return "\n".join(lines) + "\n"
+
+
+def _sealing_on():
+    return os.environ.get("BOTTRACK_SEAL_ENV", "1") != "0"
+
+
+def _read_env(p):
+    pairs = []
     for line in p.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        pairs.append((key.strip(), value.strip().strip('"').strip("'")))
+    return pairs
+
+
+def load_dotenv(path=".env"):
+    """Load KEY=VALUE lines into os.environ without overriding real env vars. Sealed values are opened; secrets
+    still written in plain text (from before sealing existed) are sealed in the file the first time."""
+    p = Path(path)
+    if not p.exists():
+        return
+    pairs = _read_env(p)
+    for key, value in pairs:  # plain settings first: one of them may say where the card key is
+        if not value.startswith(SEALED_PREFIX):
+            os.environ.setdefault(key, value)
+    for key, value in pairs:
+        if value.startswith(SEALED_PREFIX) and key not in os.environ:
+            try:
+                os.environ[key] = unseal(value)
+            except Exception as e:  # the Keychain didn't answer, or a different card key: leave the file as it is
+                logging.getLogger("jigstream.config").warning("couldn't open the saved %s: %s", key, type(e).__name__)
+    resolved = str(p.resolve())
+    if resolved in _sealed_checked or not _sealing_on():
+        return
+    _sealed_checked.add(resolved)
+    plain = {k: v for k, v in pairs if k in SEALED_KEYS and v and not v.startswith(SEALED_PREFIX)}
+    if plain:
+        try:
+            save_env(plain, path)
+        except Exception as e:
+            logging.getLogger("jigstream.config").warning("couldn't seal the saved passwords yet: %s", e)
 
 
 def save_env(updates, path=".env"):
-    """Set KEY=VALUE lines in the .env file (creating it, readable only by you) and in os.environ."""
+    """Set KEY=VALUE lines in the .env file (creating it, readable only by you) and in os.environ. Secrets are
+    written sealed; a value that's already sealed (from a backup) is opened for os.environ."""
     p = Path(path)
     lines = p.read_text().splitlines() if p.exists() else []
-    remaining = dict(updates)
+    plain, written = {}, {}
+    for k, v in updates.items():
+        v = str(v)
+        if v.startswith(SEALED_PREFIX):
+            written[k] = v
+            try:
+                plain[k] = unseal(v)
+            except Exception:  # sealed with a card key this computer doesn't have: kept, but can't be used
+                logging.getLogger("jigstream.config").warning("couldn't open the %s being saved", k)
+            continue
+        plain[k] = v
+        written[k] = seal(v) if k in SEALED_KEYS and v and _sealing_on() else v
+    remaining = dict(written)
     out = []
     for line in lines:
         key = line.split("=", 1)[0].strip()
@@ -44,10 +124,12 @@ def save_env(updates, path=".env"):
         else:
             out.append(line)
     out += [f"{k}={v}" for k, v in remaining.items()]
-    p.write_text("\n".join(out) + "\n")
-    p.chmod(0o600)
-    for key, value in updates.items():
-        os.environ[key] = str(value)
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text("\n".join(out) + "\n")
+    tmp.chmod(0o600)
+    tmp.replace(p)
+    for key, value in plain.items():
+        os.environ[key] = value
 
 
 def format_accounts(accounts):

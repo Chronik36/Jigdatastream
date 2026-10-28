@@ -1,7 +1,7 @@
 import os
 
 import jigstream.app as appmod
-from jigstream.config import Config, save_env
+from jigstream.config import Config, plain_text, save_env
 
 
 def test_save_env_updates_in_place(tmp_path, monkeypatch):
@@ -9,7 +9,7 @@ def test_save_env_updates_in_place(tmp_path, monkeypatch):
     env.write_text("# comment\nLLM_MODEL=old\nOTHER=1\n")
     monkeypatch.setattr(os, "environ", dict(os.environ))
     save_env({"LLM_MODEL": "qwen3:8b", "GMAIL_ACCOUNTS": "a@gmail.com:pw"}, path=env)
-    assert env.read_text() == "# comment\nLLM_MODEL=qwen3:8b\nOTHER=1\nGMAIL_ACCOUNTS=a@gmail.com:pw\n"
+    assert plain_text(env) == "# comment\nLLM_MODEL=qwen3:8b\nOTHER=1\nGMAIL_ACCOUNTS=a@gmail.com:pw\n"
     assert oct(env.stat().st_mode & 0o777) == "0o600"
     assert os.environ["LLM_MODEL"] == "qwen3:8b"
 
@@ -41,7 +41,7 @@ def test_setup_adds_and_removes_inbox(tmp_path, monkeypatch):
     monkeypatch.setattr(appmod, "run_sync", lambda *a, **k: {"order": 0, "botting_expense": 0, "other": 0,
                                                               "skipped": 0, "error": 0, "failed_inboxes": []})
     c.post("/setup/inbox", data={"address": "me@gmail.com", "password": "good password 1234"})
-    assert "GMAIL_ACCOUNTS=me@gmail.com:goodpassword1234" in (tmp_path / ".env").read_text()
+    assert "GMAIL_ACCOUNTS=me@gmail.com:goodpassword1234" in plain_text(tmp_path / ".env")
     assert Config.from_env().accounts == [("me@gmail.com", "goodpassword1234")]
     assert "me@gmail.com" in c.get("/setup").get_data(as_text=True)
 

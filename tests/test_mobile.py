@@ -6,6 +6,7 @@ from werkzeug.security import generate_password_hash
 
 import jigstream.app as appmod
 from jigstream import mobile
+from jigstream.config import plain_text
 
 PASSWORD = "correct horse battery"
 
@@ -157,14 +158,14 @@ def test_setup_turns_phone_access_on(app):
     r = c.post("/m/setup", data={"csrf": t, "on": "1", "email": "me@example.com", "password": "short"}, follow_redirects=True)
     assert "at least 10" in r.get_data(as_text=True)
     c.post("/m/setup", data={"csrf": t, "on": "1"})  # no email or password needed: phones pair by QR code
-    env = open(".env").read()
+    env = plain_text(".env")
     assert "PHONE_ACCESS=1" in env and "PHONE_SECRET_KEY=" in env and "PHONE_PAIR_KEY=" in env and "PHONE_PAIR_TOPIC=bottrack-" in env
     page = c.get("/setup").get_data(as_text=True)
     assert "Restart BotTrack" not in page and "Starting the phone link" in page  # no restart, the link starts right away
     assert pair(phone(app)).headers["Location"] == "/"
     assert "Sign in" not in phone(app).get("/m/login").get_data(as_text=True)  # no password set
     c.post("/m/setup", data={"csrf": t, "on": "1", "email": "Me@example.com", "password": PASSWORD})
-    env = open(".env").read()
+    env = plain_text(".env")
     assert "PHONE_EMAIL=me@example.com" in env and PASSWORD not in env
     assert sign_in(phone(app)).status_code == 302
     c.post("/m/setup", data={"csrf": t, "on": "1", "allow_lan": "1"})

@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS card_groups (name TEXT PRIMARY KEY);
 PROVIDERS = ["Other", "Amex", "Capital One", "Chase", "Citi", "Discover", "Privacy", "Revolut", "Wise", "Bank of America"]
 CARD_TYPES = ["Standard", "Virtual", "Debit", "Prepaid", "Business"]
 KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT = "BotTrack", "card-key"
+KEYCHAIN_NOT_FOUND = 44  # what `security` exits with when there is no such item (errSecItemNotFound)
 
 _key = None
 
@@ -70,7 +71,15 @@ def key():
         if found.returncode == 0 and found.stdout.strip():
             _key = found.stdout.strip().encode()
             return _key
-        new = Fernet.generate_key()
+        if found.returncode != KEYCHAIN_NOT_FOUND:
+            # Locked, or it didn't answer: making a new key here would replace the one every saved card needs.
+            raise RuntimeError(f"the Keychain didn't hand over the card key (error {found.returncode}); try again")
+        # Not in the Keychain yet: a key file kept from an earlier run (when the Keychain couldn't be used) moves in.
+        new = key_file.read_bytes().strip().removeprefix(b"plain:") if key_file.exists() else b""
+        try:
+            Fernet(new)
+        except ValueError:
+            new = Fernet.generate_key()
         if _keychain("add-generic-password", "-U", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT,
                      "-w", new.decode()).returncode == 0:
             _key = new
