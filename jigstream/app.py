@@ -74,6 +74,8 @@ def create_app(db_path=None):
     app.register_blueprint(pricecheck.bp)
     app.register_blueprint(peersync.bp)
     app.register_blueprint(ordersheet.bp)
+    from . import resale
+    app.register_blueprint(resale.bp)
     app.register_blueprint(backup.bp)
     from . import storage
     app.register_blueprint(storage.bp)
@@ -148,6 +150,16 @@ def create_app(db_path=None):
                             logger.info("cancel emails: %d order(s) marked cancelled, %d merged", marked, merged)
                     except Exception:
                         logger.exception("checking cancel emails failed")
+                    try:
+                        from . import resale
+                        from .sync import clean_ad_orders, find_resale
+                        progress("Taking ads out of Orders...")
+                        clean_ad_orders(config, Store(con()), stop=sync_state["stop"].is_set)
+                        if resale.needs_recheck(con()) and not sync_state["stop"].is_set():
+                            progress("Re-checking old receipts for resale items...")
+                            find_resale(config, Store(con()), stop=sync_state["stop"].is_set, progress=progress)
+                    except Exception:
+                        logger.exception("checking ads and resale receipts failed")
                     profilematch.match_orders(con())
                     progress("Finding missing expense amounts...")
                     try:
@@ -942,6 +954,40 @@ def create_app(db_path=None):
         threading.Thread(target=work, daemon=True).start()
         return True
 
+    resale_state = {"running": False, "last": None, "progress": None}
+
+    def start_find_resale(force=False):
+        """Re-check a year of mail naming your resale words (Training > Resale products)."""
+        from . import resale
+        from .sync import find_resale
+        config = Config.from_env()
+        if resale_state["running"] or sync_state["running"] or find_state["running"] or not config.accounts:
+            return False
+        if force:
+            resale.state(con(), "checked", "")
+        resale_state.update(running=True, progress="Starting...")
+
+        def work():
+            with mail_lock:
+                try:
+                    counts = find_resale(config, Store(con()), stop=lambda: sync_state["running"],
+                                         progress=lambda t: resale_state.update(progress=t))
+                    n = counts.get("order", 0)
+                    resale_state["last"] = (f"Found {n} order email{'s' if n != 1 else ''} with resale items. " if n
+                                            else "No new receipts with resale items. ") + summary(counts)
+                    if n:
+                        profilematch.match_orders(con())
+                except Exception as e:
+                    logger.exception("resale re-check failed")
+                    resale_state["last"] = f"Re-checking failed: {e}"
+                finally:
+                    resale_state.update(running=False, progress=None)
+
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    app.start_find_resale = start_find_resale
+    app.resale_state = resale_state
     app.start_find_sales = start_find_sales
     app.find_state = find_state
     app.start_sync = start_sync

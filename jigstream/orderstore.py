@@ -285,6 +285,8 @@ class Store:
                     kind = "order"
         if kind == "order":
             self._save_order(email, result)
+            # read again as an order (a receipt with resale items once filed as supplies): one email, one kind
+            self.db.execute("DELETE FROM expenses WHERE message_id = ?", (email.message_id,))
         elif kind == "botting_expense":
             self.db.execute(
                 "INSERT OR REPLACE INTO expenses"

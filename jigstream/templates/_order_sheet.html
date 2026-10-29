@@ -35,6 +35,8 @@
   <button type="button" class="os-a c-sky" data-os-toggle="os-edit">{{ os_icon("edit") }}Edit</button>
   <a class="os-a c-green" href="/expenses/in-person?order={{o.id}}#ipsale" title="Sold it in person, like at Tradepost or a show">{{ os_icon("receipt") }}Sold it</a>
   <button type="button" class="os-a c-green" data-os-toggle="os-sale" title="These emails are a sale you made (eBay, Vinted, Mercari...), not something you bought">{{ os_icon("tag") }}It's a sale</button>
+  <form method="post" action="{{url_for('ordersheet.is_ad', order_id=o.id)}}" class="os-del os-ad" data-confirm="This is an ad or newsletter, not something you bought? It leaves Orders and the AI learns what these look like. Undo brings it back.">
+    <button class="os-a c-orange" title="A store's ad or newsletter listing products and prices, not a purchase">{{ os_icon("tag") }}It's an ad</button></form>
   <button type="button" class="os-a c-orange" data-os-toggle="os-status">{{ os_icon("pen") }}Status</button>
   <form method="post" action="{{url_for('ordersheet.delete', order_id=o.id)}}" class="os-del" data-confirm="Delete this order from BotTrack? Undo brings it back.">
     <button class="os-a c-red">{{ os_icon("trash") }}Delete</button></form>
