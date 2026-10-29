@@ -67,7 +67,7 @@ def card(con, order, products, today=None):
     headline, day = arrival(order, today)
     events = [e for e in timeline(con, order) if e["source"] != "order"]
     return {"title": first.get("name") or order["retailer"] or "Order",
-            "image": first.get("image") or picture(first.get("name"), products),
+            "image": first.get("image") or picture(first.get("name"), products, con),
             "arrives": headline, "day": day, "events": events}
 
 
