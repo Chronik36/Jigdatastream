@@ -181,13 +181,18 @@ def _match_bot_updates(con, checkouts):
     for c in checkouts:
         c["bot_update"] = None
     updates = [dict(u) for u in con.execute("SELECT * FROM checkout_updates ORDER BY ts")]
+    # A decline webhook carrying the order number of a success (Hayha posts a red one when the site cancels it)
+    # is the bot saying that order was cancelled.
+    updates += [dict(d, verdict="cancelled") for d in con.execute(
+        "SELECT * FROM checkouts WHERE status = 'decline' AND COALESCE(order_number, '') != '' ORDER BY ts")]
+    updates.sort(key=lambda u: u["ts"] or "")
     by_number = {}
     for i, c in enumerate(checkouts):
         if _number(c["order_number"]):
             by_number.setdefault(_number(c["order_number"]), i)
     for u in updates:
         i = by_number.get(_number(u["order_number"]))
-        if i is None and not _number(u["order_number"]):
+        if i is None and not _number(u["order_number"]) and "status" not in u:  # a follow-up, not a decline
             t = when(u["ts"])
             near = [(when(c["ts"]), j) for j, c in enumerate(checkouts)
                     if c["bot"] == u["bot"] and (not u["site"] or same_site(c["site"], u["site"]))
