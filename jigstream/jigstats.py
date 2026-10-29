@@ -43,7 +43,7 @@ SUFFIXES = re.compile(r"(st|street|ave|avenue|rd|road|blvd|dr|drive|ln|lane|ct|c
 
 
 def _spaced_after(s):
-    """A made-up letter group between the number and the street: "6432 XQZ State Route 22", not "12 Elm St"."""
+    """A made-up letter group between the number and the street: "7100 XQZ County Road 9", not "12 Elm St"."""
     m = re.match(r"\s*\d+\s+([A-Za-z]{2,6})\s+(\S+)", s)
     if not m or m.group(1).upper() in STREET_WORDS or SUFFIXES.match(m.group(2)):
         return False

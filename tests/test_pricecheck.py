@@ -94,7 +94,7 @@ def test_price_form_and_copy_on_go_through(tmp_path, monkeypatch):
     path = str(tmp_path / "p.db")
     app = create_app(path)
     store = Store(db.connect(path))
-    _order(store, "114-0548992-7369002", 4500)
+    _order(store, "111-0000000-0000001", 4500)
     monkeypatch.setattr(pricecheck, "_learn_later", lambda *a: None)
     c = app.test_client()
     html = c.get("/review?src=order&name=1&at=o1").get_data(as_text=True)

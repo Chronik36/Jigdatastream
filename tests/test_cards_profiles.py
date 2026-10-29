@@ -31,9 +31,9 @@ def test_profile_builder_groups_distribute_and_export(tmp_path):
     c = db.connect(path)
     wallet.add_cards(c, wallet.parse_lines("Main:371449635398431:07/2031:1234")[0], "Amex")
     card_id = c.execute("SELECT id FROM cards").fetchone()[0]
-    form = {"name": "Target 1", "group_name": "Target", "first_name": "Jacob", "last_name": "B", "email": "a@x.com",
+    form = {"name": "Target 1", "group_name": "Target", "first_name": "Alex", "last_name": "R", "email": "a@x.com",
             "bill_address1": "10 Pine St", "bill_city": "Austin", "bill_state": "TX", "bill_zip": "78701",
-            "bill_country": "US", "same": "on", "card_id": str(card_id), "card_holder": "Jacob B"}
+            "bill_country": "US", "same": "on", "card_id": str(card_id), "card_holder": "Alex R"}
     assert profilebook.save_profile(c, form) == ("Target 1", None)
     assert profilebook.save_profile(c, form)[1].startswith("There's already")
     assert profilebook.duplicate(c, "Target 1", 2) == ["Target 2", "Target 3"]
@@ -55,7 +55,7 @@ def test_profile_builder_groups_distribute_and_export(tmp_path):
     assert "Target 3" in page and "Amex •••• 8431" in page and "Target 1" not in page.split("pgrid")[1]
     assert "Mass Distribute" in page and "+ Create profile" in page
     out = json.loads(client.post("/profiles/export", data={"bot": "", "names": ["Target 3"]}).data)
-    assert out[0]["card"]["number"] == "371449635398431" and out[0]["card"]["holder"] == "Jacob B"
+    assert out[0]["card"]["number"] == "371449635398431" and out[0]["card"]["holder"] == "Alex R"
     assert "•••• 8431" in client.get("/cards").get_data(as_text=True)
     assert client.get(f"/cards/{card_id}/reveal").get_json()["cvv"] == "1234"
 

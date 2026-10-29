@@ -5,11 +5,11 @@ from jigstream.extract import compact, drop_suggested, split_recommendations
 from jigstream.orderstore import drop_suggested_items
 
 BODY = """Thanks for your order!
-Order #102003811030480
+Order #102000000000505
 Pokémon Trading Card Game: 30th Celebration Knock Out Collection
 Qty: 2  $29.98
 Order total $32.37
-Ship to Jacob B, 1 Main St
+Ship to Alex R, 1 Main St
 You may also like
 Funko Bitty POP! Pokemon 24-...
 $9.99

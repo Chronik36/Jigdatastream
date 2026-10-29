@@ -12,7 +12,7 @@ HTML = (f'<img src="https://target.scene7.com/logo.png" alt="Target logo"><img s
 
 def _order(con, **kw):
     fields = dict(merge_key="target:1", retailer="Target", order_number="1020", order_date="2026-10-15",
-                  items=json.dumps([{"name": ETB, "quantity": 2}]), total=151.18, tracking_number="1ZWY0657YW09443220",
+                  items=json.dumps([{"name": ETB, "quantity": 2}]), total=151.18, tracking_number="1Z999AA10123456787",
                   carrier="UPS", shipping_status="in_transit", message_ids=json.dumps(["<a>"]), account="me@gmail.com")
     fields.update(kw)
     cur = con.execute(f"INSERT INTO tracked_orders ({', '.join(fields)}) VALUES ({','.join('?' * len(fields))})",
@@ -37,7 +37,7 @@ def test_product_pictures_come_from_the_email():
 def test_the_sheet_shows_the_order_and_its_timeline(tmp_path):
     app = create_app(str(tmp_path / "s.db"))
     con = Store(db.connect(str(tmp_path / "s.db"))).db
-    oid = _order(con, shipping_name="Jacob B", shipping_address="1 Main St, Plattsburgh, NY 12901", estimated_delivery="2026-10-25")
+    oid = _order(con, shipping_name="Alex R", shipping_address="1 Main St, Lakeview, NY 56701", estimated_delivery="2026-10-25")
     con.execute("INSERT INTO emails (message_id, subject, date, kind) VALUES ('<a>', 'Thanks for your order!', '2026-10-15T14:03:00+00:00', 'order')")
     ordersheet.note_carrier(con, oid, "On the way: Watertown, NY")
     ordersheet.note_carrier(con, oid, "On the way: Watertown, NY")  # said again: not a new line
@@ -46,8 +46,8 @@ def test_the_sheet_shows_the_order_and_its_timeline(tmp_path):
     assert [e["text"] for e in events] == ["On the way: Watertown, NY", "Thanks for your order!"]
     c = app.test_client()
     html = c.get(f"/orders/{oid}/sheet").get_data(as_text=True)
-    for want in ("Order #1020", "Oct 15, 2026", "Oct 25, 2026", "$151.18", "1ZWY0657YW09443220", "Latest events · 2",
-                 'data-copy="1020"', "Plattsburgh"):
+    for want in ("Order #1020", "Oct 15, 2026", "Oct 25, 2026", "$151.18", "1Z999AA10123456787", "Latest events · 2",
+                 'data-copy="1020"', "Lakeview"):
         assert want in html, want
     assert c.get("/orders/999/sheet").status_code == 404
     assert 'data-sheet="%d"' % oid in c.get("/orders?day=all").get_data(as_text=True)

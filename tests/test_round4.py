@@ -138,15 +138,15 @@ def test_shared_learning_sends_lessons_not_emails(tmp_path, monkeypatch):
     monkeypatch.setenv("GMAIL_ACCOUNTS", "jacob.real@gmail.com:abcdabcdabcdabcd,me@myjigs.com:abcdabcdabcdabcd")
     con = db.connect(str(tmp_path / "k.db"))
     store = Store(con)
-    con.execute("INSERT INTO profiles (name, first_name, last_name, ship_address1) VALUES ('P', 'Jacobus', 'Realname', '6432 State Route 22')")
-    prompt = ("From: Target <orders@target.com>\nSubject: Jacobus, your order 102003854854119 has shipped\nDate: x\n\n"
-              "Hi Jordan Reyes, it ships to Sam Ortiz, 6432 State Route 22 Apt 4, Columbus, OH 43215.\n"
-              "Order # 102003854854119\nTracking number: 879115796750\nOrder total: $126.99\n"
+    con.execute("INSERT INTO profiles (name, first_name, last_name, ship_address1) VALUES ('P', 'Jacobus', 'Realname', '7100 County Road 9')")
+    prompt = ("From: Target <orders@target.com>\nSubject: Jacobus, your order 102000000000404 has shipped\nDate: x\n\n"
+              "Hi Jordan Reyes, it ships to Sam Ortiz, 7100 County Road 9 Apt 4, Columbus, OH 43215.\n"
+              "Order # 102000000000404\nTracking number: 770000000001\nOrder total: $126.99\n"
               "Pokemon Prismatic Booster Bundle. Call 614-555-1234. Card 4111 1111 1111 1111.")
-    answer = {"kind": "order", "order_number": "102003854854119", "tracking_number": "879115796750", "total": 126.99,
-              "shipping_name": "Sam Ortiz", "shipping_address": "6432 State Route 22", "shipping_status": "in_transit",
+    answer = {"kind": "order", "order_number": "102000000000404", "tracking_number": "770000000001", "total": 126.99,
+              "shipping_name": "Sam Ortiz", "shipping_address": "7100 County Road 9", "shipping_status": "in_transit",
               "items": [{"name": "Pokemon Prismatic Booster Bundle"}]}
-    rows = [("<1>", "Target <orders@target.com>", "Jacobus, your order 102003854854119 has shipped", prompt, "in_transit"),
+    rows = [("<1>", "Target <orders@target.com>", "Jacobus, your order 102000000000404 has shipped", prompt, "in_transit"),
             ("<2>", "Mom <mom@gmail.com>", "your order", prompt, "in_transit"),  # personal mail: never shared
             ("<3>", "Me <me@myjigs.com>", "your order", prompt, "in_transit")]  # the user's own domain: never shared
     for mid, sender, subject, p, status in rows:
@@ -157,8 +157,8 @@ def test_shared_learning_sends_lessons_not_emails(tmp_path, monkeypatch):
     assert len(pack["lessons"]) == 1 and pack["left_out"] == 2
     sent = packs.public(pack)
     blob = json.dumps(sent)
-    for secret in ("Jacobus", "Realname", "Jordan", "Sam", "Ortiz", "6432", "43215", "jacob.real", "614", "4111",
-                   "102003854854119", "879115796750", "126.99", "Pokemon", "Prismatic", "ref", "prompt"):
+    for secret in ("Jacobus", "Realname", "Jordan", "Sam", "Ortiz", "7100", "43215", "jacob.real", "614", "4111",
+                   "102000000000404", "770000000001", "126.99", "Pokemon", "Prismatic", "ref", "prompt"):
         assert secret not in blob, secret
     ls = sent["lessons"][0]
     assert ls["sender_domain"] == "target.com" and ls["label"] == "in_transit"
@@ -206,8 +206,8 @@ def test_old_text_packs_keep_only_lessons(tmp_path):
 def test_jig_styles_from_drop_results(tmp_path):
     from jigstream import jigstats
     con = db.connect(str(tmp_path / "j.db"))
-    con.execute("INSERT INTO profiles (name, ship_address1) VALUES ('front', 'XQZ 6432 State Route 22'),"
-                " ('after', '6432 KJH State Route 22 Apt 4')")
+    con.execute("INSERT INTO profiles (name, ship_address1) VALUES ('front', 'XQZ 7100 County Road 9'),"
+                " ('after', '7100 KJH County Road 9 Apt 4')")
     con.commit()
     items = [{"site": "Target", "profile": "front", "outcome": "cancelled"}] * 6 + \
             [{"site": "target.com", "profile": "after", "outcome": "confirmed"}] * 5 + \

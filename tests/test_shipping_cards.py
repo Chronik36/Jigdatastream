@@ -20,7 +20,7 @@ def test_arrival_headlines():
 def test_cards_show_events_dropdown(tmp_path):
     path = str(tmp_path / "s.db")
     store = Store(db.connect(path))
-    order(store, 1, "in_transit", tracking_number="9200190267338800109270748", carrier="USPS",
+    order(store, 1, "in_transit", tracking_number="9200190000000000000000001", carrier="USPS",
           estimated_delivery="2026-10-25", items=[{"name": "Squishmallow Reindoh", "quantity": 1}])
     oid = store.orders()[0]["id"]
     ordersheet.ensure(store.db)
@@ -29,6 +29,6 @@ def test_cards_show_events_dropdown(tmp_path):
     store.db.commit()
     page = create_app(path).test_client().get("/tracking?day=all").get_data(as_text=True)
     assert "Squishmallow Reindoh" in page and "Latest events" in page
-    assert 'data-copy="9200190267338800109270748"' in page
+    assert 'data-copy="9200190000000000000000001"' in page
     assert "+ 3 more" in page  # 8 carrier lines + the order email, 6 shown
     assert "Expected delivery" in page

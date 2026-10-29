@@ -189,17 +189,17 @@ def test_real_valor_follow_ups(tmp_path):
                 {"name": "Product", "value": "(94300082) Pok&#233;mon Trading Card Game: Destined Rivals"},
                 {"name": "Price", "value": "14.99"}, {"name": "Quantity", "value": "1"},
                 {"name": "Profile", "value": "Ana"}, {"name": "Proxy", "value": "isp.example.net:8000:u:p"}]
-    for n, mail_ in (("102003850007046", "theo@outlook.com"), ("102003854795409", "lucy@outlook.com"),
-                     ("102003854750691", "mari@outlook.com")):
+    for n, mail_ in (("102000000000101", "theo.demo@example.com"), ("102000000000202", "lucy.demo@example.com"),
+                     ("102000000000303", "mari.demo@example.com")):
         real_valor(c, "Checked Out! \U0001F389", 0x3DDC84, n, mail_, "2026-10-23T09:10:00Z", checkout)
-    real_valor(c, "Order Canceled! (Policy - Item Demand)", 0xED4245, "102003850007046", "theo@outlook.com",
+    real_valor(c, "Order Canceled! (Policy - Item Demand)", 0xED4245, "102000000000101", "theo.demo@example.com",
                "2026-10-23T09:12:00Z", item)
-    real_valor(c, "Order Still Good ✅", 0x3DDC84, "102003854795409", "lucy@outlook.com", "2026-10-23T09:12:00Z", item)
-    real_valor(c, "Order Still Good ✅", 0x3DDC84, "", "mari@outlook.com", "2026-10-23T09:13:00Z", item)
+    real_valor(c, "Order Still Good ✅", 0x3DDC84, "102000000000202", "lucy.demo@example.com", "2026-10-23T09:12:00Z", item)
+    real_valor(c, "Order Still Good ✅", 0x3DDC84, "", "mari.demo@example.com", "2026-10-23T09:13:00Z", item)
     rows = drop.rows(Store(c).db)
     assert len(rows) == 3 and all(r["bot"] == "Valor" and r["status"] == "success" for r in rows)
     assert {r["order_number"]: r["outcome"] for r in rows} == {
-        "102003850007046": "cancelled", "102003854795409": "confirmed", "102003854750691": "confirmed"}
+        "102000000000101": "cancelled", "102000000000202": "confirmed", "102000000000303": "confirmed"}
     assert {r["proxy"] for r in rows} == {"isp.example.net:8000"}
 
 
@@ -338,19 +338,19 @@ def test_things_to_train_teaches_a_sender_and_a_kind_of_message(tmp_path):
 def test_checkout_shows_where_it_came_from(tmp_path):
     c, store = setup(tmp_path)
     # Pokemon Center's webhook sends the order number as a markdown link to the order.
-    link = "[P0041944488](https://www.pokemoncenter.com/orders/P0041944488?postalCode=12953)"
+    link = "[P0000000001](https://www.pokemoncenter.com/orders/P0000000001?postalCode=56789)"
     hook(c, "a", "Pokemon Center US", "Ana", "ISP A", "isp.example.net:8000:jake:s3cret", number=link)
     c.execute("UPDATE checkouts SET product = ?, size = 'Default'",
               ("- 1x Pokémon TCG: Booster Bundle (6 Packs) - Default",))
     c.commit()
-    mail(store, "a1", "Pokemon Center", "ordered", "2026-10-20T15:05:00+00:00", "P0041944488")
+    mail(store, "a1", "Pokemon Center", "ordered", "2026-10-20T15:05:00+00:00", "P0000000001")
     hook(c, "b", "Pokemon Center US", "Ana", "ISP A", "isp.example.net:8000", number="P0099")
     c.execute("INSERT INTO emails (message_id, account, sender, subject, date) VALUES "
               "('<pc2@x>', 'inbox@gmail.com', 'Pokemon Center <orders@pokemoncenter.com>', 'Thanks for your order',"
               " '2026-10-20T16:00:00+00:00')")
     c.commit()
     rows = {r["fingerprint"]: r for r in drop.rows(Store(c).db)}
-    a = next(r for r in rows.values() if r["order_shown"] == "P0041944488")
+    a = next(r for r in rows.values() if r["order_shown"] == "P0000000001")
     assert a["outcome"] == "confirmed" and a["order"]  # the markdown number still matches its order email
     assert a["product"] == "1x Pokémon TCG: Booster Bundle (6 Packs)" and a["size"] == ""
     assert a["order_link"].startswith("https://www.pokemoncenter.com/orders/")
