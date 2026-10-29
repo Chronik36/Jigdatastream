@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block body %}
+<h2>Lessons from {{source}}</h2>
+<p class="muted"><a href="/training/share#t-shared">‹ Shared learning</a> · {{rows|length}} lesson{{"s" if rows|length != 1}}. Remove any that teach the wrong thing before you ship the shared file.</p>
+<section class="panel">{% if rows %}<table class="nocard"><tbody>{% for r in rows %}<tr><td style="font-size:13.5px">{{r.said}}</td>
+<td style="text-align:right"><form method="post" action="/training/share/drop" style="margin:0"><input type="hidden" name="id" value="{{r.id}}"><button class="ghost sm">Remove</button></form></td></tr>{% endfor %}</tbody></table>
+{% else %}<p class="muted">No lessons left from this pack.</p>{% endif %}</section>
+<style>button.sm{padding:4px 10px;font-size:12px;margin:0}</style>
+{% endblock %}
