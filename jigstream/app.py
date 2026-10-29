@@ -128,6 +128,11 @@ def create_app(db_path=None):
                 except Exception as e:
                     logger.exception("Discord sync failed")
                     parts.append(f"Discord sync failed: {e}.")
+                try:  # a bot's decline webhook for an order cancels it, even before any email says so
+                    from . import cancels
+                    cancels.reconcile(con())
+                except Exception:
+                    logger.exception("cancelling declined orders failed")
             if config.accounts:
                 mail_lock.acquire()  # a quick check that's running finishes first (a few emails at most)
                 try:
@@ -205,6 +210,12 @@ def create_app(db_path=None):
         given = (order["carrier"] or "").lower()
         carrier = next((c for c in TRACK_URLS if c.lower() in given), None) or carrier_for(number)
         return TRACK_URLS.get(carrier or "", ANY_CARRIER_URL).format(quote(number))
+
+    @app.template_filter("cancel_why")
+    def cancel_why(order):
+        """What said the order was cancelled: "cancel email + Hayha decline + card refund"."""
+        from . import cancels
+        return " + ".join(cancels.reasons(dict(order)))
 
     @app.template_filter("address_label")
     def address_label(order):
