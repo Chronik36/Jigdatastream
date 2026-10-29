@@ -1,7 +1,10 @@
 """Turn an email into a structured order or botting expense using the local model."""
 
+import logging
 import re
 from datetime import datetime
+
+logger = logging.getLogger("jigstream.extract")
 
 STATUSES = [
     "ordered", "processing", "shipped", "in_transit", "out_for_delivery",
@@ -135,7 +138,34 @@ def looks_like_purchase(email):
         return False
     if cancel_signal(email) == "cancelled" and find_order_number(email):
         return True  # "Your order #123 was cancelled" often shows no price at all
-    return bool(MONEY.search(text) or find_tracking(text)[0])
+    return bool(MONEY.search(text) or find_tracking(text)[0] or RECEIPT_TOTAL.search(text))
+
+
+# A store receipt's total line, which often has no $ sign: "TOTAL      55.96".
+RECEIPT_TOTAL = re.compile(r"\b(sub ?total|total|amount|balance)\b[^\n\d]{0,30}\d[\d,]*\.\d{2}\b", re.I)
+
+
+# What a real purchase email shows: an order or confirmation number, a receipt, a payment, shipping news. An ad
+# listing products with prices ("New this week: Pokemon 151 booster $4.99, shop now") shows none of these, so it is
+# never an order, whatever the model read from it.
+PROOF_WORDS = re.compile(
+    r"\b(thanks?( you)? for (your |the )?(order|purchase|payment|shopping with us today)|"
+    r"order (confirm\w*|received|placed|summary|details|number|no\.?|total)|confirmation (number|no\.?)|"
+    r"(e-?)?receipt|invoice (number|no\.?|#)|you paid|amount (paid|charged)|total (paid|charged)|"
+    r"payment (received|confirmed|successful|method|details)|paid (with|by|using)|charged to|card ending|"
+    r"ending in \d{4}|change due|transaction (id|number|date)|auth(orization)? code|"
+    r"(has|have|was|were) shipped|shipped (on|via|with)|(was|were|been) delivered|out for delivery|in transit|"
+    r"ready for pick ?up|(was|were|been) picked up|your (order|package|purchase|items?) (has|have|was|were)|"
+    r"we('ve| have) received your order|(items?|products?) (in|from) your order|cancel+ed|refund(ed)?)\b"
+    r"|(order|confirmation|invoice|transaction)\s*#|\*{2,}\s?\d{4}\b|\bx{3,}\d{4}\b",
+    re.I)
+
+
+def purchase_proof(email):
+    """Whether the email shows a real purchase (see PROOF_WORDS), not just products and prices."""
+    text = f"{email.subject}\n{(email.body or '')[:20000]}"
+    return bool(PROOF_WORDS.search(text) or find_tracking(text)[0] or cancel_signal(email)
+                or find_order_number(email))
 
 
 def botting_signals(email):
@@ -535,7 +565,18 @@ def as_sale(raw, platform):
     return out
 
 
-def email_prompt(email, max_body_chars=12000, platforms=()):
+def resale_note(named):
+    return (f"\n\n(Resale products named: {', '.join(named)}. A purchase of them from any store, a warehouse or "
+            "grocery store or an in-store, pickup or e-receipt included, is kind \"order\". On a receipt with other "
+            "things too (groceries, household), list only the resale items. Bought in store means shipping_status "
+            "\"delivered\". An ad or newsletter listing them for sale is \"other\".)")
+
+
+RESALE_RECHECK = ("\n\n(Look again: this email shows a purchase that includes resale products. Answer kind \"order\" "
+                  "with only the resale items and their prices, unless it is a botting tool receipt.)")
+
+
+def email_prompt(email, max_body_chars=12000, platforms=(), resale=()):
     user = (
         f"From: {email.sender}\nSubject: {email.subject}\nDate: {email.date}\n\n"
         f"{trim(compact(email.body), max_body_chars)}"
@@ -547,17 +588,72 @@ def email_prompt(email, max_body_chars=12000, platforms=()):
     if named:
         user += (f"\n\n(This comes from a selling platform: {', '.join(named)}. If it says you sold something or "
                  "were paid out, kind is \"sale\"; if you bought something, it's an \"order\".)")
+    if resale and (named := resale_hits(email, resale)):
+        user += resale_note(named)
     return user
 
 
-def extract_raw(llm, email, max_body_chars=12000, examples=(), platforms=()):
-    """(the model's raw JSON, the cleaned result)."""
-    user = email_prompt(email, max_body_chars, platforms)
-    raw = llm.chat_json(SYSTEM_PROMPT, user, examples=examples) if examples else llm.chat_json(SYSTEM_PROMPT, user)
+def _rescuable(result, email):
+    """A result that may be a resale purchase the model missed: "not relevant", or a supplies or other expense
+    with nothing about botting tools in it (a grocery receipt with booster packs filed as supplies)."""
+    if result["kind"] == "other":
+        return True
+    return result["kind"] == "botting_expense" and result.get("category") in ("supplies", "shipping", "other") \
+        and not botting_signals(email)
+
+
+def _receipt_order(email, resale):
+    """A resale purchase the model wouldn't read as an order twice, built from the receipt's own lines."""
+    from .resale import items_from_lines
+    items = items_from_lines(email.body, resale) or [{"name": ", ".join(resale_hits(email, resale)), "quantity": 1,
+                                                      "price": None}]
+    priced = all(isinstance(i["price"], (int, float)) for i in items)
+    text = f"{email.subject}\n{(email.body or '')[:20000]}"
+    return {"kind": "order", "items": items,
+            "total": round(sum(i["price"] * i["quantity"] for i in items), 2) if priced else None,
+            "shipping_status": None if find_tracking(text)[0] or re.search(r"\bship", text, re.I) else "delivered"}
+
+
+def resale_hits(email, resale):
+    from .resale import hits
+    return hits(email, resale) if resale else []
+
+
+def extract_raw(llm, email, max_body_chars=12000, examples=(), platforms=(), resale=()):
+    """(the model's raw JSON, the cleaned result). resale: your resale product words (resale.words), so a purchase
+    of them from any store is an order, and a mixed receipt keeps only them."""
+    user = email_prompt(email, max_body_chars, platforms, resale)
+
+    def ask(text):
+        return llm.chat_json(SYSTEM_PROMPT, text, examples=examples) if examples else llm.chat_json(SYSTEM_PROMPT, text)
+    raw = ask(user)
     if raw.get("kind") == "order" and (platform := sale_signal(email, platforms)):
         return raw, normalize(as_sale(raw, platform), email)  # a "you sold it" read as a purchase
-    return raw, normalize(raw, email)
+    result = normalize(raw, email)
+    named = resale_hits(email, resale)
+    proof = purchase_proof(email)
+    rescued = False
+    if named and proof and _rescuable(result, email) and not sale_signal(email, platforms) \
+            and re.search(r"\d\.\d{2}\b", f"{email.subject}\n{(email.body or '')[:20000]}"):  # receipts often skip the $
+        first = result["kind"]
+        again = ask(user + RESALE_RECHECK)
+        if again.get("kind") == "order":
+            raw, result, rescued = again, normalize(again, email), True
+        elif result["kind"] == "other" and again.get("kind") != "botting_expense":
+            raw, result, rescued = again, normalize(_receipt_order(email, resale), email), True
+        if rescued:
+            logger.info("resale purchase (%s) the model first called %s: %s", ", ".join(named),
+                        "not relevant" if first == "other" else "an expense", email.subject[:80])
+    if result["kind"] == "order":
+        if not proof:
+            logger.info("not an order (no order number, receipt or payment, so an ad): %s | %s",
+                        email.sender, email.subject[:80])
+            return raw, {"kind": "other", "what": "ad or newsletter"}
+        if named:
+            from .resale import keep_resale
+            result = keep_resale(result, resale, rescued)
+    return raw, result
 
 
-def extract(llm, email, max_body_chars=12000, examples=(), platforms=()):
-    return extract_raw(llm, email, max_body_chars, examples, platforms)[1]
+def extract(llm, email, max_body_chars=12000, examples=(), platforms=(), resale=()):
+    return extract_raw(llm, email, max_body_chars, examples, platforms, resale)[1]

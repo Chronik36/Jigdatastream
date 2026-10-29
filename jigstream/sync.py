@@ -1,13 +1,14 @@
 """Pull new emails from each inbox in turn, extract them with the local model, and store the results."""
 
+import json
 import logging
 import re
 import sys
 import time
 from datetime import datetime, timezone
 
-from . import sales
-from .extract import MONEY, extract, looks_like_purchase, platforms_named
+from . import resale, sales
+from .extract import MONEY, extract, looks_like_purchase, platforms_named, purchase_proof, resale_hits
 from .llm import LLMError, from_config as llm_for
 from .mail import fetch_emails, newest_emails
 from . import packs
@@ -61,7 +62,9 @@ def quiet_senders(db):
     return {a for a, n in other.items() if n >= QUIET_AFTER and a not in useful}
 
 
-def process(email, store, llm, config, counts, log, examples=(), platforms=(), quiet=()):
+def process(email, store, llm, config, counts, log, examples=(), platforms=(), quiet=(), words=()):
+    """Read one email and save what it is. words: your resale product words. Returns the result, or None when
+    the email was skipped or failed."""
     seller = bool(platforms_named(email, platforms))  # a selling app's payout or trade-in reads differently
     if seller and MONEY.search(f"{email.subject}\n{email.body[:20000]}"):
         quiet = ()
@@ -70,7 +73,8 @@ def process(email, store, llm, config, counts, log, examples=(), platforms=(), q
         counts["skipped"] += 1
         logger.debug("skipped (no price or tracking): %s | %s", email.sender, email.subject[:80])
         return
-    if quiet and sender_address(email.sender) in quiet and not TRANSACTIONAL.search(email.subject or ""):
+    if quiet and sender_address(email.sender) in quiet and not TRANSACTIONAL.search(email.subject or "") \
+            and not (resale_hits(email, words) and purchase_proof(email)):
         store.record_email(email, "skipped")
         counts["skipped"] += 1
         logger.debug("skipped (sender only sends ads): %s | %s", email.sender, email.subject[:80])
@@ -78,7 +82,7 @@ def process(email, store, llm, config, counts, log, examples=(), platforms=(), q
     started = time.monotonic()
     try:
         shown = examples(email) if callable(examples) else examples  # the examples closest to this email
-        result = extract(llm, email, config.max_body_chars, shown, platforms)
+        result = extract(llm, email, config.max_body_chars, shown, platforms, words)
     except LLMError as e:
         if "Could not reach" in str(e):
             raise
@@ -97,6 +101,7 @@ def process(email, store, llm, config, counts, log, examples=(), platforms=(), q
     if result["kind"] != "other":
         label = result.get("retailer") or result.get("vendor") or result.get("platform")
         log(f"  {result['kind']:<16} {label or '?'}: {email.subject[:60]}")
+    return result
 
 
 def run_sync(config, store, emails=None, llm=None, log=print, progress=None, stop=None):
@@ -124,6 +129,7 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None, sto
     seen = store.seen_ids()
     examples = packs.picker(store, few_shot(store)) if config.use_examples else []
     quiet = quiet_senders(store.db)
+    words = resale.words(store.db)
     if quiet:
         logger.info("%d sender(s) only send ads; their ads skip the model", len(quiet))
     if examples:
@@ -132,7 +138,7 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None, sto
     if emails is not None:
         for email in emails:
             if email.message_id not in seen:
-                process(email, store, llm, config, counts, log, examples, platforms, quiet)
+                process(email, store, llm, config, counts, log, examples, platforms, quiet, words)
         counts.pop("streak", None)
         return counts
 
@@ -159,7 +165,7 @@ def run_sync(config, store, emails=None, llm=None, log=print, progress=None, sto
                 progress(f"Inbox {n} of {len(config.accounts)} ({address}): email {i} of {total['n']}")
                 if email.message_id in seen:
                     continue
-                process(email, store, llm, config, counts, log, examples, platforms, quiet)
+                process(email, store, llm, config, counts, log, examples, platforms, quiet, words)
                 seen.add(email.message_id)
         except LLMError:
             raise
@@ -212,9 +218,10 @@ def quick_check(config, store, llm=None, newest=0, stop=None, fetch=None):
                 if not picked:  # only worth building once there's something new to read
                     llm = llm or llm_for(config)
                     picked.update(platforms=sales.platforms(store.db), quiet=quiet_senders(store.db),
+                                  words=resale.words(store.db),
                                   examples=packs.picker(store, few_shot(store)) if config.use_examples else [])
                 process(email, store, llm, config, counts, log, picked["examples"], picked["platforms"],
-                        picked["quiet"])
+                        picked["quiet"], picked["words"])
         except LLMError:
             raise
         except Exception as e:
@@ -248,6 +255,7 @@ def find_sales(config, store, llm=None, days=365, stop=None, progress=None, fetc
     done |= {r[0] for r in store.db.execute("SELECT message_id FROM sales")}
     llm = llm or llm_for(config)
     examples = packs.picker(store, few_shot(store)) if config.use_examples else []
+    words = resale.words(store.db)
 
     def log(message, file=None):
         (logger.warning if file is sys.stderr else logger.info)(message.strip())
@@ -262,7 +270,7 @@ def find_sales(config, store, llm=None, days=365, stop=None, progress=None, fetc
                 progress(f"Looking for sales in inbox {n} of {len(config.accounts)}: email {i}")
                 if email.message_id in done:
                     continue
-                process(email, store, llm, config, counts, log, examples, platforms)
+                process(email, store, llm, config, counts, log, examples, platforms, words=words)
                 done.add(email.message_id)
         except LLMError:
             raise
@@ -272,6 +280,109 @@ def find_sales(config, store, llm=None, days=365, stop=None, progress=None, fetc
     counts.pop("streak", None)
     logger.info("find sales: %s", summary(counts))
     return counts
+
+
+def find_resale(config, store, llm=None, days=365, stop=None, progress=None, fetch=None):
+    """Go back over a year of mail naming your resale words (Pokémon, One Piece, NeeDoh...) and read again every
+    email not already saved as an order or sale, so receipts from Sam's Club, Aldi or a store visit that were
+    skipped, called "not relevant" or filed as supplies become orders. Emails you labelled by hand are left alone.
+    Returns the counts, like run_sync."""
+    import dataclasses
+    stop, progress, fetch = stop or (lambda: False), progress or (lambda text: None), fetch or fetch_emails
+    words = resale.words(store.db)
+    counts = {"order": 0, "botting_expense": 0, "sale": 0, "other": 0, "skipped": 0, "error": 0, "failed_inboxes": []}
+    query = resale.gmail_query(words)
+    if not query:
+        resale.mark_checked(store.db, words)
+        return counts
+    search = dataclasses.replace(config, search_query=query)
+    done = {r[0] for r in store.db.execute(
+        "SELECT message_id FROM emails WHERE kind IN ('order', 'sale', 'not_an_order') AND error IS NULL")}
+    done |= {r[0] for r in store.db.execute("SELECT message_id FROM inbox_labels")}
+    llm = llm or llm_for(config)
+    examples = packs.picker(store, few_shot(store)) if config.use_examples else []
+    platforms = sales.platforms(store.db)
+
+    def log(message, file=None):
+        (logger.warning if file is sys.stderr else logger.info)(message.strip())
+
+    finished = True
+    for n, (address, password) in enumerate(config.accounts, 1):
+        if stop():
+            finished = False
+            break
+        try:
+            for i, email in enumerate(fetch(search, address, password, days, done), 1):
+                if stop():
+                    finished = False
+                    break
+                progress(f"Re-checking receipts with resale items in inbox {n} of {len(config.accounts)}: email {i}")
+                if email.message_id in done:
+                    continue
+                if not purchase_proof(email):  # an ad or newsletter naming them: not worth the model's time
+                    counts["skipped"] += 1
+                    done.add(email.message_id)
+                    continue
+                process(email, store, llm, config, counts, log, examples, platforms, words=words)
+                done.add(email.message_id)
+        except LLMError:
+            raise
+        except Exception as e:
+            finished = False
+            counts["failed_inboxes"].append(address)
+            logger.warning("re-checking resale receipts in %s failed: %s", address, e)
+    if finished:
+        resale.mark_checked(store.db, words)
+    counts.pop("streak", None)
+    logger.info("resale re-check: %s", summary(counts))
+    return counts
+
+
+def clean_ad_orders(config, store, stop=None, opener=None):
+    """Orders saved from ads before purchase proof was needed (a comic shop's newsletter listing Pokémon packs with
+    prices): each order read from email only, with no tracking, has its emails opened again, and when none of them
+    shows an order number, receipt or payment it leaves Orders (Training > Resale products lists them, with Put
+    back). Runs until it has been through every order saved before; orders saved since passed the check when
+    they were read. Returns how many were taken out."""
+    from .inbox import open_email
+    if resale.state(store.db, "ads_cleaned"):
+        return 0
+    stop, opener = stop or (lambda: False), opener or (lambda a, m: open_email(config, a, m))
+    out, stopped = 0, False
+    for o in resale.ad_candidates(store.db, limit=5000):
+        if stop():
+            stopped = True
+            break
+        ids = json.loads(o["message_ids"] or "[]")
+        rows = {r["message_id"]: dict(r) for r in store.db.execute(
+            "SELECT message_id, account, subject FROM emails WHERE message_id IN (%s)" % ",".join("?" * len(ids)), ids)}
+        proof, missing, subject = False, False, ""
+        for mid in ids:
+            row = rows.get(mid)
+            try:
+                email = opener(row["account"], mid) if row and row["account"] else None
+            except Exception as e:
+                logger.warning("couldn't re-open an order email to check it's not an ad: %s", e)
+                email = None
+            if email is None:
+                missing = True  # can't tell; leave it
+                break
+            subject = subject or email.subject or ""
+            if purchase_proof(email):
+                proof = True
+                break
+        if missing:
+            continue
+        if proof:
+            resale.mark_ad_checked(store.db, o["id"])
+        else:
+            resale.take_out_ad(store.db, o, subject)
+            out += 1
+    if not stopped:
+        resale.state(store.db, "ads_cleaned", datetime.now(timezone.utc).isoformat())
+    if out:
+        logger.info("%d order(s) were ads and left Orders", out)
+    return out
 
 
 def summary(counts):
