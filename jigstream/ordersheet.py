@@ -52,8 +52,17 @@ def _words(s):
     return {w for w in re.findall(r"[a-z0-9]+", (s or "").lower()) if len(w) > 1}
 
 
-def picture(name, products=None):
-    """The picture of the product this item is, from the Products tab (best word match), or ""."""
+def picture(name, products=None, con=None):
+    """The picture of the product this item is: from the Products tab (best word match), else the one found while
+    looking up its market price (con given), or ""."""
+    found = _product_picture(name, products)
+    if not found and con is not None:
+        from . import market
+        found = market.image_for(con, name)
+    return found
+
+
+def _product_picture(name, products=None):
     if products is None:
         from . import products as prod
         products = prod.load().get("products", [])
@@ -225,7 +234,17 @@ def sheet(order_id):
                            profile_groups=dict(sorted(groups.items(), key=lambda g: g[0].lower())),
                            date=nice(o["order_date"]), eta=nice(o["estimated_delivery"]),
                            title=first.get("name") or o.get("retailer") or "Order",
-                           image=first.get("image") or picture(first.get("name")), choices=STATUS_CHOICES)
+                           image=first.get("image") or picture(first.get("name"), con=store.db),
+                           market=_market(store.db, o), choices=STATUS_CHOICES)
+
+
+def _market(con, o):
+    from . import market
+    try:
+        return market.for_order(con, o)
+    except Exception:  # market prices are extra; the sheet always opens
+        logger.exception("market prices for order %s failed", o.get("id"))
+        return None
 
 
 SOURCE_FIELDS = ("retailer", "order_number", "order_date", "total", "items", "shipping_name", "shipping_address",

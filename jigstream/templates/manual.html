@@ -514,6 +514,26 @@ store or brand go back to the normal suggestions.</p>
 the same site. If very little text comes back, the page builds itself with JavaScript and the list may be incomplete.</p>
 </section>{% endif %}
 
+{% if "market.page" in pages %}<section id="market" data-title="Market value">
+<h2>Market value</h2>
+<div class="where">Sidebar → Tracking → <b>Market value</b>, the <b>Worth now</b> card on Orders, and <b>Market value</b> on each order's sheet</div>
+<p>Shows what everything you bought and haven't sold resells for today, what you'd make over what you paid, and where prices are heading.
+Store emails often cut names off or garble them (Target especially), so the local AI first works out which real product each item is.
+Then BotTrack reads PriceCharting, TCGplayer and eBay sold listings for it, plus what Tradepost paid you for it before. The market price is
+the middle of those. The AI never supplies a price. After each sync, new items and ones last checked a day ago are looked up in the
+background, one site at a time, and the product picture found there fills in any order that has none.</p>
+<ol class="steps">
+<li>Wrong product? Press <span class="ui">Fix name</span> on the order sheet (or <span class="ui">Fix name, price or picture</span> on Market value). The AI learns the name, and the prices and picture are looked up again.</li>
+<li><span class="ui">Type a price</span> adds Tradepost's offer or any price you know. <span class="ui">My market price</span> overrides the rest.</li>
+<li><span class="ui">Not for resale</span> leaves supplies and keepers out of the totals.</li>
+<li>Tap any card (Worth now, Potential profit, Going up, No price yet…) to see those products and fix them.</li>
+</ol>
+<p><b>Profit</b> is the market price minus what you paid. The eBay-fee figure uses the fee % from Profit goal. <b>Projections</b> carry each
+product's price movement over the last months forward (PriceCharting's monthly history, or BotTrack's own lookups after two weeks),
+at most 10% up or down a month. They're a guide from past prices, not a promise. When a site shows a bot check, the Mac app tries it once
+in its hidden window, and if it's still blocked that site is left alone for 15 minutes.</p>
+</section>{% endif %}
+
 {% if "products.products_page" in pages %}<section id="products" data-title="Products">
 <h2>Products</h2>
 <div class="where">Sidebar → Bot tools → <b>Products</b></div>
