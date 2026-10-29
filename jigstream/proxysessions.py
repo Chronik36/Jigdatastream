@@ -254,12 +254,12 @@ def encode(pack):
 
 def decode(text):
     """A pack from a file or an email body: plain JSON, or the encoded block training packs use too."""
-    from .packs import FORMAT as EXAMPLES
+    from .packs import FORMAT as LESSONS, OLD_FORMAT as EXAMPLES
     text = text.strip()
     m = re.search(r"-----BEGIN BOTTRACK PACK-----(.*?)-----END BOTTRACK PACK-----", text, re.S)
     data = json.loads(gzip.decompress(base64.b64decode(re.sub(r"\s", "", m.group(1)))) if m else text)
     if not isinstance(data, dict) or data.get("format") != FORMAT:
-        if isinstance(data, dict) and data.get("format") == EXAMPLES:
+        if isinstance(data, dict) and data.get("format") in (LESSONS, EXAMPLES):
             raise ValueError("That's a training pack; import it on Training > Shared learning.")
         raise ValueError("That isn't a BotTrack shared steps pack.")
     return data

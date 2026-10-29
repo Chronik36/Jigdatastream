@@ -133,40 +133,74 @@ def test_deletes_ask_in_the_page(tmp_path):
     assert "return confirm(" not in page and 'data-confirm="Delete the ticked profiles?"' in page and "btConfirm" in page
 
 
-def test_training_pack_scrubs_and_picks(tmp_path, monkeypatch):
+def test_shared_learning_sends_lessons_not_emails(tmp_path, monkeypatch):
     from jigstream import packs
-    monkeypatch.setenv("GMAIL_ACCOUNTS", "jacob.real@gmail.com:abcdabcdabcdabcd")
+    monkeypatch.setenv("GMAIL_ACCOUNTS", "jacob.real@gmail.com:abcdabcdabcdabcd,me@myjigs.com:abcdabcdabcdabcd")
     con = db.connect(str(tmp_path / "k.db"))
     store = Store(con)
     con.execute("INSERT INTO profiles (name, first_name, last_name, ship_address1) VALUES ('P', 'Jacobus', 'Realname', '6432 State Route 22')")
-    prompt = ("From: Target <orders@target.com>\nSubject: Your order 102003854854119 has shipped\nDate: x\n\n"
-              "Hi Jacobus, order 102003854854119 ships to Jacobus Realname, 6432 State Route 22 Apt 4, Columbus, OH 43215. "
-              "Track 879115796750 at https://track.example.com/t?id=secret. Call 614-555-1234. Card 4111 1111 1111 1111. "
-              "Sent to jacob.real@gmail.com or orders@target.com")
-    answer = {"kind": "order", "order_number": "102003854854119", "tracking_number": "879115796750",
-              "shipping_name": "Jacobus Realname", "shipping_address": "6432 State Route 22", "shipping_status": "shipped"}
-    con.execute("INSERT INTO training_examples (message_id, sender, subject, prompt, corrected, status, model_was_right)"
-                " VALUES ('<1>', 'Target <orders@target.com>', 'Your order has shipped', ?, ?, 'shipped', 0)",
-                (prompt, json.dumps(answer)))
+    prompt = ("From: Target <orders@target.com>\nSubject: Jacobus, your order 102003854854119 has shipped\nDate: x\n\n"
+              "Hi Jordan Reyes, it ships to Sam Ortiz, 6432 State Route 22 Apt 4, Columbus, OH 43215.\n"
+              "Order # 102003854854119\nTracking number: 879115796750\nOrder total: $126.99\n"
+              "Pokemon Prismatic Booster Bundle. Call 614-555-1234. Card 4111 1111 1111 1111.")
+    answer = {"kind": "order", "order_number": "102003854854119", "tracking_number": "879115796750", "total": 126.99,
+              "shipping_name": "Sam Ortiz", "shipping_address": "6432 State Route 22", "shipping_status": "in_transit",
+              "items": [{"name": "Pokemon Prismatic Booster Bundle"}]}
+    rows = [("<1>", "Target <orders@target.com>", "Jacobus, your order 102003854854119 has shipped", prompt, "in_transit"),
+            ("<2>", "Mom <mom@gmail.com>", "your order", prompt, "in_transit"),  # personal mail: never shared
+            ("<3>", "Me <me@myjigs.com>", "your order", prompt, "in_transit")]  # the user's own domain: never shared
+    for mid, sender, subject, p, status in rows:
+        con.execute("INSERT INTO training_examples (message_id, sender, subject, prompt, corrected, status, model_was_right)"
+                    " VALUES (?, ?, ?, ?, ?, ?, 0)", (mid, sender, subject, p, json.dumps(answer), status))
     con.commit()
-    pack = packs.build(con, store, rng=random.Random(1))
-    assert len(pack["examples"]) == 1
-    ex = pack["examples"][0]
-    blob = ex["prompt"] + json.dumps(ex["answer"])
-    for secret in ("Jacobus", "Realname", "6432", "43215", "jacob.real", "614-555-1234", "4111", "102003854854119",
-                   "879115796750", "secret"):
+    pack = packs.build(con, store)
+    assert len(pack["lessons"]) == 1 and pack["left_out"] == 2
+    sent = packs.public(pack)
+    blob = json.dumps(sent)
+    for secret in ("Jacobus", "Realname", "Jordan", "Sam", "Ortiz", "6432", "43215", "jacob.real", "614", "4111",
+                   "102003854854119", "879115796750", "126.99", "Pokemon", "Prismatic", "ref", "prompt"):
         assert secret not in blob, secret
-    assert "orders@target.com" in ex["prompt"] and ex["sender_domain"] == "target.com"
-    assert len(ex["answer"]["order_number"]) == 15 and ex["answer"]["order_number"].isdigit()
-    # round trip through the email body, then into another Mac's shared examples
+    ls = sent["lessons"][0]
+    assert ls["sender_domain"] == "target.com" and ls["label"] == "in_transit"
+    assert ls["answer"] == {"kind": "order", "shipping_status": "in_transit"}
+    assert ls["cues"] == ["your order", "has shipped"]
+    assert ls["fields"] == {"order_number": "Order #", "tracking_number": "Tracking number", "total": "Order total"}
+    # round trip through the email body, then into another Mac's shared lessons
     other = db.connect(str(tmp_path / "o.db"))
     Store(other)
-    assert packs.import_pack(other, packs.decode(packs.encode(pack)), "test") == 1
-    assert packs.import_pack(other, pack, "again") == 0
+    assert packs.import_pack(other, packs.decode(packs.encode(sent)), "test") == 1
+    assert packs.import_pack(other, sent, "again") == 0
+    # someone else's pack is checked again: made-up fields and words off the lists don't get in
+    bad = {"format": packs.FORMAT, "lessons": [{"sender_domain": "target.com", "label": "Jordan's stuff", "cues": ["sam ortiz"],
+                                                "answer": {"kind": "order", "shipping_name": "Sam Ortiz"},
+                                                "fields": {"order_number": "Order 1234", "shipping_name": "Ship to"}}]}
+    assert packs.import_pack(other, bad, "bad") == 1
+    kept = json.loads(other.execute("SELECT lesson FROM shared_lessons WHERE source = 'bad'").fetchone()[0])
+    assert "Sam" not in json.dumps(kept) and kept["label"] == "" and kept["fields"] == {} and kept["cues"] == []
     picker = packs.picker(Store(other), default=[("default", "{}")])
-    near = picker(Email("<2>", "Target <orders@target.com>", "Your order has shipped", "", "", "me@x"))
-    far = picker(Email("<3>", "Shop <hi@elsewhere.io>", "Weekly deals", "", "", "me@x"))
-    assert near and near[0][0].startswith("From: Target") and far == [("default", "{}")]
+    email = Email("<2>", "Target <orders@target.com>", "Your order has shipped", "", "", "me@x")
+    assert picker(email) == [("default", "{}")]  # other people's lessons are hints, never example emails
+    hint = picker.hint(email)
+    assert "target.com" in hint and '"Order #"' in hint and "in_transit" in hint
+    assert picker.hint(Email("<3>", "Shop <hi@elsewhere.io>", "Weekly deals", "", "", "me@x")) == ""
+
+
+def test_old_text_packs_keep_only_lessons(tmp_path):
+    from jigstream import packs
+    old = {"format": "bottrack-examples", "examples": [{"sender_domain": "bestbuy.com", "subject": "Your order has been cancelled",
+           "label": "cancelled", "prompt": "Hi Alex Smith, order BBY01-806 was cancelled", "answer": {"kind": "order", "shipping_status": "cancelled"}}]}
+    pack = packs.decode(json.dumps(old))
+    assert pack["format"] == packs.FORMAT and "prompt" not in json.dumps(pack) and "Smith" not in json.dumps(pack)
+    con = db.connect(str(tmp_path / "m.db"))
+    Store(con)
+    con.execute("CREATE TABLE shared_examples (id INTEGER PRIMARY KEY, source TEXT, sender_domain TEXT, subject TEXT,"
+                " label TEXT, prompt TEXT, answer TEXT)")
+    con.execute("INSERT INTO shared_examples (source, sender_domain, subject, label, prompt, answer) VALUES"
+                " ('old', 'bestbuy.com', 'Your order has been cancelled', 'cancelled', 'Hi Alex Smith', ?)",
+                (json.dumps({"kind": "order", "shipping_status": "cancelled"}),))
+    con.commit()
+    assert [ls["cues"] for ls in packs.shared(con)] == [["your order has been cancelled"]]
+    assert not con.execute("SELECT 1 FROM sqlite_master WHERE name = 'shared_examples'").fetchone()
 
 
 def test_jig_styles_from_drop_results(tmp_path):
