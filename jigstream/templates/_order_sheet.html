@@ -146,6 +146,7 @@
   <div><dt>Tracking #</dt><dd data-src="tracking_number">{% if o.tracking_number %}<span data-copy>{{o.tracking_number}}</span>{% else %}<span class="muted">None yet</span>{% endif %}</dd></div>
   {% if o.estimated_delivery %}<div><dt>Est. delivery</dt><dd data-src="estimated_delivery">{{eta}}</dd></div>{% endif %}
   {% if o.carrier_status %}<div><dt>Carrier says</dt><dd>{{o.carrier_status}}</dd></div>{% endif %}
+  {% if status == "cancelled" and o.cancel_why %}<div><dt>Cancelled because</dt><dd>{{ o|cancel_why }}</dd></div>{% endif %}
 </dl>
 <h4 class="os-h">Emails{% if mails %} <span class="muted">{{mails|length}}</span>{% endif %}</h4>
 {% if mails %}<ul class="os-mails">{% for m in mails %}<li>

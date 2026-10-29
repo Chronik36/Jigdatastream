@@ -443,6 +443,11 @@ def auto_match(con):
                     (best[0], best[1]["id"], tx["id"]))
         matched += 1
     con.commit()
+    try:  # a refund of an order's charge cancels the order (cancels.py)
+        from . import cancels
+        cancels.reconcile(con)
+    except Exception:
+        logging.getLogger(__name__).exception("cancelling refunded orders failed")
     return matched
 
 
