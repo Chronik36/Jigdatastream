@@ -82,7 +82,8 @@ def process(email, store, llm, config, counts, log, examples=(), platforms=(), q
     started = time.monotonic()
     try:
         shown = examples(email) if callable(examples) else examples  # the examples closest to this email
-        result = extract(llm, email, config.max_body_chars, shown, platforms, words)
+        hint = examples.hint(email) if hasattr(examples, "hint") else ""  # what other users taught about this store
+        result = extract(llm, email, config.max_body_chars, shown, platforms, words, hint)
     except LLMError as e:
         if "Could not reach" in str(e):
             raise
