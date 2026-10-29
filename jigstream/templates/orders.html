@@ -5,9 +5,10 @@
 {% call tile("") %}Orders <b>{{stats.order_count}}</b>{% endcall %}
 {% call tile("spent") %}Spend <b>{{stats.order_total|money}}</b>{% if stats.not_spent %}<span class="muted ns" data-href="/orders?show=not_spent{{'&day=' ~ day|urlencode if day}}">{{stats.not_spent}} cancelled or refunded not counted</span>{% endif %}{% endcall %}
 {% call tile("moving") %}On the way <b>{{stats.in_flight}}</b>{% endcall %}{% call tile("delivered", "ok") %}Delivered <b>{{stats.by_status.get("delivered", 0)}}</b>{% endcall %}
+{% if worth[0] %}<a class="card ok" href="/market" title="What these items resell for now, and what you'd make over what you paid. Tap to see every product, fix names and prices, and see projections">Worth now <b>{{worth[0]|money}}</b><span class="muted ns2">{{"+" if worth[1] >= 0}}{{worth[1]|money}} potential profit</span></a>{% endif %}
 {% if stats.wrong_address %}{% call tile("wrong_address", "bad") %}Wrong address <b>{{stats.wrong_address}}</b>{% endcall %}{% endif %}</div>
 {% if show %}<p class="oshow"><b>{{ {"spent": "Orders counted in Spend", "not_spent": "Cancelled, refunded and returned orders", "moving": "On the way", "delivered": "Delivered", "wrong_address": "Shipped to a different address than the profile's"}[show] }}</b> · {{rows|length}} · tap an order to change anything about it, it stays on this list · <a href="/orders{{'?day=' ~ day|urlencode if day else '?day=all'}}">Show all</a></p>{% endif %}
-<style>.ostats .ns{font-size:12px;text-transform:none;letter-spacing:0;text-decoration:underline dotted}.oshow{margin:-8px 0 14px}</style>
+<style>.ostats .ns2{display:block;font-size:12px;text-transform:none;letter-spacing:0;margin-top:2px}.ostats .ns{font-size:12px;text-transform:none;letter-spacing:0;text-decoration:underline dotted}.oshow{margin:-8px 0 14px}</style>
 <script>document.querySelectorAll('.ostats .ns').forEach(n => n.addEventListener('click', e => { e.preventDefault(); location.href = n.dataset.href; }));</script>
 {% if not configured %}<div class="flash">No Gmail inbox connected yet. <a href="/setup">Add one on the Setup page</a> to start finding orders.</div>{% endif %}
 {% include "sync.html" %}
@@ -23,7 +24,9 @@
 <table class="otable"><thead><tr><th>Order</th><th>Items</th><th>Total</th><th>Status</th><th>Tracking</th><th>Profile</th><th>Ship to</th></tr></thead><tbody>
 {% for o in rows %}{% set status = o.shipping_status or "unknown" %}<tr data-sheet="{{o.id}}" data-f="{{status|status_group}}" data-p="{{o.profile_name or ('?' if o.profile_candidates else '')}}" data-b="{{base_of.get(o.id) if base_of.get(o.id) is not none else 'none'}}" data-items="{{o['items']|map(attribute='name')|select|map('lower')|join('|')}}" id="order-{{o.id}}">
 <td><b>{{o.retailer or "-"}}</b>{% if o.order_number %}<div class="muted"><span data-copy>{{o.order_number}}</span></div>{% endif %}<div class="muted" style="font-size:12px">{{o.order_date or "No date"}}</div><a class="linked" href="/review?src=order&name={{o.id}}" title="Its checkouts, card charges, emails and profile, with the pickers that fix them">Everything linked ›</a></td>
-<td><ul class="items">{% for i in o["items"] %}<li>{{i.name}}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}</li>{% endfor %}</ul></td>
+<td><div class="oitems">{% set f0 = (o["items"] or [{}])[0] %}{% set pic = f0.image or ((mk.get(f0.name|mkey) or {}).get("image") if f0.name else "") %}{% if pic %}<img class="othumb" src="{{pic}}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+<ul class="items">{% for i in o["items"] %}{% set mm = mk.get(i.name|mkey) %}<li>{% if mm and mm.name and mm.name != i.name and mm.name_how != "as written" %}<span title="The email said: {{i.name}}">{{mm.name}}</span>{% else %}{{i.name}}{% endif %}{% if i.quantity and i.quantity != 1 %} x{{i.quantity}}{% endif %}
+{% if mm and mm.market and not mm.ignored %}{% set each = i.price if i.price is number else (o.total / (i.quantity or 1) if o["items"]|length == 1 and o.total else none) %}<span class="mchip" title="Market price now (tap the order to see each source). Profit = market minus what you paid">Market {{mm.market|money}}{% if each %} · <b class="{{'pos' if mm.market >= each else 'neg'}}">{{"+" if mm.market >= each}}{{(mm.market - each)|money}}</b>{% endif %}</span>{% endif %}</li>{% endfor %}</ul></div></td>
 <td class="num"><span data-edit-price="{{o.id}}" data-value="{{o.total if o.total is not none else ''}}">{{o.total|money(o.currency)}}</span></td>
 <td><span class="pill s-{{status}}" data-edit-status="{{o.id}}" data-status="{{status}}">{{status|status_label}}</span>{% if o.status_manual %} <span class="muted" title="set by hand">✎</span>{% endif %}
 {% if training %}<form class="rowpick st" method="post" action="/orders/{{o.id}}/label"><select name="status" class="relabel" data-now="{{status|status_group}}" title="Set the right status; the app then searches your inboxes for this order's emails and learns from them"><option value="">Change status…</option></select></form>
@@ -39,7 +42,10 @@
 <form method="post" action="/orders/{{o.id}}/address-ok"><input type="hidden" name="back" value="{{request.full_path}}#order-{{o.id}}"><button class="ghost" title="This address is right; stop flagging it">It's fine</button></form></div>
 {% elif o.address_ok %}<form class="small muted" method="post" action="/orders/{{o.id}}/address-ok">Address marked fine · <input type="hidden" name="ok" value="0"><input type="hidden" name="back" value="{{request.full_path}}#order-{{o.id}}"><button class="linkish" title="Check this order's address against its profile again">Check again</button></form>{% endif %}</td></tr>
 {% else %}<tr><td colspan="7" class="muted">No orders yet. Press Sync Gmail.</td></tr>{% endfor %}</tbody></table>{% endif %}
-<style>.rowpick{display:block;margin:6px 0 0}.rowpick.st{margin-top:8px}.rowpick select{margin:0;padding:4px 8px;font-size:12px;width:100%;min-width:120px;max-width:180px}
+<style>.oitems{display:flex;gap:10px;align-items:flex-start}.othumb{width:44px;height:44px;flex:none;border-radius:8px;background:#fff;object-fit:contain}
+.mchip{display:inline-block;margin:3px 0 0 6px;padding:1px 8px;border-radius:999px;border:1px solid var(--line-2);font-size:11.5px;color:var(--muted);white-space:nowrap}
+.mchip .pos{color:var(--green)}.mchip .neg{color:var(--red)}
+.rowpick{display:block;margin:6px 0 0}.rowpick.st{margin-top:8px}.rowpick select{margin:0;padding:4px 8px;font-size:12px;width:100%;min-width:120px;max-width:180px}
 /* Room goes to the item names; tracking numbers wrap between groups instead of letter by letter. */
 .otable td:nth-child(2){min-width:180px}.otable td:nth-child(5){min-width:130px}.otable td:nth-child(5) a.track{word-break:normal;overflow-wrap:anywhere}
 .otable td:nth-child(7){min-width:140px;overflow-wrap:anywhere}

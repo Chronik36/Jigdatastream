@@ -12,7 +12,7 @@ from . import address as A
 from . import accountkeys, addresscheck, filevault, backup, bases, dropdays, devmail, jigexpr, ordersheet, peersync, pricecheck, proxylogin, proxysessions, storeaccounts, browsers, undo
 from . import (analysis, bankpages, cardcheck, cardlocks, browsertrack, carriers, db, discord, drop, lookup, emailbook, engines, expensepages, export,
                inbox, keywords, logs, manual, mobile, overview, parsers, products, profilebook, profilematch, profiles, recurring,
-               packs, proxies, proxyaccounts, review, stock, stuck, tasks, tracking, training, updater, wallet, webtrain)
+               market, packs, proxies, proxyaccounts, review, stock, stuck, tasks, tracking, training, updater, wallet, webtrain)
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
@@ -61,6 +61,7 @@ def create_app(db_path=None):
     app.register_blueprint(manual.bp)
     app.register_blueprint(keywords.bp)
     app.register_blueprint(products.bp)
+    app.register_blueprint(market.bp)
     app.register_blueprint(proxies.bp)
     app.register_blueprint(cardlocks.bp)
     app.register_blueprint(tracking.bp)
@@ -198,12 +199,18 @@ def create_app(db_path=None):
                 finally:
                     mail_lock.release()
             stopped = sync_state["stop"].is_set()
+            if not stopped:
+                try:  # market prices for new and day-old items, in the background after the sync
+                    market.start(db_path or db.DB_PATH)
+                except Exception:
+                    logger.exception("starting market price lookups failed")
             sync_state["last"] = ("Sync stopped. Press Sync now to carry on where it left off. " if stopped
                                   else "Last sync. ") + " ".join(parts)
         finally:
             sync_state["running"] = False
 
     app.add_template_filter(parsers.tidy, "tidy")  # bot text: entities decoded, markdown links reduced to text
+    app.add_template_filter(market.key, "mkey")  # an item's market row on Orders
 
     @app.template_filter("money")
     def money(amount, currency="USD"):
@@ -399,6 +406,7 @@ def create_app(db_path=None):
                 n = (i.get("name") or "").strip()
                 if n:
                     products[n] = products.get(n, 0) + 1
+        mk = market.chips(store.db)
         base_counts = {}
         for b in base_of.values():
             base_counts[b] = base_counts.get(b, 0) + 1
@@ -411,6 +419,7 @@ def create_app(db_path=None):
                                profile_counts=_profile_counts(rows),
                                accounts=store.accounts(), configured=bool(config.accounts),
                                training=config.training_mode, labels=store.labels(),
+                               mk=mk, worth=market.orders_value(rows, mk),
                                label_choices=STATUS_CHOICES, status_counts=status_counts(stats["by_status"]))
 
     def _profile_counts(rows):
