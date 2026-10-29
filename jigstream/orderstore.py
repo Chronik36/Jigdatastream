@@ -71,7 +71,9 @@ MIGRATIONS = [("tracked_orders", "status_manual", "INTEGER DEFAULT 0"),
               ("tracked_orders", "total_manual", "INTEGER DEFAULT 0"), ("expenses", "amount_manual", "INTEGER DEFAULT 0"),
               ("expenses", "reviewed", "INTEGER DEFAULT 0"),  # gone through on Expenses > Review
               # 1 = you said the address it shipped to is fine (addresscheck.py)
-              ("tracked_orders", "address_ok", "INTEGER DEFAULT 0")]
+              ("tracked_orders", "address_ok", "INTEGER DEFAULT 0"),
+              # why it was marked cancelled: JSON list of "cancel email", "<bot> decline", "card refund" (cancels.py)
+              ("tracked_orders", "cancel_why", "TEXT")]
 
 LABEL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS labels (
@@ -420,7 +422,12 @@ class Store:
         final = old in ("cancelled", "returned", "refunded") and (
             not newer or (old == "cancelled" and status not in ("shipped", "in_transit", "out_for_delivery",
                                                                 "delivered", "refunded", "returned")))
-        if status_advances(old, status) and not final and (newer or status in PROGRESS or old in (None, "unknown")):
+        # A cancel of an order that hasn't shipped always counts, whichever email is older: the cancel often lands
+        # a minute before the confirmation, and dates from forwarded mail carry other time zones (or none), so
+        # "newer" can't be trusted here.
+        unshipped_cancel = status == "cancelled" and old in (None, "unknown", "ordered", "processing", "exception")
+        if status_advances(old, status) and not final and (newer or unshipped_cancel or status in PROGRESS
+                                                           or old in (None, "unknown")):
             updates["shipping_status"] = status
         if newer:
             updates["last_email_date"] = email.date
@@ -441,6 +448,7 @@ class Store:
         cancels. Statuses you set by hand are left alone. Returns (marked, merged)."""
         from types import SimpleNamespace
         from .extract import cancel_signal
+        from .stuck import when as stuck_when
         subjects = {r["message_id"]: (r["subject"] or "", r["date"] or "") for r in
                     self.db.execute("SELECT message_id, subject, date FROM emails WHERE kind = 'order'")}
         marked = merged = 0
@@ -448,9 +456,14 @@ class Store:
             ids = [i for i in json.loads(row["message_ids"] or "[]") if i in subjects]
             if not ids:
                 continue
-            latest = max(ids, key=lambda i: subjects[i][1])
-            signal = cancel_signal(SimpleNamespace(subject=subjects[latest][0], body=""))
+            latest = max(ids, key=lambda i: stuck_when(subjects[i][1]) or stuck_when("1970-01-01"))
             status = row["shipping_status"]
+            # Before it ships, any of its emails being a cancel counts (the cancel can be read before or after the
+            # confirmation); after that only the latest email says what happened.
+            unshipped = (status or "unknown") in ("unknown", "ordered", "processing", "exception")
+            signal = "cancelled" if any(
+                cancel_signal(SimpleNamespace(subject=subjects[i][0], body="")) == "cancelled"
+                for i in (ids if unshipped else [latest])) else None
             if signal == "cancelled" and status != "cancelled":
                 self.db.execute("UPDATE tracked_orders SET shipping_status = 'cancelled' WHERE id = ?", (row["id"],))
                 marked += 1
@@ -481,6 +494,9 @@ class Store:
                             (json.dumps(list(dict.fromkeys(ids))), subjects[latest][1], target["id"]))
             merged += 1
         self.db.commit()
+        # Then the bot's decline webhooks and card refunds, which cancel an order with no cancel email too.
+        from . import cancels
+        marked += cancels.reconcile(self.db)
         return marked, merged
 
     def set_status_manually(self, order_id, status):
