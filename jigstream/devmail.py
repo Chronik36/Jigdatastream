@@ -20,7 +20,8 @@ bp = Blueprint("devmail", __name__)
 KINDS = [  # (key, label, subject start)
     ("logs", "Logs", "BotTrack logs"),
     ("suggestion", "Provider ideas", "BotTrack provider suggestion"),
-    ("pack", "Training packs", "BotTrack training pack"),
+    ("lessons", "Shared learning", "BotTrack shared learning"),
+    ("pack", "Training packs (older builds)", "BotTrack training pack"),
     ("steps", "Shared steps", "BotTrack shared steps"),
     ("access", "Access requests", "BotTrack access request"),
 ]

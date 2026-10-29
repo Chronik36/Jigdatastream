@@ -619,10 +619,10 @@ def resale_hits(email, resale):
     return hits(email, resale) if resale else []
 
 
-def extract_raw(llm, email, max_body_chars=12000, examples=(), platforms=(), resale=()):
+def extract_raw(llm, email, max_body_chars=12000, examples=(), platforms=(), resale=(), hint=""):
     """(the model's raw JSON, the cleaned result). resale: your resale product words (resale.words), so a purchase
-    of them from any store is an order, and a mixed receipt keeps only them."""
-    user = email_prompt(email, max_body_chars, platforms, resale)
+    of them from any store is an order, and a mixed receipt keeps only them. hint: shared lessons for this store."""
+    user = email_prompt(email, max_body_chars, platforms, resale) + (hint or "")
 
     def ask(text):
         return llm.chat_json(SYSTEM_PROMPT, text, examples=examples) if examples else llm.chat_json(SYSTEM_PROMPT, text)
@@ -655,5 +655,5 @@ def extract_raw(llm, email, max_body_chars=12000, examples=(), platforms=(), res
     return raw, result
 
 
-def extract(llm, email, max_body_chars=12000, examples=(), platforms=(), resale=()):
-    return extract_raw(llm, email, max_body_chars, examples, platforms, resale)[1]
+def extract(llm, email, max_body_chars=12000, examples=(), platforms=(), resale=(), hint=""):
+    return extract_raw(llm, email, max_body_chars, examples, platforms, resale, hint)[1]
