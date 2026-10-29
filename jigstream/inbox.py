@@ -154,8 +154,8 @@ def label_emails(config, store, llm, picks, label, sale=None, what=None):
     """picks: [{"account", "message_id", "sender", "subject", "date"}]. Runs in the background.
     sale: a sale you typed for these emails (sales.from_order): {"id", "platform", "item", "sale_price", "fees",
     "payout"}. The AI learns the platform and every number the email shows, and the emails add no second sale."""
-    from . import sales
-    examples, platforms = few_shot(store), sales.platforms(store.db)
+    from . import resale, sales
+    examples, platforms, words = few_shot(store), sales.platforms(store.db), resale.words(store.db)
     for row in picks:
         store.set_inbox_label(row, label, "working")
         try:
@@ -163,8 +163,8 @@ def label_emails(config, store, llm, picks, label, sale=None, what=None):
             if not email:
                 store.set_inbox_label(row, label, "not found in Gmail")
                 continue
-            prompt = email_prompt(email, config.max_body_chars, platforms)
-            raw, _ = extract_raw(llm, email, config.max_body_chars, examples, platforms)
+            prompt = email_prompt(email, config.max_body_chars, platforms, words)
+            raw, _ = extract_raw(llm, email, config.max_body_chars, examples, platforms, words)
             corrected = corrected_answer(raw, label, what)
             if sale:
                 corrected.update(_sale_fix(email, sale))

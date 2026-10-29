@@ -317,6 +317,18 @@ def delete(order_id):
     return redirect(_back())
 
 
+@bp.post("/orders/<int:order_id>/ad")
+def is_ad(order_id):
+    """It's an ad or newsletter, not something you bought: off Orders, and the AI re-reads its emails as an ad."""
+    from .orderstore import Store
+    store = Store(_con())
+    o = store.order(order_id)
+    if o:
+        logger.info("order %s (%s %s) marked an ad by hand", order_id, o["retailer"], o["total"])
+        flash(move_out(store, o, "not_an_order", "ad"))
+    return redirect(_back())
+
+
 @bp.post("/orders/<int:order_id>/refresh")
 def refresh(order_id):
     import os
