@@ -1,0 +1,52 @@
+{# The order sheet's Market value section (market.for_order): each item as the real product, its prices, and fixes. #}
+<style>.osheet .os-mval{display:inline-block;margin-top:6px;font-size:13px;color:var(--muted);text-decoration:none}.osheet .os-mval b{font-weight:700}
+.osheet .pos{color:var(--green)}.osheet .neg{color:var(--red)}
+.os-mk{display:flex;flex-direction:column;gap:10px;margin-bottom:8px}
+.os-mi{border:1px solid var(--line);border-radius:16px;background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.os-mtop2{display:flex;gap:12px;align-items:flex-start}.os-mimg{width:56px;height:56px;flex:none;border-radius:10px;background:#fff;object-fit:contain}
+.os-mimg.blank{display:grid;place-items:center;color:var(--muted);background:var(--surface-2);font-size:11px;text-align:center}
+.os-mname{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}.os-mname small{color:var(--muted);font-size:12px}
+.os-mprices{display:flex;flex-wrap:wrap;gap:6px}.os-mp{display:inline-flex;gap:5px;align-items:baseline;padding:4px 10px;border-radius:999px;border:1px solid var(--line-2);font-size:12.5px;color:var(--text);text-decoration:none}
+.os-mp i{font-style:normal;color:var(--muted)}.os-mp.err{color:var(--muted);border-style:dashed}
+.os-mnums{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;font-variant-numeric:tabular-nums}.os-mnums span{color:var(--muted)}.os-mnums b{color:var(--text)}
+.os-mbtns{display:flex;flex-wrap:wrap;gap:6px}.os-mbtns button,.os-mbtns a{padding:4px 11px;font-size:12px;margin:0}
+.os-mpics{display:flex;gap:8px;flex-wrap:wrap}.os-mpics label{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px}.os-mpics img{width:52px;height:52px;object-fit:contain;background:#fff;border-radius:8px}</style>
+<div class="os-hrow" id="os-market"><h4 class="os-h">Market value{% if market.value is not none %} <span class="muted">{{market.value|money}}</span>{% endif %}</h4>
+  <div class="os-hbtns"><form method="post" action="/market/update" style="margin:0">{% for i in market["items"] %}<input type="hidden" name="key" value="{{i.key}}">{% endfor %}
+    <button class="os-refresh" title="Name the product again with the local AI if needed and read today's prices">{{ os_icon("refresh") }}Look up prices</button></form>
+  <a class="os-refresh" href="/market" title="Everything you're holding: value, profit and where prices are heading">{{ os_icon("open") }}All</a></div></div>
+<div class="os-mk">
+{% for i in market["items"] %}{% set m = i.m %}{% set n = loop.index %}
+<div class="os-mi">
+  <div class="os-mtop2">{% if m and m.image %}<img class="os-mimg" src="{{m.image}}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<span class="os-mimg blank">No picture yet</span>{% endif %}
+    <div class="os-mname"><b>{{(m.name if m and m.name else i.raw)}}{% if i.qty > 1 %} <span class="muted">x{{i.qty}}</span>{% endif %}</b>
+      {% if m and m.name and m.name != i.raw %}<small>Email said: {{i.raw}}</small>{% endif %}
+      <small>{% if not m or not m.updated_at %}Prices not looked up yet. They're looked up after each sync, or press Look up prices.
+      {% elif m.ignored %}You said you don't resell this, so it's left out of market value.
+      {% else %}{{ {"AI": "Named by the local AI", "AI, unsure": "The local AI wasn't sure what this is. Fix the name if it's wrong", "fixed": "Name fixed by you", "as written": "Searched as the email wrote it"}.get(m.name_how, "") }}{% for src, mt in (m.matched or {}).items() %}{% if loop.first %} · matched {% else %}, {% endif %}<a href="{{mt.link}}" target="_blank" rel="noopener">{{mt.title|truncate(50)}}</a>{% endfor %}{% endif %}</small></div></div>
+  {% if m and m.updated_at and not m.ignored %}<div class="os-mprices">{% for src, label in market.sources %}{% set p = m.prices.get(src) %}
+    {% if p %}<a class="os-mp" {% if p.link %}href="{{p.link}}" target="_blank" rel="noopener"{% endif %} title="{{p.how}}{% if p.count and p.count > 1 %}, ${{'%.2f'|format(p.low)}} to ${{'%.2f'|format(p.high)}}{% endif %}, {{p.when}}"><i>{{label}}</i> {{p.price|money}}{% if p.manual %} ✎{% endif %}</a>
+    {% elif m.errors.get(src) %}<span class="os-mp err" title="{{m.errors[src]}}"><i>{{label}}</i> none</span>{% endif %}{% endfor %}
+    {% if m.market_manual %}<span class="os-mp"><i>Your price</i> {{m.market_manual|money}} ✎</span>{% endif %}</div>
+  <div class="os-mnums">{% if i.market is not none %}<span>Market <b>{{i.market|money}}</b></span>{% if i.each is not none %}<span>Paid <b>{{i.each|money}}</b></span>{% set pe = i.market - i.each %}<span>Profit each <b class="{{'pos' if pe >= 0 else 'neg'}}">{{"+" if pe >= 0}}{{pe|money}}</b></span>{% if i.qty > 1 %}<span>All {{i.qty}} <b class="{{'pos' if pe >= 0 else 'neg'}}">{{"+" if pe >= 0}}{{(pe * i.qty)|money}}</b></span>{% endif %}{% endif %}
+    {% if m.trend is not none %}<span>Trend <b class="{{'pos' if m.trend >= 0 else 'neg'}}">{{"+" if m.trend >= 0}}{{(m.trend * 100)|round(1)}}%/mo</b></span>{% endif %}
+    {% else %}<span>No market price found yet. Fix the name or type a price.</span>{% endif %}</div>{% endif %}
+  <div class="os-mbtns">{% if m %}<button type="button" class="ghost" data-os-toggle="os-mn{{n}}" title="Wrong product? The AI learns the right name and prices are looked up again">Fix name</button>
+    <button type="button" class="ghost" data-os-toggle="os-mpr{{n}}" title="Type Tradepost's offer, or any price">Type a price</button>
+    <button type="button" class="ghost" data-os-toggle="os-mpic{{n}}">Picture</button>
+    <form method="post" action="/market/{{i.key}}/ignore" style="margin:0">{% if m.ignored %}<input type="hidden" name="undo" value="1">{% endif %}<button class="ghost" title="{{'Count it in market value again' if m.ignored else 'Supplies and other things you keep: leave them out of market value'}}">{{"I resell this" if m.ignored else "Not for resale"}}</button></form>{% endif %}</div>
+  {% if m %}<form id="os-mn{{n}}" class="os-pop os-editf" method="post" action="/market/{{i.key}}/name" hidden>
+    <label class="wide">What it really is<input name="name" value="{{m.name or i.raw}}" maxlength="200" required></label>
+    <label class="wide">Search words <span class="muted">(blank = from the name)</span><input name="search" value="{{m.search or ''}}" maxlength="120" placeholder="e.g. Surging Sparks Elite Trainer Box"></label>
+    <button>Save and look up</button><p class="muted small wide">The local AI learns this name for “{{i.raw|truncate(60)}}”, and the prices and picture are looked up again for it.</p></form>
+  <form id="os-mpr{{n}}" class="os-pop" method="post" action="/market/{{i.key}}/price" hidden>
+    <select name="source">{% for src, label in market.sources %}<option value="{{src}}" {{"selected" if src == "tradepost"}}>{{label}}</option>{% endfor %}<option value="market">My market price (overrides)</option></select>
+    <input name="price" inputmode="decimal" placeholder="e.g. 62 or 60, 65, 70" size="12"><button>Save price</button>
+    <p class="muted small">Several prices give the middle one. An empty box clears that price.</p></form>
+  <form id="os-mpic{{n}}" class="os-pop" method="post" action="/market/{{i.key}}/image" hidden>
+    {% if m.images %}<div class="os-mpics">{% for img in m.images %}<label><img src="{{img}}" alt="" loading="lazy" referrerpolicy="no-referrer"><input type="radio" name="image" value="{{img}}" {{"checked" if img == m.image}}></label>{% endfor %}</div>{% endif %}
+    <input name="image_url" placeholder="or paste a picture link (https://…)" size="28">
+    <button>Use picture</button></form>{% endif %}
+</div>
+{% endfor %}
+</div>

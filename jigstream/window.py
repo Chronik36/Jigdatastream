@@ -52,13 +52,15 @@ def page_reader(webview):
     lock = threading.Lock()
     hidden = {}
 
-    def text_of(window):
+    def text_of(window, html=False):
         try:
-            return window.evaluate_js("document.body ? document.body.innerText : ''") or ""
+            return window.evaluate_js("document.documentElement ? document.documentElement.outerHTML : ''" if html
+                                      else "document.body ? document.body.innerText : ''") or ""
         except Exception:  # the page is still between documents
             return ""
 
-    def read(page, done, timeout=45):
+    def read(page, done, timeout=45, html=False):
+        """html=True returns the page's source (market prices) instead of its text."""
         with lock:
             window = hidden.get("window")
             if window is None:
@@ -73,7 +75,7 @@ def page_reader(webview):
             end, text = time.time() + timeout, ""
             time.sleep(2)
             while time.time() < end:
-                text = text_of(window)
+                text = text_of(window, html)
                 if text and done(text):
                     break
                 time.sleep(1.5)

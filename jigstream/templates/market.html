@@ -1,0 +1,80 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.mk-proj{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:0 0 22px}
+.mk-proj a{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--muted);text-decoration:none;font-size:12px}
+.mk-proj a:hover{border-color:var(--line-2)}.mk-proj b{font-size:20px;color:var(--text);font-variant-numeric:tabular-nums}.mk-proj .bar{height:6px;border-radius:99px;background:var(--line)}
+.mk-proj .bar span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--green))}
+.pos{color:var(--green)}.neg{color:var(--red)}.sub{display:block;font-size:12px;color:var(--muted);text-transform:none;letter-spacing:0;margin-top:2px}
+.mk-run{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 18px}.mk-run form{margin:0}.mk-run button{padding:6px 14px}
+.mk-img{width:52px;height:52px;border-radius:9px;background:#fff;object-fit:contain;flex:none}.mk-img.blank{display:grid;place-items:center;background:var(--surface-2);color:var(--muted);font-size:10px;text-align:center}
+.mk-prod{display:flex;gap:10px;align-items:flex-start;min-width:220px}.mk-prod>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.mk-prod small{color:var(--muted);font-size:12px}
+.mk-src{display:flex;flex-wrap:wrap;gap:4px}.mk-src a,.mk-src span{display:inline-flex;gap:4px;padding:2px 8px;border-radius:999px;border:1px solid var(--line-2);font-size:11.5px;color:var(--text);text-decoration:none;white-space:nowrap}
+.mk-src i{font-style:normal;color:var(--muted)}.mk-src .err{color:var(--muted);border-style:dashed}
+.mk-fix summary{cursor:pointer;color:var(--accent);font-size:12.5px}.mk-fix form{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}
+.mk-fix input,.mk-fix select{margin:0;padding:5px 8px;font-size:12.5px}.mk-fix button{padding:5px 11px;font-size:12px}
+.mk-fix .pics{display:flex;gap:6px;flex-wrap:wrap}.mk-fix .pics label{display:flex;flex-direction:column;align-items:center;font-size:11px}.mk-fix .pics img{width:46px;height:46px;object-fit:contain;background:#fff;border-radius:7px}
+td.num{white-space:nowrap;font-variant-numeric:tabular-nums}.mk-show{margin:-8px 0 14px}
+</style>
+<h2>Market value</h2>
+<p class="muted" style="margin-top:-8px">What everything you bought and haven't sold resells for today, what you'd make over what you paid, and where it's heading. The local AI only works out what each product is; every price comes from PriceCharting, TCGplayer, eBay sold listings, your own Tradepost payouts, or you.</p>
+
+<div class="mk-run" id="mkrun">
+  {% if state.running %}<span>Looking up prices… <b>{{state.done}}</b> of {{state.total}}{% if state.current %} · {{state.current|truncate(50)}}{% endif %}</span>
+  {% else %}<form method="post" action="/market/update"><button title="Products never looked up, and ones last looked up a day ago">Look up new prices</button></form>
+  <form method="post" action="/market/update"><input type="hidden" name="all" value="1"><button class="ghost" title="Every product, one site at a time with gaps between requests. Can take a while">Look up everything</button></form>
+  {% if state.finished %}<span class="muted small">{{state.last}} Finished {{state.finished}}.</span>{% endif %}{% endif %}
+  <span class="muted small">Prices are also looked up after each sync.</span>
+</div>
+
+{% macro card(key, cls="") %}<a class="card {{cls}}{{' on' if show == key}}" href="/market{{'' if show == key else '?show=' ~ key}}" title="{{shows[key]}}: tap to see them, then fix any name or price">{{ caller() }}</a>{% endmacro %}
+<div class="stats">
+{% call card("all") %}Holding <b>{{tot["items"]}}</b><span class="sub">{{tot.products}} product{{"s" if tot.products != 1}}</span>{% endcall %}
+{% call card("cost") %}You paid <b>{{tot.cost|money}}</b><span class="sub">for what you're holding</span>{% endcall %}
+{% call card("value") %}Worth now <b>{{tot.value|money}}</b><span class="sub">{{tot.priced}} of {{tot.products}} priced</span>{% endcall %}
+{% call card("profit", "ok" if tot.profit >= 0 else "bad") %}Potential profit <b class="{{'pos' if tot.profit >= 0 else 'neg'}}">{{"+" if tot.profit >= 0}}{{tot.profit|money}}</b><span class="sub">{{tot.after_fees|money}} after eBay's {{'%g'|format(tot.fee)}}% fee</span>{% endcall %}
+{% if tot.losing %}{% call card("losing", "bad") %}Worth less than paid <b>{{tot.losing}}</b>{% endcall %}{% endif %}
+{% if tot.unpriced %}{% call card("unpriced") %}No price yet <b>{{tot.unpriced}}</b><span class="sub">fix the name or type one</span>{% endcall %}{% endif %}
+{% if tot.rising %}{% call card("rising", "ok") %}Going up <b>{{tot.rising}}</b>{% endcall %}{% endif %}
+{% if tot.falling %}{% call card("falling", "bad") %}Going down <b>{{tot.falling}}</b>{% endcall %}{% endif %}
+{% if tot.ignored %}{% call card("ignored") %}Not for resale <b>{{tot.ignored}}</b>{% endcall %}{% endif %}
+</div>
+
+<h3 style="margin:0 0 10px">Projections</h3>
+{% set top = ([tot.value] + tot.future|map(attribute="value")|list + [1])|max %}
+<div class="mk-proj">
+  <a href="/market?show=profit"><span>Now</span><b>{{tot.value|money}}</b><span class="{{'pos' if tot.profit >= 0 else 'neg'}}">{{"+" if tot.profit >= 0}}{{tot.profit|money}} profit</span><span class="bar"><span style="width:{{(tot.value / top * 100)|round(1)}}%"></span></span></a>
+  {% for f in tot.future %}<a href="/market?show={{'rising' if tot.rising else 'profit'}}"><span>{{f.label}}</span><b>{{f.value|money}}</b><span class="{{'pos' if f.profit >= 0 else 'neg'}}">{{"+" if f.profit >= 0}}{{f.profit|money}} profit</span><span class="bar"><span style="width:{{(f.value / top * 100)|round(1)}}%"></span></span></a>{% endfor %}
+</div>
+<p class="muted small" style="margin:-12px 0 22px">Projections carry each product's last months of price movement forward ({{tot.trended}} of {{tot.priced}} priced products have enough history; the rest are kept at today's price), at most 10% up or down a month. They're a guide from past prices, not a promise.</p>
+
+{% if show %}<p class="mk-show"><b>{{shows[show]}}</b> · {{rows|length}} · <a href="/market">Show all</a></p>{% endif %}
+<table class="cardy wrapt"><thead><tr><th>Product</th><th style="white-space:nowrap">Qty</th><th>Paid each</th><th>Market</th><th>Profit</th><th>Trend</th>{% for mo, label in horizons %}<th>{{label}}</th>{% endfor %}</tr></thead><tbody>
+{% for r in rows %}{% set m = r.m %}<tr id="m-{{r.key}}">
+<td><div class="mk-prod">{% if r.image %}<img class="mk-img" src="{{r.image}}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<span class="mk-img blank">No picture</span>{% endif %}
+  <div><b>{{r.name}}</b>{% if r.name != r.raw %}<small>Email said: {{r.raw}}</small>{% endif %}
+  <small>{{ {"AI": "Named by the local AI", "AI, unsure": "AI unsure: check the name", "fixed": "Fixed by you", "as written": "As the email wrote it"}.get(m.name_how, "Not looked up yet") }}{% if m.updated_at %} · {{m.updated_at[:10]}}{% endif %}
+  · {% for oid in r.orders[:4] %}<a href="/orders?day=all#sheet-{{oid}}">order</a>{{", " if not loop.last}}{% endfor %}{% if r.orders|length > 4 %} +{{r.orders|length - 4}}{% endif %}</small>
+  <div class="mk-src">{% for src, label in sources %}{% set p = m.prices.get(src) %}{% if p %}<a {% if p.link %}href="{{p.link}}" target="_blank" rel="noopener"{% endif %} title="{{p.how}}, {{p.when}}"><i>{{label}}</i> {{p.price|money}}{{" ✎" if p.manual}}</a>{% elif m.errors.get(src) %}<span class="err" title="{{m.errors[src]}}"><i>{{label}}</i> none</span>{% endif %}{% endfor %}{% if m.market_manual %}<span><i>Your price</i> {{m.market_manual|money}} ✎</span>{% endif %}</div>
+  <details class="mk-fix" {{"open" if open == r.key}}><summary>Fix name, price or picture</summary>
+    <form method="post" action="/market/{{r.key}}/name"><input type="hidden" name="show" value="{{show}}"><input name="name" value="{{r.name}}" maxlength="200" required size="30" title="What it really is"><input name="search" value="{{m.search or ''}}" maxlength="120" placeholder="search words (optional)" size="18"><button title="The local AI learns this name and prices are looked up again">Save name</button></form>
+    <form method="post" action="/market/{{r.key}}/price"><input type="hidden" name="show" value="{{show}}"><select name="source">{% for src, label in sources %}<option value="{{src}}" {{"selected" if src == "tradepost"}}>{{label}}</option>{% endfor %}<option value="market">My market price (overrides)</option></select><input name="price" inputmode="decimal" placeholder="e.g. 62 or 60, 65" size="10"><button>Save price</button></form>
+    <form method="post" action="/market/{{r.key}}/image"><input type="hidden" name="show" value="{{show}}">{% if m.images %}<div class="pics">{% for img in m.images %}<label><img src="{{img}}" alt="" loading="lazy" referrerpolicy="no-referrer"><input type="radio" name="image" value="{{img}}" {{"checked" if img == m.image}}></label>{% endfor %}</div>{% endif %}<input name="image_url" placeholder="or paste a picture link" size="20"><button>Use picture</button></form>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><form method="post" action="/market/update" style="margin:0"><input type="hidden" name="key" value="{{r.key}}"><input type="hidden" name="show" value="{{show}}"><button class="ghost">Look up again</button></form>
+    <form method="post" action="/market/{{r.key}}/ignore" style="margin:0"><input type="hidden" name="show" value="{{show}}">{% if r.ignored %}<input type="hidden" name="undo" value="1">{% endif %}<button class="ghost">{{"I resell this" if r.ignored else "Not for resale"}}</button></form></div>
+  </details></div></div></td>
+<td class="num">{{r.qty}}</td>
+<td class="num">{{r.each|money}}</td>
+<td class="num"><b>{{r.market|money}}</b>{% if r.value is not none and r.qty > 1 %}<span class="sub">{{r.value|money}} all</span>{% endif %}</td>
+<td class="num">{% if r.profit is not none %}<b class="{{'pos' if r.profit >= 0 else 'neg'}}">{{"+" if r.profit >= 0}}{{r.profit|money}}</b><span class="sub">{{"+" if r.profit_each >= 0}}{{r.profit_each|money}} each</span>{% else %}-{% endif %}</td>
+<td class="num">{% if r.rate is not none %}<span class="{{'pos' if r.rate >= 0 else 'neg'}}">{{"+" if r.rate >= 0}}{{(r.rate * 100)|round(1)}}%/mo</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+{% for v in r.future %}<td class="num">{{v|money}}</td>{% endfor %}</tr>
+{% else %}<tr><td colspan="9" class="muted">Nothing here. Products show up once orders are synced.</td></tr>{% endfor %}</tbody></table>
+{% if state.running %}<script>
+// While prices are being looked up, check every few seconds and reload once they're done (not while you're typing a fix).
+const mkPoll = setInterval(() => fetch('/market/state').then(r => r.json()).then(s => {
+  if (s.running || document.querySelector('.mk-fix[open] input:focus, .mk-fix[open] select:focus')) return;
+  clearInterval(mkPoll); location.reload();
+}).catch(() => {}), 5000);
+</script>{% endif %}
+{% endblock %}
