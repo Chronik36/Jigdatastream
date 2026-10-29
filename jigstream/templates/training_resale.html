@@ -1,0 +1,51 @@
+{% extends "base.html" %}{% block body %}
+<style>
+.rs-words{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}
+.rs-word{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 6px 4px 12px}
+.rs-word form{margin:0}.rs-word button{padding:0 8px;min-height:24px;line-height:1}
+.rs-add{display:flex;gap:8px;flex-wrap:wrap}.rs-add input{flex:1;min-width:180px;max-width:320px}
+.rs-ads td{vertical-align:top}
+</style>
+<p><a href="/training">← All tasks</a></p>
+<h2>Resale products</h2>
+<p class="muted">Anything you buy to flip. A purchase that names one of these is an order wherever you bought it: Sam's Club,
+Aldi, a grocery or warehouse store, an in-store or pickup e-receipt. There's no store list; the product decides. On a receipt
+with other things too (groceries, household), only the resale items are kept, and the order's total is what they cost.
+Online orders stay whole.</p>
+
+<div class="panel">
+<h3 style="margin-top:0">Your resale words</h3>
+<div class="rs-words">{% for w in words %}<span class="rs-word">{{w}}{% if w in defaults %} <span class="muted" style="font-size:12px">built in</span>{% endif %}
+<form method="post" action="{{url_for('resale.words_save')}}" data-confirm="Stop counting {{w}} purchases from any store as orders? Orders already saved stay."><input type="hidden" name="remove" value="{{w}}"><button class="ghost" aria-label="Remove {{w}}">×</button></form></span>
+{% else %}<span class="muted">No words yet. Add one below.</span>{% endfor %}</div>
+<form class="rs-add" method="post" action="{{url_for('resale.words_save')}}">
+<input name="word" maxlength="40" placeholder="Add one, e.g. Lorcana, Funko, Squishmallow" required><button>Add</button></form>
+<p class="muted" style="font-size:13px;margin-bottom:0">Spelling and accents don't matter: Pokémon also finds POKEMON, NeeDoh also finds Nee Doh.
+Adding a word re-checks a year of your mail for receipts that name it.</p>
+</div>
+
+<div class="panel">
+<h3 style="margin-top:0">Re-check old mail</h3>
+{% if find.running %}<p>{{find.progress or "Working..."}}</p>
+{% else %}<p class="muted" style="margin-top:0">Reads again every email from the last year that names a resale word and wasn't saved as an
+order: skipped ones, ones called "not relevant", and receipts filed as supplies. Emails you labelled yourself are left alone.
+{% if pending %}It runs by itself at the end of the next sync.{% endif %}</p>
+{% if find.last %}<p>{{find.last}}</p>{% endif %}
+<form method="post" action="{{url_for('resale.recheck')}}"><button>Re-check now</button></form>{% endif %}
+</div>
+
+<div class="panel">
+<h3 style="margin-top:0">Ads that had become orders</h3>
+<p class="muted" style="margin-top:0">A store newsletter (a comic shop's "new this week" with Pokémon and One Piece packs and their prices)
+isn't an order. The AI used to read the prices next to each product as what you paid, which threw off totals. Now an email
+only becomes an order when it shows a real purchase: an order or confirmation number, a receipt, a payment, or shipping news.
+Orders saved before were checked once against their emails; the ones below showed none of that and were taken out.
+To teach the AI another one, open the order and pick <b>Edit › What its emails are › Ad / newsletter</b>, or press <b>It's an ad</b>.</p>
+{% if ads %}<table class="rs-ads"><thead><tr><th>Store</th><th>Email</th><th>Was counted</th><th></th></tr></thead><tbody>
+{% for a in ads %}<tr><td><b>{{a.retailer or "?"}}</b><div class="muted" style="font-size:12px">{{(a.removed_at or "")[:10]}}</div></td>
+<td>{{a.subject or "-"}}{% if a["items"] %}<div class="muted" style="font-size:12px">{{a["items"][:3]|join(", ")}}{% if a["items"]|length > 3 %} +{{a["items"]|length - 3}} more{% endif %}</div>{% endif %}</td>
+<td>{{a.total|money(a.currency)}}</td>
+<td><form method="post" action="{{url_for('resale.ad_back', order_id=a.id)}}"><button class="ghost">It was an order, put it back</button></form></td></tr>{% endfor %}
+</tbody></table>{% else %}<p class="muted" style="margin-bottom:0">None taken out yet. The check runs with the next sync.</p>{% endif %}
+</div>
+{% endblock %}

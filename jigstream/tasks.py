@@ -286,7 +286,9 @@ def register(app, db_path=None):
         c = con()
         store = Store(c)
         trained = {a["task_key"] for a in c.execute("SELECT task_key FROM ai_adapters")}
+        from . import resale
         return render_template("training_hub.html", tasks=tasks(c), email_n=len(store.examples()), trained=trained,
+                               resale_n=len(resale.words(c)),
                                config=Config.from_env(), ft=finetune.state)
 
     @app.post("/training/tasks")

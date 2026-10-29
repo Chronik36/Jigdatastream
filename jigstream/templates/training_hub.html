@@ -16,6 +16,9 @@ model for the task on this Mac. Everything stays on this Mac.</p>
     <p>Reads each email and decides if it's an order, a botting expense, or neither. Taught from the Inbox page and order corrections.</p>
     <span class="pill">{{email_n}} examples</span> {% if "email" in trained %}<span class="pill s-delivered">Trained</span>{% endif %}
     {% if config.llm_adapter %}<span class="pill s-in_transit">Trained model in use</span>{% endif %}</a>
+  <a class="tk" href="/training/resale"><h3>Resale products <span class="pill">Built in</span></h3>
+    <p>What you buy to flip (Pokémon, One Piece, NeeDoh...). Any store's receipt naming them is an order, and ads listing them aren't.</p>
+    <span class="pill">{{resale_n}} word{{'' if resale_n == 1 else 's'}}</span></a>
   {% for t in tasks %}<a class="tk" href="/training/tasks/{{t.id}}"><h3>{{t.name}}</h3>
     <p>{{t.instructions or "No instructions yet."}}</p>
     <span class="pill">{{t.n}} example{{'' if t.n == 1 else 's'}}</span> <span class="pill">{{"JSON" if t.answer == "json" else "Text"}} answers</span>
