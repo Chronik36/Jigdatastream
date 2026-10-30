@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% block body %}
 <div class="thead" style="margin-bottom:14px"><h2>Shipping</h2>
-<div class="tact">{% if shops|length > 1 %}<form method="get"><select name="store" onchange="this.form.submit()" title="Show one store"><option value="">All stores</option>{% for s in shops %}<option {{"selected" if s == shop}}>{{s}}</option>{% endfor %}</select></form>{% endif %}
+<div class="tact"><a class="btn ghost" href="/tracking/calendar" title="See which day each package is due">Calendar</a>{% if shops|length > 1 %}<form method="get"><select name="store" onchange="this.form.submit()" title="Show one store"><option value="">All stores</option>{% for s in shops %}<option {{"selected" if s == shop}}>{{s}}</option>{% endfor %}</select></form>{% endif %}
 {% if can_check %}<form method="post" action="/tracking/check"><button class="ghost" title="Ask each carrier where every open package is">{{"Checking…" if checking.running else "Check carriers now"}}</button></form>
 {% else %}<a class="btn ghost" href="/setup#tracking" title="Key-free tracking reads the carriers' own pages on this Mac">Turn on live carrier checks</a>{% endif %}</div></div>
 {% if checking.last %}<p class="muted" style="margin-top:-6px">{{checking.last}}</p>{% endif %}

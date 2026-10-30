@@ -114,6 +114,50 @@ def base_details(con, res, base_id):
             "groups": dict(sorted(by_group.items(), key=lambda g: g[0].lower()))}
 
 
+CAL_STATES = {"ordered": "Ordered", "moving": "On the way", "out": "Out for delivery", "late": "Running late",
+              "delivered": "Delivered"}
+
+
+def calendar_rows(orders, today=None):
+    """Live orders for the delivery calendar: (dated, undated) lists of plain dicts.
+
+    A package sits on the store's estimated day; a delivered one on the day it was delivered (the last email).
+    Orders with no day at all go to `undated`. Cancelled, returned and refunded orders have no lane and are left off.
+    """
+    today = (today or date.today()).isoformat()
+    dated, undated = [], []
+    for o in orders:
+        lane = lane_of(o)
+        if not lane:
+            continue
+        eta = (o["estimated_delivery"] or "")[:10]
+        day = (o["last_email_date"] or eta or o["order_date"] or "")[:10] if lane == "delivered" else eta
+        state = "late" if lane != "delivered" and eta and eta < today else lane
+        first = (o["items"] or [{}])[0] if o["items"] else {}
+        first = first if isinstance(first, dict) else {}
+        row = {"id": o["id"], "date": day, "state": state, "retailer": o["retailer"] or "Unknown",
+               "carrier": o["carrier"] or "Unknown", "tracking": o["tracking_number"] or "",
+               "title": first.get("name") or o["retailer"] or "Order", "order_number": o["order_number"] or ""}
+        (dated if day else undated).append(row)
+    return dated, undated
+
+
+@bp.get("/tracking/calendar")
+def calendar():
+    return render_template("tracking_calendar.html", states=CAL_STATES)
+
+
+@bp.get("/tracking/calendar/data")
+def calendar_data():
+    store = Store(db.connect(current_app.config.get("DB_PATH")))
+    dated, undated = calendar_rows(store.orders())
+    today = date.today().isoformat()
+    live = [r for r in dated + undated if r["state"] != "delivered"]
+    return {"rows": dated, "undated": undated, "today": today,
+            "summary": {"in_transit": len(live), "today": sum(r["date"] == today for r in live),
+                        "late": sum(r["state"] == "late" for r in live)}}
+
+
 @bp.get("/tracking")
 def page():
     from .app import STATUS_CHOICES
