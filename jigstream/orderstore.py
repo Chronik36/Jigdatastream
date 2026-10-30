@@ -444,6 +444,28 @@ class Store:
             from . import notify
             notify.order_moved(dict(dict(row), **updates), old, updates["shipping_status"], email.date)
 
+    # A subject that reads like a delivery notice. Only the subject is saved for each email, so this is all a repair has.
+    DELIVERY_SUBJECT = re.compile(r"deliver|arrived|left at|dropped off|picked up|delivery complete", re.I)
+
+    def repair_delivered(self):
+        """Undo a "delivered" that nothing supports: no email subject reads like a delivery notice, the carrier hasn't
+        said delivered, and it wasn't set by hand. Goes back to shipped (it has a tracking number) or ordered.
+        Returns how many orders were changed."""
+        subjects = {r["message_id"]: r["subject"] or "" for r in self.db.execute("SELECT message_id, subject FROM emails")}
+        fixed = 0
+        for row in self.db.execute("SELECT * FROM tracked_orders WHERE shipping_status = 'delivered' "
+                                   "AND COALESCE(status_manual, 0) = 0").fetchall():
+            ids = [i for i in json.loads(row["message_ids"] or "[]") if i in subjects]
+            if not ids or "deliver" in (row["carrier_status"] or "").lower():
+                continue
+            if any(self.DELIVERY_SUBJECT.search(subjects[i]) for i in ids):
+                continue
+            self.db.execute("UPDATE tracked_orders SET shipping_status = ? WHERE id = ?",
+                            ("shipped" if row["tracking_number"] else "ordered", row["id"]))
+            fixed += 1
+        self.db.commit()
+        return fixed
+
     def repair_cancels(self):
         """Fix orders read before cancel emails were checked by rule: an order whose latest email is a
         cancel is marked cancelled, and a cancel email saved as its own order is folded into the order it

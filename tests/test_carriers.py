@@ -19,8 +19,13 @@ def test_status_from_carrier_wording():
     assert s("Estimated delivery Friday") == "in_transit"
 
 
+SAYS = {"shipped": "Your order has shipped.", "in_transit": "Your package is in transit.",
+        "out_for_delivery": "Your package is out for delivery.", "delivered": "Your package was delivered."}
+
+
 def order(store, tracking, status="shipped", carrier="UPS"):
-    mail = Email(f"<{tracking}>", "Nike <n@nike.com>", "Shipped", "2026-10-20T10:00:00+00:00", "x", "me@gmail.com")
+    mail = Email(f"<{tracking}>", "Nike <n@nike.com>", "Shipped", "2026-10-20T10:00:00+00:00", SAYS.get(status, "x"),
+                 "me@gmail.com")
     store.save(mail, normalize({"kind": "order", "retailer": "Nike", "order_number": tracking,
                                 "tracking_number": tracking, "carrier": carrier, "shipping_status": status}, mail))
 

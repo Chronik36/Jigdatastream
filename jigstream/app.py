@@ -146,6 +146,9 @@ def create_app(db_path=None):
                     if counts.get("stopped"):
                         raise StopSync
                     try:
+                        undone = Store(con()).repair_delivered()
+                        if undone:
+                            logger.info("delivered with no proof: %d order(s) moved back", undone)
                         marked, merged = Store(con()).repair_cancels()
                         if marked or merged:
                             logger.info("cancel emails: %d order(s) marked cancelled, %d merged", marked, merged)
@@ -924,6 +927,7 @@ def create_app(db_path=None):
                                          stop=lambda: sync_state["running"])
             if counts["order"] or counts.get("sale") or counts["botting_expense"]:
                 try:
+                    Store(con()).repair_delivered()
                     Store(con()).repair_cancels()
                     profilematch.match_orders(con())
                     from .orderstore import drop_suggested_items

@@ -161,6 +161,49 @@ PROOF_WORDS = re.compile(
     re.I)
 
 
+# A shipping stage past "ordered" is believed only when the email itself says so. A confirmation that mentions an
+# "Estimated delivery" date or a "Delivery address" is still just an order; the model sometimes calls it delivered.
+_NOT_YET = re.compile(r"\b(will|would|when|once|until|to be|should|expected|estimated|scheduled|unless|if|after|before|"
+                      r"can|may|soon|notify|let you know|get)\b", re.I)
+STAGE_WORDS = {
+    "delivered": re.compile(r"\b(delivered(?!-to\b)(?!\s+to\s*:)|delivery complete[d]?|dropped off|left (?:at|by|near|in|on|with)|"
+                            r"(?:has|have) arrived|package arrived)", re.I),
+    "out_for_delivery": re.compile(r"\bout for delivery|(?:arrives?|arriving) today", re.I),
+    "in_transit": re.compile(r"\bin[- ]transit|\bon (?:its|the) way|\ben route|\bdeparted|moving through|"
+                             r"arrived at (?:the |a |our )?(?:facility|hub|sort)", re.I),
+    "shipped": re.compile(r"\b(?:has|have|was|were|is) shipped|\bshipped (?:on|via|with|from)|\bshipping confirmation|"
+                          r"\bdispatched|your (?:order|package|items?) (?:has|have) shipped|\bon (?:its|the) way", re.I),
+}
+STAGES = ["delivered", "out_for_delivery", "in_transit", "shipped"]
+
+
+def stage_evidence(stage, text):
+    """Whether text says the package really reached this stage (not 'will be delivered' or 'when it's delivered')."""
+    for m in STAGE_WORDS[stage].finditer(text):
+        if not _NOT_YET.search(text[max(0, m.start() - 40):m.start()]):
+            return True
+    return False
+
+
+_ONLINE_WORDS = re.compile(r"\bship|deliver|tracking|arriv|estimated|carrier", re.I)
+_RECEIPT_WORDS = re.compile(r"receipt|change due|card ending|ending in \d{4}|you paid|cashier|register|store #|"
+                            r"purchased (?:at|in)|thank you for shopping", re.I)
+
+
+def grounded_status(status, email, tracking):
+    """The latest shipping stage the email supports, never above what the model claimed; "ordered" when none.
+    A receipt with nothing about shipping at all is a purchase made in store, which BotTrack files as delivered."""
+    if status not in STAGES:
+        return status
+    text = f"{email.subject}\n{(email.body or '')[:6000]}"
+    if status == "delivered" and not _ONLINE_WORDS.search(text) and _RECEIPT_WORDS.search(text):
+        return status
+    for stage in STAGES[STAGES.index(status):]:
+        if stage_evidence(stage, text):
+            return stage
+    return "shipped" if tracking else "ordered"
+
+
 def purchase_proof(email):
     """Whether the email shows a real purchase (see PROOF_WORDS), not just products and prices."""
     text = f"{email.subject}\n{(email.body or '')[:20000]}"
@@ -404,6 +447,7 @@ def normalize(data, email):
     status = data.get("shipping_status")
     if status not in STATUSES:
         status = "shipped" if tracking else "unknown"
+    status = grounded_status(status, email, tracking)
     if signal == "cancelled" or (signal == "refunded" and status not in ("returned", "refunded")):
         status = signal  # the email says so outright; the model often calls a cancel email "ordered"
 

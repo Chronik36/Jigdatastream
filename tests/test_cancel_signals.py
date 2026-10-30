@@ -14,7 +14,8 @@ def setup(tmp_path):
 
 def order(store, mid, number, date, total=63.98, to="buyer1@x.com", subject=None, status="ordered"):
     e = Email(mid, "Target <orders@target.com>", subject or f"Thanks for your order #{number}", date,
-              f"Order #{number}\nTotal ${total}", account="me@gmail.com", to=to)
+              f"Order #{number}\nTotal ${total}" + ("\nYour order has shipped." if status == "shipped" else ""),
+              account="me@gmail.com", to=to)
     store.save(e, normalize({"kind": "order", "retailer": "Target", "order_number": number, "total": total,
                              "shipping_status": status}, e))
 
