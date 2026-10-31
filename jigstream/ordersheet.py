@@ -9,7 +9,7 @@ import json
 import logging
 import re
 import threading
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 
@@ -229,6 +229,7 @@ def sheet(order_id):
                            mails=mails, mail_labels=inbox.LABELS, not_order=inbox.NOT_ORDER,
                            wrong=addresscheck.check(store.db, [o]).get(order_id), shown=SHOWN, qty=quantity(o),
                            sale_platform=platform, sale_platforms=sales.platforms(store.db),
+                           today=date.today().isoformat(),
                            fee_pct=sales.fee_pct(store.db, platform or "eBay"),
                            bought=[c for c in sales.order_choices(store.db) if c["id"] != order_id],
                            profile_groups=dict(sorted(groups.items(), key=lambda g: g[0].lower())),
@@ -405,6 +406,41 @@ def as_sale(order_id):
     linked = " Linked to the order you bought it with." if s["order_id"] else ""
     flash(f"Moved to Sales: {s['platform']} sale, you got ${s['payout'] or 0:,.2f}.{linked}"
           + (" The AI re-reads its emails as a sale and learns from it." if mails else ""))
+    return redirect(_back())
+
+
+@bp.post("/orders/<int:order_id>/sold")
+def sold(order_id):
+    """You sold some or all of what this order bought. Each unit becomes a sale linked to the order (so Profit goal and
+    holdings count it), and what it sold for joins the product's market price as "Your sales". Optionally it also
+    becomes your market price for the product."""
+    from datetime import date as _date
+    from . import market, sales
+    from .orderstore import Store
+    store = Store(_con())
+    o = store.order(order_id)
+    if o is None:
+        flash("That order is gone.")
+        return redirect(_back())
+    f = request.form
+    price, place = _money(f.get("price")), (f.get("place") or "").strip()[:40]
+    if price is None or price <= 0 or not place:
+        flash("Enter who or where you sold it to, and what it sold for.")
+        return redirect(_back())
+    qty = max(1, min(f.get("qty", type=int) or 1, 200))
+    first = next((i for i in o.get("items") or [] if isinstance(i, dict) and i.get("name")), {})
+    item = (f.get("item") or "").strip()[:200] or first.get("name") or o.get("retailer") or "Item"
+    fees = _money(f.get("fees"))
+    day = (f.get("date") or "").strip() or _date.today().isoformat()
+    for _ in range(qty):
+        sales.add(store.db, {"platform": place, "item": item, "sale_price": price, "fees": fees,
+                             "payout": round(price - (fees or 0), 2), "date": day, "order_number": o.get("order_number"),
+                             "order_id": order_id}, "manual")
+    market.after_sale(store.db, item, o.get("retailer") or "", price, set_market=bool(f.get("set_market")))
+    logger.info("order %s: %d sold to %s for $%.2f each", order_id, qty, place, price)
+    flash(f"Recorded {qty} sold to {place} at ${price:,.2f}."
+          + (" It's now your market price for this product." if f.get("set_market") else
+             " It now counts toward this product's market price (Your sales)."))
     return redirect(_back())
 
 

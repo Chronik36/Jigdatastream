@@ -42,7 +42,7 @@ HORIZONS = [(1, "In 30 days"), (3, "In 90 days"), (6, "In 6 months")]
 DONE = ("cancelled", "returned", "refunded", "not_an_order", "expense", "sale")
 
 SOURCES = [("pricecharting", "PriceCharting"), ("tcgplayer", "TCGplayer"), ("ebay", "eBay sold"),
-           ("tradepost", "Tradepost")]
+           ("tradepost", "Tradepost"), ("yours", "Your sales")]
 SOURCE_NAME = dict(SOURCES, market="Your price")
 
 # Listing words that mean a different thing than the sealed product: graded, opened, a lot, a code card, a case.
@@ -366,6 +366,46 @@ def tradepost(c, name, search):
             "how": f"your last {s['count']} Tradepost payout{'s' if s['count'] != 1 else ''}", "link": ""}
 
 
+def yours(c, name, search):
+    """What you really sold this product for, on any platform except Tradepost (which has its own line above): the
+    sale price, else what you got. These are real sales, so they correct the market price."""
+    from . import sales
+    sales.ensure(c)
+    want = core(search) | core(name)
+    got = []
+    for r in c.execute("SELECT item, payout, sale_price, fees, platform FROM sales WHERE item IS NOT NULL"
+                       " AND COALESCE(counted, 1) = 1 ORDER BY date DESC, id DESC LIMIT 400"):
+        if re.search(r"trade\s*post", r["platform"] or "", re.I):
+            continue
+        if best_match([{"title": r["item"]}], search) or (want and len(want & core(r["item"])) >= max(2, len(want) - 1)):
+            v = r["sale_price"] if r["sale_price"] else sales.money_in(dict(r))
+            if v and v > 0:
+                got.append(v)
+    s = products.summarize(got[:20])
+    if not s:
+        raise products.SourceError("You haven't recorded a sale of this product yet. Use Sold on its order.")
+    return {"price": s["median"], "low": s["low"], "high": s["high"], "count": s["count"],
+            "how": f"what you sold it for ({s['count']} sale{'s' if s['count'] != 1 else ''})", "link": ""}
+
+
+def after_sale(c, item, store="", price=None, set_market=False):
+    """A sale was just recorded: add it to this product's Your sales line (no web lookups) and, when asked, make the
+    sale price your market price. Creates the market row when the product has none yet."""
+    k = key(item)
+    if not k:
+        return None
+    ensure(c)
+    ensure_rows(c, [{"key": k, "raw": item, "store": store or ""}])
+    m = get(c, k)
+    lookup(c, m, None, sources={"yours"})
+    if set_market and price:
+        m["market_manual"] = price
+        value = market_of(m)
+        m["history"] = [h for h in m["history"] if h[0] != date.today().isoformat()] + [[date.today().isoformat(), value]]
+    save(c, m)
+    return m
+
+
 # --- Items and their market rows ----------------------------------------------------------------
 
 def _load(row):
@@ -443,16 +483,25 @@ def save(c, m):
 
 
 def held(c):
-    """Items you still have (or have coming): on orders not cancelled, refunded, moved out or sold.
+    """Items you still have (or have coming): on orders not cancelled, refunded or moved out, less the units already sold.
     [{key, raw, store, order_id, qty, cost (each, or None), image, day, status}]"""
     out = []
+    _sales_ready(c)
+    # Each sale linked to an order uses up one unit of it. A sale that names another item of a multi-item order
+    # can't be placed, so that order stays out entirely (as before).
+    sold = {}
+    for r in c.execute("SELECT order_id, item FROM sales WHERE order_id IS NOT NULL AND COALESCE(counted, 1) = 1"):
+        sold.setdefault(r["order_id"], []).append(key(r["item"] or ""))
     for o in c.execute(
             "SELECT id, retailer, items, total, shipping_status, COALESCE(order_date, substr(last_email_date, 1, 10)) AS day"
-            " FROM tracked_orders WHERE COALESCE(shipping_status, '') NOT IN (" + ",".join("?" * len(DONE)) + ")"
-            " AND id NOT IN (SELECT order_id FROM sales WHERE order_id IS NOT NULL)", DONE):
+            " FROM tracked_orders WHERE COALESCE(shipping_status, '') NOT IN (" + ",".join("?" * len(DONE)) + ")", DONE):
         try:
             items = [i for i in json.loads(o["items"] or "[]") if isinstance(i, dict) and (i.get("name") or "").strip()]
         except ValueError:
+            continue
+        mine = sold.get(o["id"], [])
+        names = {key(i["name"]) for i in items}
+        if mine and len(items) > 1 and any(k not in names for k in mine):
             continue
         for i in items:
             try:
@@ -464,8 +513,11 @@ def held(c):
                 each = round(o["total"] / qty, 2)
             elif each is not None and qty > 1 and len(items) == 1 and o["total"] and abs(each - o["total"]) < 0.01:
                 each = round(each / qty, 2)  # the line price was the whole line, not one item
+            used = len(mine) if len(items) == 1 else sum(1 for k in mine if k == key(i["name"]))
+            if used >= qty:
+                continue
             out.append({"key": key(i["name"]), "raw": i["name"].strip(), "store": o["retailer"] or "",
-                        "order_id": o["id"], "qty": qty, "cost": each, "image": i.get("image") or "",
+                        "order_id": o["id"], "qty": qty - used, "cost": each, "image": i.get("image") or "",
                         "day": o["day"] or "", "status": o["shipping_status"] or ""})
     return [h for h in out if h["key"]]
 
@@ -495,11 +547,13 @@ def lookup(c, m, llm=None, sources=None):
                 got = tcgplayer(search)
             elif src == "ebay":
                 got = ebay(search)
+            elif src == "yours":
+                got = yours(c, m["name"], search)
             else:
                 got = tradepost(c, m["name"], search)
         except products.SourceError as e:
             errors[src] = str(e)
-            if src == "tradepost":  # no Tradepost sales any more (one was unlinked): nothing to show
+            if src in ("tradepost", "yours"):  # no such sales any more (one was unlinked): nothing to show
                 prices.pop(src, None)
             logger.info("market: %s on %s: %s", search[:60], label, e)
             continue

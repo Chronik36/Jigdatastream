@@ -34,7 +34,8 @@
   {% if url %}<a class="os-a c-blue" href="{{url}}" target="_blank" rel="noopener">{{ os_icon("open") }}Carrier</a>{% endif %}
   <button type="button" class="os-a c-green" data-os-share="{{o.retailer or ''}} order {{o.order_number or ''}}: {{title}}, {{status|status_label}}{% if o.tracking_number %}, {{o.carrier or 'tracking'}} {{o.tracking_number}}{% endif %}{% if url %} {{url}}{% endif %}">{{ os_icon("share") }}Share</button>
   <button type="button" class="os-a c-sky" data-os-toggle="os-edit">{{ os_icon("edit") }}Edit</button>
-  <a class="os-a c-green" href="/expenses/in-person?order={{o.id}}#ipsale" title="Sold it in person, like at Tradepost or a show">{{ os_icon("receipt") }}Sold it</a>
+  <a class="os-a c-green" href="/expenses/in-person?order={{o.id}}#ipsale" title="Sold it in person, like at Tradepost or a show, with the full form (cost, fees)">{{ os_icon("receipt") }}In person</a>
+  <button type="button" class="os-a c-green" data-os-toggle="os-sold" title="You sold some or all of this: who to, and for how much. Sets the product's real market price">{{ os_icon("receipt") }}Sold it</button>
   <button type="button" class="os-a c-green" data-os-toggle="os-sale" title="These emails are a sale you made (eBay, Vinted, Mercari...), not something you bought">{{ os_icon("tag") }}It's a sale</button>
   <form method="post" action="{{url_for('ordersheet.is_ad', order_id=o.id)}}" class="os-del os-ad" data-confirm="This is an ad or newsletter, not something you bought? It leaves Orders and the AI learns what these look like. Undo brings it back.">
     <button class="os-a c-orange" title="A store's ad or newsletter listing products and prices, not a purchase">{{ os_icon("tag") }}It's an ad</button></form>
@@ -70,6 +71,18 @@
   </div>
   <button>Save</button>
   <p class="muted small wide">Your fixes stick through syncs, and the AI re-reads this order's emails to learn from them.</p></form>
+<form id="os-sold" class="os-pop os-editf" method="post" action="{{url_for('ordersheet.sold', order_id=o.id)}}" hidden>
+  <input type="hidden" name="back" value="1">
+  <p class="muted small wide">Record what you sold from this order. It counts as a sale, and what it sold for becomes part of this product's market price.</p>
+  <label>Sold to / where<input name="place" value="{{sale_platform or ''}}" list="os-plist" required maxlength="40" placeholder="Tradepost, eBay, a friend..."></label>
+  <label>Date<input type="date" name="date" value="{{today}}"></label>
+  <label>How many<input name="qty" inputmode="numeric" value="1" min="1" max="{{qty or 1}}"></label>
+  <label>Sold for (each)<input name="price" inputmode="decimal" required placeholder="0.00"></label>
+  <label>Fees (each)<input name="fees" inputmode="decimal" placeholder="0.00"></label>
+  <label class="wide">Item<input name="item" value="{{title if o['items'] else ''}}" maxlength="200"></label>
+  <label class="wide" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" name="set_market" value="1" style="width:auto;flex:none"> Use this price as the market price for this product</label>
+  <button>Save sale</button>
+  <p class="muted small wide">The market price is the middle of every source, and your own sales are one of them. Tick the box to set it to this price directly.</p></form>
 <form id="os-sale" class="os-pop os-editf" method="post" action="{{url_for('ordersheet.as_sale', order_id=o.id)}}" data-os-sale hidden>
   <input type="hidden" name="back" value="1">
   <p class="muted small wide">This is something you <b>sold</b>, like a "you sold it" email from eBay, Vinted, Mercari or StockX. It moves to Sales on Profit goal with these numbers.</p>
