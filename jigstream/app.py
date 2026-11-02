@@ -16,7 +16,7 @@ from . import (analysis, bankpages, cardcheck, cardlocks, browsertrack, carriers
 from .config import Config, format_accounts, save_env
 from .extract import STATUSES, carrier_for
 from .llm import from_config as llm_for, installed_models
-from .mail import check_login
+from .mail import check_login, readable
 from .orderstore import Store
 from .sync import find_sales, quick_check as quick_check_inboxes, run_sync, summary
 
@@ -1048,7 +1048,7 @@ def create_app(db_path=None):
         if not email:
             return jsonify({"error": "That email couldn't be found in Gmail."}), 404
         return jsonify({"subject": email.subject, "sender": email.sender, "date": email.date,
-                        "body": email.body[:60000]})
+                        "body": readable(email.body)[:60000]})
 
     @app.post("/inbox/label")
     def inbox_label():
