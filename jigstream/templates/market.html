@@ -14,10 +14,12 @@
 .mk-fix summary{cursor:pointer;color:var(--accent);font-size:12.5px}.mk-fix form{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}
 .mk-fix input,.mk-fix select{margin:0;padding:5px 8px;font-size:12.5px}.mk-fix button{padding:5px 11px;font-size:12px}
 .mk-fix .pics{display:flex;gap:6px;flex-wrap:wrap}.mk-fix .pics label{display:flex;flex-direction:column;align-items:center;font-size:11px}.mk-fix .pics img{width:46px;height:46px;object-fit:contain;background:#fff;border-radius:7px}
+.mk-orders{display:flex;flex-direction:column;gap:6px;margin-top:10px;font-size:12.5px}.mk-orders form{margin:0}
+.mk-oline{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:4px 0;border-top:1px solid var(--line)}.mk-oline>span{flex:1 1 200px;min-width:0}
 td.num{white-space:nowrap;font-variant-numeric:tabular-nums}.mk-show{margin:-8px 0 14px}
 </style>
 <h2>Market value</h2>
-<p class="muted" style="margin-top:-8px">What everything you bought and haven't sold resells for today, what you'd make over what you paid, and where it's heading. The local AI only works out what each product is; every price comes from PriceCharting, TCGplayer, eBay sold listings, your own Tradepost payouts, or you.</p>
+<p class="muted" style="margin-top:-8px">What everything you bought and haven't sold resells for today, what you'd make over what you paid, and where it's heading. The local AI only works out what each product is and which listing matches it; every price comes from PriceCharting, TCGplayer, eBay sold listings, your own Tradepost payouts, a listing you linked, or you. Wrong match? Open the fix panel: say it's the wrong product, pick another result, or paste the right listing, and the AI learns from it.</p>
 
 <div class="mk-run" id="mkrun">
   {% if state.running %}<span>Looking up prices… <b>{{state.done}}</b> of {{state.total}}{% if state.current %} · {{state.current|truncate(50)}}{% endif %}</span>
@@ -56,12 +58,19 @@ td.num{white-space:nowrap;font-variant-numeric:tabular-nums}.mk-show{margin:-8px
   <small>{{ {"AI": "Named by the local AI", "AI, unsure": "AI unsure: check the name", "fixed": "Fixed by you", "as written": "As the email wrote it"}.get(m.name_how, "Not looked up yet") }}{% if m.updated_at %} · {{m.updated_at[:10]}}{% endif %}
   · {% for oid in r.orders[:4] %}<a href="/orders?day=all#sheet-{{oid}}">order</a>{{", " if not loop.last}}{% endfor %}{% if r.orders|length > 4 %} +{{r.orders|length - 4}}{% endif %}</small>
   <div class="mk-src">{% for src, label in sources %}{% set p = m.prices.get(src) %}{% if p %}<a {% if p.link %}href="{{p.link}}" target="_blank" rel="noopener"{% endif %} title="{{p.how}}, {{p.when}}"><i>{{label}}</i> {{p.price|money}}{{" ✎" if p.manual}}</a>{% elif m.errors.get(src) %}<span class="err" title="{{m.errors[src]}}"><i>{{label}}</i> none</span>{% endif %}{% endfor %}{% if m.market_manual %}<span><i>Your price</i> {{m.market_manual|money}} ✎</span>{% endif %}</div>
-  <details class="mk-fix" {{"open" if open == r.key}}><summary>Fix name, price or picture</summary>
+  <details class="mk-fix" {{"open" if open == r.key}}><summary>Fix the product, match, price or picture · Not an order</summary>
+    {% with m=m, mkey=r.key, msources=sources, mkind=r.kind %}{% include "_market_match.html" %}{% endwith %}
     <form method="post" action="/market/{{r.key}}/name"><input type="hidden" name="show" value="{{show}}"><input name="name" value="{{r.name}}" maxlength="200" required size="30" title="What it really is"><input name="search" value="{{m.search or ''}}" maxlength="120" placeholder="search words (optional)" size="18"><button title="The local AI learns this name and prices are looked up again">Save name</button></form>
-    <form method="post" action="/market/{{r.key}}/price"><input type="hidden" name="show" value="{{show}}"><select name="source">{% for src, label in sources %}<option value="{{src}}" {{"selected" if src == "tradepost"}}>{{label}}</option>{% endfor %}<option value="market">My market price (overrides)</option></select><input name="price" inputmode="decimal" placeholder="e.g. 62 or 60, 65" size="10"><button>Save price</button></form>
+    <form method="post" action="/market/{{r.key}}/price"><input type="hidden" name="show" value="{{show}}"><select name="source">{% for src, label in typed %}<option value="{{src}}" {{"selected" if src == "tradepost"}}>{{label}}</option>{% endfor %}<option value="market">My market price (overrides)</option></select><input name="price" inputmode="decimal" placeholder="e.g. 62 or 60, 65" size="10"><button>Save price</button></form>
     <form method="post" action="/market/{{r.key}}/image"><input type="hidden" name="show" value="{{show}}">{% if m.images %}<div class="pics">{% for img in m.images %}<label><img src="{{img}}" alt="" loading="lazy" referrerpolicy="no-referrer"><input type="radio" name="image" value="{{img}}" {{"checked" if img == m.image}}></label>{% endfor %}</div>{% endif %}<input name="image_url" placeholder="or paste a picture link" size="20"><button>Use picture</button></form>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><form method="post" action="/market/update" style="margin:0"><input type="hidden" name="key" value="{{r.key}}"><input type="hidden" name="show" value="{{show}}"><button class="ghost">Look up again</button></form>
     <form method="post" action="/market/{{r.key}}/ignore" style="margin:0"><input type="hidden" name="show" value="{{show}}">{% if r.ignored %}<input type="hidden" name="undo" value="1">{% endif %}<button class="ghost">{{"I resell this" if r.ignored else "Not for resale"}}</button></form></div>
+    <div class="mk-orders"><b>Orders with this item ({{r.held|length}})</b>
+      <form method="post" action="/market/{{r.key}}/not-order"><input type="hidden" name="show" value="{{show}}"><input type="hidden" name="all" value="1"><select name="label" aria-label="What they are">{% for k, label in not_order %}<option value="{{k}}">{{label}}</option>{% endfor %}</select><button class="ghost" data-confirm="Take all {{r.held|length}} orders with this item out of Orders? The AI re-reads their emails and learns from it.">None of these are orders</button></form>
+      {% for h in r.held %}{% if loop.index == 7 %}<details><summary>{{r.held|length - 6}} more</summary>{% endif %}
+      <div class="mk-oline"><span>{{h.day or "no date"}} · {{h.store or "store?"}} · x{{h.qty}}{% if h.cost is not none %} · {{h.cost|money}} each{% endif %}</span> <a href="/orders?day=all#sheet-{{h.order_id}}">Open</a>
+        <form method="post" action="/market/{{r.key}}/not-order"><input type="hidden" name="show" value="{{show}}"><input type="hidden" name="order_id" value="{{h.order_id}}"><select name="label" aria-label="What it is">{% for k, label in not_order %}<option value="{{k}}">{{label}}</option>{% endfor %}</select><button class="ghost" title="It leaves Orders and the AI learns from it">Not an order</button></form></div>
+      {% if loop.last and loop.length > 6 %}</details>{% endif %}{% endfor %}</div>
   </details></div></div></td>
 <td class="num">{{r.qty}}</td>
 <td class="num">{{r.each|money}}</td>

@@ -1,0 +1,20 @@
+{# Which listing each price site matched for one product, and how to fix it: "Wrong product", pick another result
+   that was found, or paste the right listing. Used on the Market value page and in the order sheet.
+   Needs: m (market row), mkey, msources, mkind; optional: show (Market page filter). The sheet adds its own back field. #}
+<style>.mm{display:flex;flex-direction:column;gap:6px;margin:8px 0;font-size:12.5px}.mm form{margin:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.mm-src{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:10px;min-width:0}
+.mm-src>span{flex:1 1 220px;min-width:0;overflow-wrap:anywhere}.mm-src i{font-style:normal;color:var(--muted)}
+.mm select{width:0;max-width:100%;min-width:140px;flex:1 1 180px;margin:0;padding:4px 6px;font-size:12px}.mm input{width:0;flex:1 1 200px;min-width:140px;margin:0;padding:5px 8px;font-size:12.5px}
+.mm button{padding:4px 10px;font-size:12px;margin:0}.mm .muted{color:var(--muted)}</style>
+{% set hidden %}{% if show is defined %}<input type="hidden" name="show" value="{{show}}">{% endif %}{% endset %}
+<div class="mm">
+  {% if mkind %}<span class="muted">Looking for a <b>{{mkind}}</b>: listings of another kind of product (box, bundle, ETB, blister…) are never used.</span>{% endif %}
+  {% for src, label in msources %}{% set mt = (m.matched or {}).get(src) %}{% set pin = (m.links or {}).get(src) %}{% set opts = (m.options or {}).get(src) or [] %}{% set p = (m.prices or {}).get(src) %}
+  {% if src != "tradepost" and (mt or pin or opts or (p and not p.manual)) %}
+  <div class="mm-src"><span><i>{{label}}:</i> {% if mt %}<a href="{{mt.link}}" target="_blank" rel="noopener">{{mt.title}}</a>{% elif pin %}<a href="{{pin}}" target="_blank" rel="noopener">your link</a>{% elif p and p.link %}<a href="{{p.link}}" target="_blank" rel="noopener">{{p.how}}</a>{% elif opts %}<span class="muted">nothing matched, pick one below</span>{% endif %}{% if pin %} <span class="muted">· your link</span>{% endif %}</span>
+    {% if mt or pin or p %}<form method="post" action="/market/{{mkey}}/wrong">{{hidden}}<input type="hidden" name="source" value="{{src}}"><button class="ghost" title="Not this product: it's never used for this item again, the AI learns it, and the next best match is looked up">Wrong product</button></form>{% endif %}
+    {% if pin %}<form method="post" action="/market/{{mkey}}/link">{{hidden}}<input type="hidden" name="source" value="{{src}}"><input type="hidden" name="url" value=""><button class="ghost" title="Search for it again instead of using your link">Stop using my link</button></form>{% endif %}
+    {% if opts|length > 1 or (opts and not mt) %}<form method="post" action="/market/{{mkey}}/link">{{hidden}}<input type="hidden" name="source" value="{{src}}"><select name="pick" aria-label="Other {{label}} results">{% for x in opts %}<option value="{{x.link}}" {{"selected" if mt and x.link == mt.link}}>{{x.title|truncate(80)}}{% if x.price %} · {{x.price|money}}{% endif %}</option>{% endfor %}</select><button title="Use this listing from now on; the AI learns your pick">Use this one</button></form>{% endif %}
+  </div>{% endif %}{% endfor %}
+  <form method="post" action="/market/{{mkey}}/link">{{hidden}}<input name="url" type="text" inputmode="url" autocomplete="off" placeholder="Paste the right listing: PriceCharting, TCGplayer, eBay sold search or any shop" title="Its price is read from that page from now on, instead of searching"><button>Use this link</button></form>
+</div>

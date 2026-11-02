@@ -196,3 +196,113 @@ def test_blocked_site_tries_the_app_window_once(monkeypatch):
     monkeypatch.setattr(browsertrack, "_reader", lambda url, done, timeout, html=False: "<p>Verify you are human</p>")
     with pytest.raises(products.Blocked):
         market.fetch("https://www.ebay.com/sch/i.html?_nkw=x")
+
+
+BLISTER_RAW = "Pokemon Trading Card Game: Scarlet & Violet— Fake Comets Three-Booster Blister Pikachu"
+PC_KINDS = """<table><tr id="product-11"><td class="title"><a href="/game/pokemon-fake-comets/booster-box">Booster Box</a><div>Pokemon Fake Comets</div></td>
+<td class="price numeric used_price"><span class="js-price">$310.00</span></td></tr>
+<tr id="product-12"><td class="title"><a href="/game/pokemon-fake-comets/3-pack-blister-eevee">3 Pack Blister [Eevee]</a><div>Pokemon Fake Comets</div></td>
+<td class="price numeric used_price"><span class="js-price">$21.00</span></td></tr>
+<tr id="product-13"><td class="title"><a href="/game/pokemon-fake-comets/3-pack-blister-pikachu">3 Pack Blister [Pikachu]</a><div>Pokemon Fake Comets</div></td>
+<td class="price numeric used_price"><span class="js-price">$24.00</span></td></tr>
+<tr id="product-14"><td class="title"><a href="/game/pokemon-fake-comets/booster-bundle">Booster Bundle</a><div>Pokemon Fake Comets</div></td>
+<td class="price numeric used_price"><span class="js-price">$45.00</span></td></tr></table>"""
+
+
+def pc_page(title, price):
+    return (f'<html><h1 id="product_name">{title}</h1><table><tr><td id="used_price"><span>${price:.2f}</span></td></tr>'
+            '</table></html>')
+
+
+def test_product_kinds_never_mix():
+    assert market.kind_of("Fake Comets Three-Booster Blister") == "3-pack blister"
+    assert market.kind_of("3 Pack Blister [Eevee] Pokemon Fake Comets") == "3-pack blister"
+    assert market.kind_of("Fake Comets Booster Display Box") == "booster box"
+    assert market.kind_of("Elite Trainer Box [Pokemon Center]") == "Pokemon Center elite trainer box"
+    assert market.kind_of("Fake Comets Mini Tin") == "mini tin"
+    assert market.same_kind("blister", "3-pack blister") and not market.same_kind("3-pack blister", "booster box")
+    cands = [{"title": "Booster Box Pokemon Fake Comets", "link": "a"},
+             {"title": "3 Pack Blister [Eevee] Pokemon Fake Comets", "link": "b"},
+             {"title": "3 Pack Blister [Pikachu] Pokemon Fake Comets", "link": "c"}]
+    # The variant the store's name had (Pikachu) wins over another blister; the box is never picked.
+    assert market.best_match(cands, "Fake Comets Three-Booster Blister", hints=BLISTER_RAW)["link"] == "c"
+    assert market.best_match(cands[:1], "Fake Comets Three-Booster Blister") is None
+    assert market.best_match(cands, "Fake Comets Three-Booster Blister", BLISTER_RAW, skip={"c"})["link"] == "b"
+
+
+def test_blister_not_matched_to_box_and_every_fix_teaches(tmp_path, monkeypatch):
+    path = str(tmp_path / "b.db")
+    app = create_app(path)
+    con = Store(db.connect(path)).db
+    oid = _order(con, [{"name": BLISTER_RAW, "quantity": 3, "price": 13.99}], total=41.97)
+    oid2 = _order(con, [{"name": BLISTER_RAW, "quantity": 1, "price": 13.99}], total=13.99)
+    pages = {"https://www.pricecharting.com/game/pokemon-fake-comets/3-pack-blister-pikachu": pc_page("3 Pack Blister [Pikachu]", 24),
+             "https://www.pricecharting.com/game/pokemon-fake-comets/3-pack-blister-eevee": pc_page("3 Pack Blister [Eevee]", 21),
+             "https://shop.example/fake-comets-blister": '<meta property="og:title" content="Fake Comets blister">'
+                                                          '<meta property="product:price:amount" content="19.50">'}
+
+    def page(url):
+        if "search-products" in url:
+            return PC_KINDS
+        if url in pages:
+            return pages[url]
+        if "ebay.com" in url:
+            return "<ul></ul>"
+        raise AssertionError(url)
+    monkeypatch.setattr(products, "fetch_page", page)
+    monkeypatch.setattr(products, "_get_json", lambda url, headers=None, data=None, gap=None: {"results": []})
+    llm = FakeLLM({"name": "Fake Comets Three-Booster Blister", "search": "Fake Comets Three-Booster Blister", "sure": True})
+    market.refresh(path, llm)
+    k = market.key(BLISTER_RAW)
+    m = market.get(con, k)
+    assert m["prices"]["pricecharting"]["price"] == 24.0  # the Pikachu blister, not the $310 box
+    assert "Pikachu" in m["matched"]["pricecharting"]["title"]
+    assert [o["title"][:13] for o in m["options"]["pricecharting"]][:2] == ["3 Pack Bliste"] * 2
+    c = app.test_client()
+    page_html = c.get(f"/market?key={k}").get_data(as_text=True)
+    for want in ("Looking for a <b>3-pack blister</b>", "Wrong product", "Use this one", "Paste the right listing",
+                 "Orders with this item (2)", "None of these are orders"):
+        assert want in page_html, want
+    started = []
+    monkeypatch.setattr(market, "start", lambda db_path, keys=None, limit=0: started.append(keys))
+    # Picking another result pins it and teaches the picker which one it was.
+    eevee = "https://www.pricecharting.com/game/pokemon-fake-comets/3-pack-blister-eevee"
+    c.post(f"/market/{k}/link", data={"source": "pricecharting", "pick": eevee})
+    m = market.get(con, k)
+    assert m["links"]["pricecharting"] == eevee and started == [[k]]
+    ex = tasks.examples(con, market.pick_task(con)["id"])
+    assert len(ex) == 1 and json.loads(ex[0]["output"]) == {"pick": 2}
+    market.refresh(path, None, keys=[k])
+    m = market.get(con, k)
+    assert m["prices"]["pricecharting"]["price"] == 21.0 and m["prices"]["pricecharting"]["how"].endswith("your link")
+    # Wrong product: never used again, the picker learns "not this one", and the next best match is used.
+    c.post(f"/market/{k}/wrong", data={"source": "pricecharting"})
+    m = market.get(con, k)
+    assert m["rejected"]["pricecharting"] == [eevee] and "pricecharting" not in m["links"]
+    assert "pricecharting" not in m["prices"]
+    ex = tasks.examples(con, market.pick_task(con)["id"])
+    assert len(ex) == 2 and json.loads(ex[0]["output"]) == {"pick": 0}
+    market.refresh(path, None, keys=[k])
+    assert market.get(con, k)["prices"]["pricecharting"]["price"] == 24.0
+    # Any shop's link works too.
+    c.post(f"/market/{k}/link", data={"url": "https://shop.example/fake-comets-blister"})
+    market.refresh(path, None, keys=[k])
+    m = market.get(con, k)
+    assert m["prices"]["site"]["price"] == 19.5 and m["links"]["site"] == "https://shop.example/fake-comets-blister"
+    assert "Your link" in c.get("/market").get_data(as_text=True)
+    # Not an order: one order leaves Orders; the item stays on the other.
+    c.post(f"/market/{k}/not-order", data={"order_id": str(oid2), "label": "ad"})
+    assert Store(con).order(oid2) is None
+    rows, _ = market.summary(con)
+    assert [r["qty"] for r in rows if r["key"] == k] == [3]
+    c.post(f"/market/{k}/not-order", data={"all": "1"})
+    assert Store(con).order(oid) is None and market.summary(con)[1]["items"] == 0
+
+
+def test_page_price_reads_any_shop():
+    assert market.page_price('<meta content="12.34" property="og:price:amount"><title>Thing</title>')[:2] == (12.34, "Thing")
+    assert market.page_price('<span itemprop="price" content="9.99">')[0] == 9.99
+    assert market.page_price("<p>Now only $7.25</p>")[0] == 7.25
+    assert market.source_of("https://www.tcgplayer.com/product/123/x") == "tcgplayer"
+    assert market.source_of("https://www.ebay.com/sch/i.html?_nkw=x") == "ebay"
+    assert market.source_of("https://shop.example/a") == "site"
