@@ -34,15 +34,17 @@
   <div class="os-mbtns">{% if m %}<button type="button" class="ghost" data-os-toggle="os-mn{{n}}" title="Wrong product? The AI learns the right name and prices are looked up again">Fix name</button>
     <button type="button" class="ghost" data-os-toggle="os-mpr{{n}}" title="Type Tradepost's offer, or any price">Type a price</button>
     <button type="button" class="ghost" data-os-toggle="os-mpic{{n}}">Picture</button>
+    <button type="button" class="ghost" data-os-toggle="os-mmatch{{n}}" title="A price came from a different product? Say so, pick another result or paste the right listing">Wrong match?</button>
     <form method="post" action="/market/{{i.key}}/ignore" style="margin:0">{% if m.ignored %}<input type="hidden" name="undo" value="1">{% endif %}<button class="ghost" title="{{'Count it in market value again' if m.ignored else 'Supplies and other things you keep: leave them out of market value'}}">{{"I resell this" if m.ignored else "Not for resale"}}</button></form>{% endif %}</div>
   {% if m %}<form id="os-mn{{n}}" class="os-pop os-editf" method="post" action="/market/{{i.key}}/name" hidden>
     <label class="wide">What it really is<input name="name" value="{{m.name or i.raw}}" maxlength="200" required></label>
     <label class="wide">Search words <span class="muted">(blank = from the name)</span><input name="search" value="{{m.search or ''}}" maxlength="120" placeholder="e.g. Surging Sparks Elite Trainer Box"></label>
     <button>Save and look up</button><p class="muted small wide">The local AI learns this name for “{{i.raw|truncate(60)}}”, and the prices and picture are looked up again for it.</p></form>
   <form id="os-mpr{{n}}" class="os-pop" method="post" action="/market/{{i.key}}/price" hidden>
-    <select name="source">{% for src, label in market.sources %}<option value="{{src}}" {{"selected" if src == "tradepost"}}>{{label}}</option>{% endfor %}<option value="market">My market price (overrides)</option></select>
+    <select name="source">{% for src, label in market.sources if src != "site" %}<option value="{{src}}" {{"selected" if src == "tradepost"}}>{{label}}</option>{% endfor %}<option value="market">My market price (overrides)</option></select>
     <input name="price" inputmode="decimal" placeholder="e.g. 62 or 60, 65, 70" size="12"><button>Save price</button>
     <p class="muted small">Several prices give the middle one. An empty box clears that price.</p></form>
+  <div id="os-mmatch{{n}}" class="os-pop" hidden>{% with m=m, mkey=i.key, msources=market.sources, mkind=i.kind %}{% include "_market_match.html" %}{% endwith %}</div>
   <form id="os-mpic{{n}}" class="os-pop" method="post" action="/market/{{i.key}}/image" hidden>
     {% if m.images %}<div class="os-mpics">{% for img in m.images %}<label><img src="{{img}}" alt="" loading="lazy" referrerpolicy="no-referrer"><input type="radio" name="image" value="{{img}}" {{"checked" if img == m.image}}></label>{% endfor %}</div>{% endif %}
     <input name="image_url" placeholder="or paste a picture link (https://…)" size="28">

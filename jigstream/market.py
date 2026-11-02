@@ -42,8 +42,10 @@ HORIZONS = [(1, "In 30 days"), (3, "In 90 days"), (6, "In 6 months")]
 DONE = ("cancelled", "returned", "refunded", "not_an_order", "expense", "sale")
 
 SOURCES = [("pricecharting", "PriceCharting"), ("tcgplayer", "TCGplayer"), ("ebay", "eBay sold"),
-           ("tradepost", "Tradepost")]
+           ("tradepost", "Tradepost"), ("site", "Your link")]
+TYPED = [s for s in SOURCES if s[0] != "site"]  # sources you can type a price for
 SOURCE_NAME = dict(SOURCES, market="Your price")
+PICK_TASK = "Pick the market listing"
 
 # Listing words that mean a different thing than the sealed product: graded, opened, a lot, a code card, a case.
 BAD = {"graded", "psa", "bgs", "cgc", "lot", "lots", "empty", "opened", "used", "damaged", "code", "codes", "digital",
@@ -79,8 +81,20 @@ state = {"running": False, "done": 0, "total": 0, "current": "", "finished": Non
 _run_lock = threading.Lock()
 
 
+NEW_COLUMNS = ("links", "rejected", "options")  # your pinned listings, matches you said were wrong, what was found
+
+
+def _setup(c):
+    c.executescript(SCHEMA)
+    have = {r[1] for r in c.execute("PRAGMA table_info(market_items)")}
+    for col in NEW_COLUMNS:
+        if col not in have:
+            c.execute(f"ALTER TABLE market_items ADD COLUMN {col} TEXT")
+    c.commit()
+
+
 def ensure(con):
-    return db.setup_once(con, "market", lambda c: (c.executescript(SCHEMA), c.commit()))
+    return db.setup_once(con, "market", _setup)
 
 
 def now():
@@ -92,9 +106,48 @@ def key(name):
     return re.sub(r"[^a-z0-9]+", "", unescape(str(name or "")).lower().replace("é", "e"))[:160]
 
 
+NUMS = {"one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6", "eight": "8", "nine": "9",
+        "ten": "10", "single": "1", "triple": "3", "tri": "3"}
+
+
 def words(text):
     t = unescape(str(text or "")).lower().replace("é", "e").replace("&", " and ")
-    return [w for w in re.findall(r"[a-z0-9]+", t)]
+    return [NUMS.get(w, w) for w in re.findall(r"[a-z0-9]+", t)]
+
+
+# What kind of sealed product a title is. A 3-pack blister and a booster display share a set name but not a price,
+# so a listing of another kind is never the match. Most specific first; checked on the words with numbers as digits.
+KINDS = [
+    ("ultra premium collection", r"\bultra premium collection\b|\bupc\b"),
+    ("Pokemon Center elite trainer box", r"\bpokemon center\b.*\b(elite trainer box|etb)\b|\b(elite trainer box|etb)\b.*\bpokemon center\b"),
+    ("elite trainer box", r"\belite trainer box\b|\betb\b"),
+    ("booster bundle", r"\bbooster bundle\b"),
+    ("build and battle", r"\bbuild (and )?battle\b"),
+    ("half booster box", r"\bhalf booster box\b"),
+    ("booster box", r"\bbooster (box|display)\b|\bdisplay box\b|\b(24|36) (booster )?packs?\b"),
+    ("case", r"\bcase\b"),
+    ("mini tin", r"\bmini tins?\b"),
+    ("tin", r"\btins?\b"),
+    ("collection", r"\bcollection\b|\bpremium\b|\bposter\b|\bbinder\b|\bsurprise box\b|\bgift box\b"),
+    ("3-pack blister", r"\b3 (pack|booster|packs|boosters)\b|\btripack\b"),
+    ("2-pack blister", r"\b2 (pack|booster|packs|boosters)\b"),
+    ("checklane blister", r"\bcheck ?lane\b|\b1 (pack|booster) blister\b"),
+    ("blister", r"\bblister\b"),
+    ("booster pack", r"\bsleeved booster\b|\bbooster pack\b|\bbooster\b"),
+]
+BLISTERS = {"3-pack blister", "2-pack blister", "checklane blister", "blister"}
+
+
+def kind_of(text):
+    t = " ".join(words(text))
+    return next((k for k, pat in KINDS if re.search(pat, t)), None)
+
+
+def same_kind(a, b):
+    """Could these be the same product? Unknown kinds can; a plain "blister" goes with any blister."""
+    if not a or not b or a == b:
+        return True
+    return {a, b} <= BLISTERS and "blister" in (a, b)
 
 
 def core(text):
@@ -163,23 +216,49 @@ def teach_name(c, raw, store, name, search=""):
 
 # --- Reading prices -------------------------------------------------------------------------------
 
-def best_match(candidates, want):
-    """The candidate whose title is closest to the wanted words: most of them, few extra, no bad words."""
+def rank(candidates, want, hints="", skip=()):
+    """[(score, candidate)] best first: titles with most of the wanted words, few extra, the same kind of product
+    (never a booster box for a blister), no graded/lot/case words, and a bonus for words only the store's name had
+    (a variant like Kangaskhan). Links in skip are matches you said were wrong."""
     want_core = core(want)
     if not want_core:
-        return None
-    best, top = None, 0.0
+        return []
+    kind = kind_of(want) or kind_of(hints)
+    extra = core(hints) - want_core
+    out = []
     for cand in candidates:
+        if cand.get("link") and cand["link"] in skip:
+            continue
         have = core(cand["title"])
-        if not have or (have & BAD) - want_core:
+        if not have or (have & BAD) - want_core - extra:
+            continue
+        ck = kind_of(cand["title"])
+        if not same_kind(kind, ck):
             continue
         hit = len(want_core & have)
         if hit < max(1, math.ceil(0.6 * len(want_core))):
             continue
         score = hit / len(want_core | have)
-        if score > top:
-            best, top = cand, score
-    return best
+        if kind and ck == kind:
+            score += 0.2
+        elif kind and ck:
+            score += 0.1  # a blister of unknown size
+        elif kind:
+            score -= 0.1  # the listing doesn't say what it is
+        score += 0.08 * len(extra & have)
+        out.append((round(score, 4), cand))
+    out.sort(key=lambda sc: -sc[0])
+    return out
+
+
+def best_match(candidates, want, hints="", skip=()):
+    """The candidate closest to the wanted words (see rank), or None."""
+    ranked = rank(candidates, want, hints, skip)
+    return ranked[0][1] if ranked else None
+
+
+def default_pick(src, candidates, search):
+    return best_match(candidates, search)
 
 
 def _text(html):
@@ -265,13 +344,13 @@ def parse_pricecharting_product(html, link=""):
             "link": link}
 
 
-def pricecharting(search):
+def pricecharting(search, pick=default_pick):
     url = "https://www.pricecharting.com/search-products?" + f"q={quote_plus(search)}&type=prices"
     html = fetch(url, "price")
     if 'id="product_name"' in html or "VGPC.chart_data" in html:  # one match: the site went straight to it
         found = parse_pricecharting_product(html, url)
     else:
-        pick = best_match(parse_pricecharting_search(html), search)
+        pick = pick("pricecharting", parse_pricecharting_search(html), search)
         if not pick:
             raise products.SourceError(f"PriceCharting has nothing matching “{search}”.")
         found = parse_pricecharting_product(fetch(pick["link"], "ungraded"), pick["link"])
@@ -287,7 +366,7 @@ def pricecharting(search):
 TCG_SEARCH = "https://mp-search-api.tcgplayer.com/v1/search/request?q={}&isList=false"
 
 
-def tcgplayer(search):
+def tcgplayer(search, pick=default_pick):
     """TCGplayer's market price, from the search its own site uses."""
     body = {"algorithm": "sales_synonym_v2", "from": 0, "size": 24, "filters": {"term": {}, "range": {}, "match": {}},
             "listingSearch": {"context": {"cart": {}}, "filters": {"term": {"sellerStatus": "Live", "channelId": 0},
@@ -298,10 +377,10 @@ def tcgplayer(search):
     data = products._get_json(TCG_SEARCH.format(quote(search)), {"Content-Type": "application/json",
                                                                   "Origin": "https://www.tcgplayer.com"},
                               json.dumps(body).encode())
-    return pick_tcgplayer(data, search)
+    return pick_tcgplayer(data, search, pick)
 
 
-def pick_tcgplayer(data, search):
+def pick_tcgplayer(data, search, pick=default_pick):
     found = []
     for block in (data or {}).get("results") or []:
         for r in block.get("results") or []:
@@ -312,16 +391,16 @@ def pick_tcgplayer(data, search):
             found.append({"title": f"{r['productName']} {r.get('setName') or ''}".strip(), "price": price,
                           "link": f"https://www.tcgplayer.com/product/{pid}" if pid else "https://www.tcgplayer.com",
                           "image": f"https://tcgplayer-cdn.tcgplayer.com/product/{pid}_200w.jpg" if pid else ""})
-    pick = best_match(found, search)
+    pick = pick("tcgplayer", found, search)
     if not pick:
         raise products.SourceError(f"TCGplayer has nothing matching “{search}”.")
     return dict(pick, count=1, how="TCGplayer market price")
 
 
-def ebay(search):
+def ebay(search, hints=""):
     url = ("https://www.ebay.com/sch/i.html?_nkw=" + quote_plus(search) +
            "&LH_Sold=1&LH_Complete=1&LH_ItemCondition=1000&_ipg=120")
-    prices = parse_ebay(fetch(url, "sold"), search)
+    prices = parse_ebay(fetch(url, "sold"), search, hints)
     s = products.summarize(prices)
     if not s:
         raise products.SourceError(f"No eBay sold listings matched “{search}”.")
@@ -329,8 +408,9 @@ def ebay(search):
             "how": f"middle of {s['count']} sold listing{'s' if s['count'] != 1 else ''}", "link": url}
 
 
-def parse_ebay(html, search):
-    """Sold prices of listings that are this product (graded, lots, cases and empties left out)."""
+def parse_ebay(html, search, hints=""):
+    """Sold prices of listings that are this product (graded, lots, cases, empties and other kinds of product left
+    out). No search: every listing counts (a search you picked yourself)."""
     prices = []
     for block in re.split(r"<li[^>]+class=\"[^\"]*\bs-(?:item|card)\b", html or "")[1:]:
         t = re.search(r'class="[^"]*s-(?:item|card)__title[^"]*"[^>]*>(.*?)</(?:div|span|h3)>', block, re.S)
@@ -340,7 +420,7 @@ def parse_ebay(html, search):
         title, price_text = _text(t.group(1)), _text(pr.group(1))
         if "shop on ebay" in title.lower() or " to " in price_text:
             continue
-        if best_match([{"title": title}], search):
+        if not search or best_match([{"title": title}], search, hints):
             p = _price(price_text)
             if p:
                 prices.append(p)
@@ -366,11 +446,188 @@ def tradepost(c, name, search):
             "how": f"your last {s['count']} Tradepost payout{'s' if s['count'] != 1 else ''}", "link": ""}
 
 
+# --- Your own listing links ------------------------------------------------------------------------
+
+TCG_DETAILS = "https://mp-search-api.tcgplayer.com/v1/product/{}/details"
+TCG_POINTS = "https://mpapi.tcgplayer.com/v2/product/{}/pricepoints"
+
+
+def source_of(url):
+    """Which source a pasted listing link belongs to: pricecharting, tcgplayer, ebay, or site (any other)."""
+    host = (re.match(r"^https?://([^/?#]+)", url or "") or [None, ""])[1].lower()
+    for src, domain in (("pricecharting", "pricecharting.com"), ("tcgplayer", "tcgplayer.com"), ("ebay", "ebay.")):
+        if domain in host:
+            return src
+    return "site"
+
+
+def _meta(html, *names):
+    for n in names:
+        m = re.search(r'<meta[^>]+(?:property|name|itemprop)="%s"[^>]+content="([^"]*)"' % re.escape(n), html or "", re.I) \
+            or re.search(r'<meta[^>]+content="([^"]*)"[^>]+(?:property|name|itemprop)="%s"' % re.escape(n), html or "", re.I)
+        if m and m.group(1).strip():
+            return unescape(m.group(1).strip())
+    return ""
+
+
+def page_price(html):
+    """(price, title, image) from any shop's product page: its price tags, else the first $ price on it."""
+    price = products.money(_meta(html, "product:price:amount", "og:price:amount", "price"))
+    if not price:
+        m = re.search(r'itemprop="price"[^>]*content="([0-9][0-9.,]*)"', html or "") or \
+            re.search(r'"price"\s*:\s*"?([0-9][0-9,]*(?:\.[0-9]+)?)', html or "")
+        price = products.money(m.group(1)) if m else None
+    if not price:
+        body = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", html or "")
+        price = _price(_text(body))
+    title = _meta(html, "og:title", "twitter:title")
+    if not title:
+        t = re.search(r"<title>(.*?)</title>", html or "", re.S)
+        title = _text(t.group(1)) if t else ""
+    return price, title[:200], _meta(html, "og:image", "twitter:image")
+
+
+def from_link(src, url):
+    """The price from a listing you linked yourself (no searching, no guessing which result)."""
+    if src == "pricecharting":
+        found = parse_pricecharting_product(fetch(url, "ungraded"), url)
+        if not found["price"]:
+            raise products.SourceError("Your PriceCharting link had no ungraded price.")
+        return {"price": found["price"], "count": 1, "how": "PriceCharting ungraded price, your link", "link": url,
+                "title": found["title"], "image": found["image"], "chart": found["chart"]}
+    if src == "tcgplayer":
+        pid = re.search(r"/product/(\d+)", url)
+        if not pid:
+            raise products.SourceError("That TCGplayer link has no product number (it should look like "
+                                       "tcgplayer.com/product/123456/...).")
+        pid = pid.group(1)
+        head = {"Origin": "https://www.tcgplayer.com"}
+        price, title = None, ""
+        try:
+            d = products._get_json(TCG_DETAILS.format(pid), head) or {}
+            d = d.get("results", [d])[0] if isinstance(d.get("results"), list) and d.get("results") else d
+            price = products.money(d.get("marketPrice")) or products.money(d.get("lowestPrice"))
+            title = f"{d.get('productName') or ''} {d.get('setName') or ''}".strip()
+        except products.Blocked:
+            raise
+        except products.SourceError:
+            pass
+        if not price:
+            pts = products._get_json(TCG_POINTS.format(pid), head) or []
+            vals = [products.money(p.get("marketPrice")) for p in pts if isinstance(p, dict)]
+            price = next((v for v in vals if v), None)
+        if not price:
+            raise products.SourceError("TCGplayer has no market price for your link yet.")
+        return {"price": price, "count": 1, "how": "TCGplayer market price, your link", "title": title,
+                "link": f"https://www.tcgplayer.com/product/{pid}",
+                "image": f"https://tcgplayer-cdn.tcgplayer.com/product/{pid}_200w.jpg"}
+    if src == "ebay" and "/sch/" in url:
+        for flag in ("LH_Sold=1", "LH_Complete=1"):
+            if flag.split("=")[0] not in url:
+                url += ("&" if "?" in url else "?") + flag
+        s = products.summarize(parse_ebay(fetch(url, "sold"), None))
+        if not s:
+            raise products.SourceError("Your eBay search showed no sold listings.")
+        return {"price": s["median"], "low": s["low"], "high": s["high"], "count": s["count"],
+                "how": f"middle of {s['count']} sold listing{'s' if s['count'] != 1 else ''} in your eBay search",
+                "link": url}
+    price, title, image = page_price(fetch(url, "$"))
+    if not price:
+        raise products.SourceError(f"Couldn't find a price on {url.split('/')[2]}. Type the price in instead.")
+    return {"price": price, "count": 1, "how": f"price on your {url.split('/')[2]} link", "link": url,
+            "title": title, "image": image if image.startswith("https://") else ""}
+
+
+# --- Picking the right listing (rules first, then the AI, which learns from your picks) --------------------
+
+def pick_task(c):
+    """The Training page task that picks which search result is the product (made the first time it's needed)."""
+    row = c.execute("SELECT * FROM ai_tasks WHERE name = ?", (PICK_TASK,)).fetchone()
+    if row:
+        return dict(row)
+    c.execute("INSERT INTO ai_tasks (name, instructions, answer, created_at) VALUES (?,?,?,?)",
+              (PICK_TASK, "You get an item from a store's order email (as the email wrote it, and the product it was "
+               "named as) and numbered listings from a price site. Say which listing is exactly that product: the "
+               "same set and the same kind of product and size (a 3-pack blister is not a booster box, a booster "
+               "bundle is not an Elite Trainer Box, a Pokemon Center ETB is not a regular ETB), and the same "
+               "variant when the email names one. If none is that product, pick 0. Reply {\"pick\": number}.",
+               "json", tasks.now()))
+    c.commit()
+    return pick_task(c)
+
+
+def _pick_input(m, search, listings):
+    return json.dumps({"item": m.get("raw") or "", "named": m.get("name") or "", "search": search,
+                       "listings": [{"n": i + 1, "title": x["title"]} for i, x in enumerate(listings)]},
+                      ensure_ascii=False)
+
+
+def ai_pick(c, llm, m, search, listings):
+    """The listing the local AI picks, None when it says none fit, or False when it couldn't answer."""
+    try:
+        got = json.loads(tasks.answer(llm, c, pick_task(c), _pick_input(m, search, listings)))
+        n = int(got.get("pick")) if isinstance(got, dict) else -1
+    except (LLMError, ValueError, TypeError) as e:
+        logger.info("market: the local AI couldn't pick a listing (%s)", e)
+        return False
+    if n == 0:
+        return None
+    return listings[n - 1] if 1 <= n <= len(listings) else False
+
+
+def teach_pick(c, m, search, listings, chosen):
+    """Your pick (or "none of these", chosen None) becomes an example for the listing picker."""
+    n = next((i + 1 for i, x in enumerate(listings) if chosen and x.get("link") == chosen.get("link")), 0)
+    tasks.add_examples(c, pick_task(c)["id"], [(_pick_input(m, search, listings), json.dumps({"pick": n}))])
+
+
+def picker(c, m, llm, options):
+    """The pick function the sources use for this item: skips matches you said were wrong, keeps what was found
+    (so you can pick another), and asks the local AI when two results are close."""
+    hints = " ".join(x for x in (m.get("raw"), m.get("name")) if x)
+    rejected = m.get("rejected") or {}
+
+    def pick(src, candidates, search):
+        skip = set(rejected.get(src) or [])
+        ranked = rank(candidates, search, hints, skip)
+        seen = {id(cand) for _, cand in ranked}
+        shown = [cand for _, cand in ranked] + [x for x in candidates if id(x) not in seen and x.get("link") not in skip]
+        options[src] = [{k: x.get(k) for k in ("title", "link", "price", "image")} for x in shown[:8]]
+        if not ranked:
+            return None
+        if llm is not None and len(ranked) > 1 and ranked[1][0] >= ranked[0][0] - 0.15:
+            close = [cand for _, cand in ranked[:6]]
+            chosen = ai_pick(c, llm, m, search, close)
+            if chosen is None:
+                return None
+            if chosen:
+                return chosen
+        return ranked[0][1]
+    return pick
+
+
+def shared_links(c, m):
+    """Links you pinned on another row for the same product (another store's spelling of it)."""
+    name = (m.get("name") or "").strip().lower()
+    if not name:
+        return {}
+    out = {}
+    for r in c.execute("SELECT links FROM market_items WHERE lower(name) = ? AND key != ? AND links IS NOT NULL"
+                       " AND links NOT IN ('', '{}', 'null')", (name, m["key"])):
+        try:
+            for src, url in (json.loads(r[0]) or {}).items():
+                out.setdefault(src, url)
+        except ValueError:
+            continue
+    return out
+
+
 # --- Items and their market rows ----------------------------------------------------------------
 
 def _load(row):
     d = dict(row)
-    for f, empty in (("prices", {}), ("matched", {}), ("history", []), ("chart", []), ("errors", {}), ("images", [])):
+    for f, empty in (("prices", {}), ("matched", {}), ("history", []), ("chart", []), ("errors", {}), ("images", []),
+                     ("links", {}), ("rejected", {}), ("options", {})):
         try:
             d[f] = json.loads(d.get(f) or "null") or empty
         except ValueError:
@@ -433,8 +690,9 @@ def all_items(c):
 def save(c, m):
     ensure(c)
     cols = ("raw", "store", "name", "search", "name_how", "image", "image_manual", "images", "prices", "matched",
-            "history", "chart", "market_manual", "ignored", "errors", "updated_at")
-    vals = [json.dumps(m.get(f)) if f in ("prices", "matched", "history", "chart", "errors", "images") else m.get(f)
+            "history", "chart", "market_manual", "ignored", "errors", "updated_at", "links", "rejected", "options")
+    js = ("prices", "matched", "history", "chart", "errors", "images", "links", "rejected", "options")
+    vals = [json.dumps({} if f in NEW_COLUMNS and m.get(f) is None else m.get(f)) if f in js else m.get(f)
             for f in cols]
     c.execute(f"INSERT INTO market_items (key, {', '.join(cols)}, created_at) VALUES (?, {', '.join('?' * len(cols))}, ?)"
               f" ON CONFLICT(key) DO UPDATE SET {', '.join(f'{f}=excluded.{f}' for f in cols)}",
@@ -482,25 +740,42 @@ def lookup(c, m, llm=None, sources=None):
     search = m.get("search") or cleanup(m["name"])
     prices, errors = dict(m.get("prices") or {}), {}
     images = list(m.get("images") or [])
+    links = dict(shared_links(c, m), **(m.get("links") or {}))
+    options = {}
+    pick = picker(c, m, llm, options)
+    hints = " ".join(x for x in (m.get("raw"), m.get("name")) if x)
     for src, label in SOURCES:
         if sources and src not in sources:
             continue
         if (prices.get(src) or {}).get("manual"):
             continue  # a price you typed stays until you clear it
+        if src == "site" and not links.get(src):
+            prices.pop(src, None)
+            continue
+        if src == "ebay" and not links.get(src) and "*" in ((m.get("rejected") or {}).get("ebay") or []):
+            prices.pop(src, None)
+            errors[src] = "You said eBay's listings were the wrong product. Paste an eBay sold search to use."
+            continue
         try:
-            if src == "pricecharting":
-                got = pricecharting(search)
+            if links.get(src):
+                got = from_link(src, links[src])
+                if src == "pricecharting":
+                    m["chart"] = got.pop("chart", []) or m.get("chart") or []
+            elif src == "pricecharting":
+                got = pricecharting(search, pick)
                 m["chart"] = got.pop("chart", []) or m.get("chart") or []
             elif src == "tcgplayer":
-                got = tcgplayer(search)
+                got = tcgplayer(search, pick)
             elif src == "ebay":
-                got = ebay(search)
+                got = ebay(search, hints)
             else:
                 got = tradepost(c, m["name"], search)
         except products.SourceError as e:
             errors[src] = str(e)
-            if src == "tradepost":  # no Tradepost sales any more (one was unlinked): nothing to show
-                prices.pop(src, None)
+            if src == "tradepost" or (src in ("pricecharting", "tcgplayer") and not links.get(src)
+                                      and "nothing matching" in str(e)):
+                prices.pop(src, None)  # no longer matches (a wrong match was turned down): nothing to show
+                m["matched"] = {k: v for k, v in (m.get("matched") or {}).items() if k != src}
             logger.info("market: %s on %s: %s", search[:60], label, e)
             continue
         except Exception as e:  # an odd answer from one site never stops the others
@@ -516,6 +791,7 @@ def lookup(c, m, llm=None, sources=None):
         prices[src] = dict(got, when=date.today().isoformat(), manual=False)
         logger.info("market: %s on %s: $%.2f (%s)", search[:60], label, got["price"], got["how"])
     m["prices"], m["errors"], m["images"] = prices, errors, images[:8]
+    m["options"] = dict(m.get("options") or {}, **options)
     if not m.get("image_manual"):
         m["image"] = images[0] if images else m.get("image") or ""
     value = market_of(m)
@@ -624,7 +900,8 @@ def summary(c):
     by = {}
     for h in items:
         m = rows.get(h["key"])
-        r = by.setdefault(h["key"], {"m": m, "qty": 0, "cost": 0.0, "costed": 0, "orders": [], "image": ""})
+        r = by.setdefault(h["key"], {"m": m, "qty": 0, "cost": 0.0, "costed": 0, "orders": [], "image": "", "held": []})
+        r["held"].append({k: h[k] for k in ("order_id", "store", "day", "qty", "cost", "status")})
         r["qty"] += h["qty"]
         if h["cost"] is not None:
             r["cost"] += h["cost"] * h["qty"]
@@ -639,7 +916,8 @@ def summary(c):
         rate = m["trend"]
         row = {"key": k, "m": m, "name": m.get("name") or m["raw"], "raw": m["raw"], "qty": r["qty"],
                "orders": sorted(set(r["orders"]), reverse=True), "each": each, "cost": round(r["cost"], 2),
-               "costed": r["costed"], "market": market, "image": (m.get("image") if m.get("image_manual") else "")
+               "costed": r["costed"], "market": market, "kind": kind_of(m.get("search") or m.get("name") or m["raw"])
+               or kind_of(m["raw"]), "held": sorted(r["held"], key=lambda x: x["day"], reverse=True), "image": (m.get("image") if m.get("image_manual") else "")
                or r["image"] or m.get("image") or "", "rate": rate, "ignored": bool(m.get("ignored"))}
         row["value"] = round(market * r["qty"], 2) if market is not None else None
         row["profit_each"] = round(market - each, 2) if market is not None and each is not None else None
@@ -701,7 +979,8 @@ def for_order(c, order, rows=None):
             value += market * qty
             if each is not None:
                 profit += (market - each) * qty
-        items.append({"key": k, "raw": i["name"], "qty": qty, "each": each, "m": m, "market": market})
+        kind = kind_of((m or {}).get("search") or (m or {}).get("name") or i["name"]) or kind_of(i["name"])
+        items.append({"key": k, "raw": i["name"], "qty": qty, "each": each, "m": m, "market": market, "kind": kind})
     priced = [i for i in items if i["market"] is not None]
     return {"items": items, "value": round(value, 2) if priced else None, "profit": round(profit, 2) if priced else None,
             "complete": gotall and bool(items), "sources": SOURCES}
@@ -763,8 +1042,10 @@ def page():
         show, lambda r: (r["profit"] is None, -(r["profit"] or 0), -(r["value"] or 0)))
     view.sort(key=order)
     one = request.args.get("key")
+    from . import inbox
     return render_template("market.html", rows=view, tot=tot, show=show if show in SHOWS else "", shows=SHOWS,
-                           state=state, sources=SOURCES, source_name=SOURCE_NAME, horizons=HORIZONS, open=one,
+                           state=state, sources=SOURCES, typed=TYPED,
+                           not_order=[(k, inbox.LABELS[k][0]) for k in inbox.NOT_ORDER], source_name=SOURCE_NAME, horizons=HORIZONS, open=one,
                            llm_task=name_task(c)["id"])
 
 
@@ -851,4 +1132,101 @@ def ignore_route(k):
     if m:
         m["ignored"] = 0 if request.form.get("undo") else 1
         save(c, m)
+    return _back(f"m-{k}")
+
+
+def _clear_source(m, src):
+    """Forget what a source found (not a price you typed), so it's looked up fresh."""
+    if not (m["prices"].get(src) or {}).get("manual"):
+        m["prices"].pop(src, None)
+    m["matched"] = {k: v for k, v in (m.get("matched") or {}).items() if k != src}
+    m["errors"] = {k: v for k, v in (m.get("errors") or {}).items() if k != src}
+    m["updated_at"] = None
+
+
+@bp.post("/market/<k>/link")
+def link_route(k):
+    """Use this listing for this product: one picked from what was found, or a link you pasted from PriceCharting,
+    TCGplayer, an eBay sold search or any shop. Picks teach the AI's listing picker. An empty link unpins."""
+    c = _con()
+    m = get(c, k)
+    url = (request.form.get("url") or request.form.get("pick") or "").strip()
+    src = request.form.get("source") or ""
+    if not m:
+        return _back(f"m-{k}")
+    if not url:  # unpin
+        if src in m["links"]:
+            m["links"].pop(src)
+            _clear_source(m, src)
+            save(c, m)
+            start(current_app.config.get("DB_PATH"), [k])
+        return _back(f"m-{k}")
+    if not re.match(r"^https?://[^\s\"'<>]+$", url):
+        return _back(f"m-{k}")
+    src = source_of(url) if not src or src not in SOURCE_NAME or source_of(url) != src else src
+    found = m["options"].get(src) or []
+    chosen = next((x for x in found if x.get("link") == url), None)
+    if chosen and len(found) > 1:
+        teach_pick(c, m, m.get("search") or cleanup(m.get("name") or m["raw"]), found, chosen)
+        logger.info("market: the AI learned which %s listing is %s", SOURCE_NAME[src], (m.get("name") or "")[:60])
+    m["links"][src] = url
+    m["rejected"][src] = [x for x in m["rejected"].get(src) or [] if x not in (url, "*")]
+    _clear_source(m, src)
+    save(c, m)
+    start(current_app.config.get("DB_PATH"), [k])
+    return _back(f"m-{k}")
+
+
+@bp.post("/market/<k>/wrong")
+def wrong_route(k):
+    """That source matched the wrong product: it's never used for this item again, the AI's listing picker learns
+    it isn't the product, and the source is looked up again (the next best match, or none)."""
+    c = _con()
+    m = get(c, k)
+    src = request.form.get("source") or ""
+    if not m or src not in SOURCE_NAME:
+        return _back(f"m-{k}")
+    bad = (m["matched"].get(src) or {}).get("link") or (m["prices"].get(src) or {}).get("link") or ""
+    if bad and src in ("pricecharting", "tcgplayer", "site"):
+        m["rejected"][src] = sorted(set(m["rejected"].get(src) or []) | {bad})
+        title = (m["matched"].get(src) or {}).get("title") or ""
+        if title:
+            teach_pick(c, m, m.get("search") or cleanup(m.get("name") or m["raw"]), [{"title": title, "link": bad}], None)
+    if m["links"].get(src) == bad or src in ("ebay", "site"):
+        m["links"].pop(src, None)
+    m["options"][src] = [x for x in m["options"].get(src) or [] if x.get("link") != bad]
+    if (m["prices"].get(src) or {}).get("manual"):
+        m["prices"].pop(src)
+    _clear_source(m, src)
+    if src == "ebay":  # eBay's price is many listings: it stays off until you link a search or type a price
+        m["errors"]["ebay"] = "You said eBay's listings were the wrong product. Paste an eBay sold search to use."
+        m["rejected"]["ebay"] = ["*"]
+    save(c, m)
+    start(current_app.config.get("DB_PATH"), [k])
+    return _back(f"m-{k}")
+
+
+@bp.post("/market/<k>/not-order")
+def not_order_route(k):
+    """Orders holding this item that aren't orders (an ad, a newsletter...): they leave Orders, and the AI re-reads
+    their emails as what you said and learns from it. One order, or every order with this item."""
+    from . import inbox
+    from .orderstore import Store
+    from .ordersheet import move_out
+    from flask import flash
+    c = _con()
+    store = Store(c)
+    label = request.form.get("label") or "other"
+    label = label if label in inbox.NOT_ORDER else "other"
+    if request.form.get("all") == "1":
+        ids = sorted({h["order_id"] for h in held(c) if h["key"] == k})
+    else:
+        ids = [int(x) for x in request.form.getlist("order_id") if str(x).isdigit()]
+    said = ""
+    for oid in ids:
+        o = store.order(oid)
+        if o is not None:
+            said = move_out(store, o, "not_an_order", label)
+    if ids:
+        flash((f"Removed {len(ids)} orders: not orders. " if len(ids) > 1 else "") + said)
     return _back(f"m-{k}")
