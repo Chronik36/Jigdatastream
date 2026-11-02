@@ -80,6 +80,25 @@ def html_to_text(html):
     return text.strip()
 
 
+def readable(text):
+    """Email text for people to read. html_to_text marks table cells with " | " so the AI can tell columns apart;
+    order emails are tables inside tables, which leaves rows of bars between the words. Here each line keeps its
+    words, cells side by side with a little space and no bars, and empty layout rows are dropped."""
+    out, blank = [], False
+    for line in (text or "").splitlines():
+        cells = [c.strip() for c in line.split(" | ")]
+        cells = [re.sub(r"^\|+\s*|\s*\|+$", "", c).strip() for c in cells]
+        cells = [c for c in cells if c and not re.fullmatch(r"[|\s]+", c)]
+        if not cells:
+            if out and not blank:
+                out.append("")
+                blank = True
+            continue
+        out.append("   ".join(cells))
+        blank = False
+    return "\n".join(out).strip()
+
+
 class _Images(HTMLParser):
     """The pictures in an email that could be products: no tracking pixels, spacers, logos or icons."""
     SMALL = re.compile(r"^\s*([0-9]|[1-4][0-9])(px)?\s*$")
