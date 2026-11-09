@@ -1,0 +1,52 @@
+name: Retry the Mac build when GitHub had no Mac free
+# GitHub's free Apple Silicon machines are sometimes all busy, and the Mac job ends with "The job was not acquired
+# by Runner of type hosted even after multiple attempts". The code-only release goes out anyway (build-mac.yml),
+# and this re-runs just the Mac job up to 4 times, waiting longer each time, until it gets a machine. The Mac job then adds
+# the fresh BotTrack.dmg to the same build's release. Runs on ubuntu, so it costs nothing on this public repo.
+on:
+  workflow_run:
+    workflows: ["Build BotTrack for Mac and Windows"]
+    types: [completed]
+permissions:
+  actions: write
+  checks: read
+  contents: read
+jobs:
+  retry:
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion != 'success' &&
+      github.event.workflow_run.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 330  # waits + up to 4 Mac attempts; ubuntu minutes are free here
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN: ${{ github.event.workflow_run.id }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Re-run the Mac job until it gets a machine (up to 4 tries)
+        run: |
+          set -euo pipefail
+          main_head() { gh api "repos/$REPO/commits/main" -q .sha; }
+          attempt=1
+          for try in 1 2 3 4 5; do
+            job=$(gh api "repos/$REPO/actions/runs/$RUN/attempts/$attempt/jobs" \
+              -q '.jobs[] | select(.name == "build") | "\(.id) \(.conclusion)"' | head -1)
+            read -r id result <<< "$job"
+            [ "$result" = "success" ] && { echo "The Mac job ran and released the Mac installer."; exit 0; }
+            if ! gh api "repos/$REPO/check-runs/$id/annotations" -q '.[].message' | grep -q "not acquired by Runner"; then
+              echo "The Mac job ended '$result' for another reason (see its log); not retrying."; exit 0
+            fi
+            [ "$try" = 5 ] && break
+            # A newer push to main builds and releases itself, and re-running this older one would cancel it.
+            [ "$(main_head)" = "$SHA" ] || { echo "main has moved on; its own build takes over."; exit 0; }
+            echo "Try $try: no Mac was free. Waiting $(( try * 5 )) minutes, then re-running the Mac job."
+            sleep $(( try * 300 ))
+            [ "$(main_head)" = "$SHA" ] || { echo "main moved on while waiting."; exit 0; }
+            gh api -X POST "repos/$REPO/actions/jobs/$id/rerun"
+            attempt=$(( attempt + 1 ))
+            sleep 30
+            until [ "$(gh api "repos/$REPO/actions/runs/$RUN" -q .status)" = "completed" ]; do sleep 60; done
+          done
+          echo "Still no Mac after 4 tries. Re-run the Mac job by hand later: https://github.com/$REPO/actions/runs/$RUN"
