@@ -11,7 +11,7 @@ class FakeLLM:
     def __init__(self, answer):
         self.answer, self.asked = answer, []
 
-    def chat_json(self, system, user):
+    def chat_json(self, system, user, **kw):
         self.asked.append(user)
         return {"base": self.answer}
 

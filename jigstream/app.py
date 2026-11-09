@@ -228,7 +228,10 @@ def create_app(db_path=None):
             return None
         given = (order["carrier"] or "").lower()
         carrier = next((c for c in TRACK_URLS if c.lower() in given), None) or carrier_for(number)
-        return TRACK_URLS.get(carrier or "", ANY_CARRIER_URL).format(quote(number))
+        if carrier in TRACK_URLS:
+            return TRACK_URLS[carrier].format(quote(number))
+        from . import tracknum
+        return tracknum.url_for(number) or ANY_CARRIER_URL.format(quote(number))
 
     @app.template_filter("cancel_why")
     def cancel_why(order):

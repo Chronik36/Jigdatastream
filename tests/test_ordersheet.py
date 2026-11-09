@@ -180,7 +180,7 @@ def test_a_sold_email_the_model_calls_an_order_is_saved_as_a_sale():
     from jigstream.extract import extract_raw
 
     class Model:
-        def chat_json(self, system, user, examples=None):
+        def chat_json(self, system, user, examples=None, **kw):
             return {"kind": "order", "retailer": "eBay", "order_number": "12-1", "total": 120.0,
                     "items": [{"name": "Charizard ex box"}], "shipping_status": "ordered"}
     email = Email("<s>", "eBay <ebay@ebay.com>", "You made the sale for Charizard ex box", "2026-10-20", "Sold for $120.00")

@@ -11,7 +11,7 @@ MAIL = Email("<c1@nike>", "Nike <n@nike.com>", "Your order was cancelled", "2026
 
 
 class FakeLLM:
-    def chat_json(self, system, user, examples=()):
+    def chat_json(self, system, user, examples=(), **kw):
         return {"kind": "order", "retailer": "Nike", "order_number": "C123", "shipping_status": "ordered"}
 
 

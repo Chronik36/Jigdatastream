@@ -33,7 +33,7 @@ class FakeLLM:
     def __init__(self, answer):
         self.answer, self.seen = answer, []
 
-    def chat_json(self, system, text, examples=()):
+    def chat_json(self, system, text, examples=(), **kw):
         self.seen.append((text, list(examples)))
         return self.answer
 

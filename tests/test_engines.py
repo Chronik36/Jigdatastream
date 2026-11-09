@@ -21,7 +21,7 @@ class Reader:
     def __init__(self, base_url, model, api_key, timeout):
         self.model = model
 
-    def chat_json(self, system, user):
+    def chat_json(self, system, user, **kw):
         return {"kind": "order", "shipping_status": "cancelled" if "cancelled" in user else "shipped"}
 
 

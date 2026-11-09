@@ -19,7 +19,7 @@ class FakeLLM:
         FakeLLM.seen.append((system, user, list(examples), self.adapter))
         return user.upper()
 
-    def chat_json(self, system, user, examples=()):
+    def chat_json(self, system, user, examples=(), **kw):
         FakeLLM.seen.append((system, user, list(examples), self.adapter))
         return {"text": user}
 

@@ -67,6 +67,9 @@ def salvage_json(text):
 
 
 class LLMClient:
+    # Engines that failed on a JSON schema: they get plain JSON mode from then on.
+    no_schema = set()
+
     def __init__(self, base_url, model, api_key="ollama", timeout=180, adapter=None, max_tokens=None):
         self.max_tokens = max_tokens  # caps each reply; None leaves it to the engine
         self.base_url = base_url.rstrip("/")
@@ -76,9 +79,13 @@ class LLMClient:
         self.adapter = adapter  # a LoRA adapter folder from the Training page (MLX engine only)
         self.ask_again = True  # one more ask when the reply isn't JSON; quick helpers turn it off
 
-    def chat_json(self, system, user, examples=()):
-        """examples: (email text, correct JSON string) pairs shown to the model before the real email."""
-        content = self._chat(system, user, examples, json_mode=True)
+    def chat_json(self, system, user, examples=(), schema=None):
+        """examples: (email text, correct JSON string) pairs shown to the model before the real email.
+        schema: a JSON schema the reply must follow. Ollama then only lets the model write JSON of that shape
+        (structured output), so it can't wander into prose or misspell a key; an engine without schema support
+        gets plain JSON mode."""
+        json_mode = schema or True
+        content = self._chat(system, user, examples, json_mode=json_mode)
         try:
             return parse_json(content)
         except json.JSONDecodeError:
@@ -92,7 +99,7 @@ class LLMClient:
         # Empty (it spent the reply thinking) or prose instead of JSON: ask once more, plainly.
         logger.warning("model %s returned unusable output, asking again: %s", self.model, content[:500])
         content = self._chat(system, user + "\n\nReply with the JSON object only: no explanation, no thinking.",
-                             examples, json_mode=True)
+                             examples, json_mode=json_mode)
         try:
             return parse_json(content)
         except json.JSONDecodeError as e:
@@ -119,6 +126,7 @@ class LLMClient:
         return re.sub(r"<think>.*?</think>", "", self._chat(system, user, examples), flags=re.S).strip()
 
     def _chat(self, system, user, examples=(), json_mode=False):
+        asked = user
         messages = [{"role": "system", "content": system}]
         for example_user, example_answer in examples:
             messages += [{"role": "user", "content": example_user},
@@ -131,7 +139,11 @@ class LLMClient:
         payload = {"model": self.model, "temperature": 0, "messages": messages}
         if self.max_tokens:
             payload["max_tokens"] = self.max_tokens
-        if json_mode:
+        schema = json_mode if isinstance(json_mode, dict) and self.base_url not in self.no_schema else None
+        if schema:
+            payload["response_format"] = {"type": "json_schema",
+                                          "json_schema": {"name": "reply", "schema": schema, "strict": True}}
+        elif json_mode:
             payload["response_format"] = {"type": "json_object"}
         if self.adapter:
             payload["adapters"] = self.adapter
@@ -146,6 +158,11 @@ class LLMClient:
         try:
             body = self._send(req)
         except urllib.error.HTTPError as e:
+            if schema:  # 400 "unknown response_format", or a 500 from an engine whose grammar choked on it
+                logger.warning("model server at %s failed on a JSON schema (HTTP %s); using JSON mode",
+                            self.base_url, e.code)
+                self.no_schema.add(self.base_url)
+                return self._chat(system, asked, examples, json_mode=True)
             # The engine answered but failed on this request (Ollama gives 500 when its runner crashes or
             # runs out of memory). Say what it said; this is not the engine being off.
             detail = _error_text(e)

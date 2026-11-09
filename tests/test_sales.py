@@ -124,7 +124,7 @@ def test_inbox_sale_label_teaches_the_model():
 
 def test_sync_saves_sales(tmp_path):
     class LLM:
-        def chat_json(self, system, user):
+        def chat_json(self, system, user, **kw):
             assert '"sale"' in system
             return {"kind": "sale", "platform": "GOAT", "items": [{"name": "Jordan 4"}], "payout": 210}
     store = Store(db.connect(str(tmp_path / "x.db")))

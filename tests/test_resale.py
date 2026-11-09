@@ -38,7 +38,7 @@ class Scripted:
     def __init__(self, *answers):
         self.answers, self.prompts = list(answers), []
 
-    def chat_json(self, system, user):
+    def chat_json(self, system, user, **kw):
         self.prompts.append(user)
         return self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
 
@@ -137,7 +137,7 @@ class SyncTests(unittest.TestCase):
                    "New arrivals!": {"kind": "order", "retailer": "Third Eye", "total": 269.98}}
 
         class LLM:
-            def chat_json(self, system, user):
+            def chat_json(self, system, user, **kw):
                 return replies[user.split("\n")[1].removeprefix("Subject: ")]
         emails = [mail("Your receipt", SAMS), mail("New arrivals!", PROMO, sender="Third Eye <a@b.com>")]
         run_sync(Config(), self.store, emails=emails, llm=LLM(), log=lambda *a, **k: None)

@@ -21,7 +21,7 @@ class LLM:
         self.status = status
         self.examples_seen = []
 
-    def chat_json(self, system, user, examples=()):
+    def chat_json(self, system, user, examples=(), **kw):
         self.examples_seen.append(list(examples))
         return {"kind": "order", "retailer": "Nike", "order_number": "C777", "shipping_status": self.status}
 
