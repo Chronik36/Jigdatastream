@@ -113,7 +113,8 @@ jobs:
             "$( [ -n "$(echo win/*.exe)" ] && echo windows )" "$( [ -n "$(echo apk/*.apk)" ] && echo android )"
 
   # GitHub sometimes has no Mac machine free for hours ("The job was not acquired by Runner"), so the Mac job never
-  # runs and nothing is released. Then this publishes the same code for the in-app Update, with the Windows
+  # runs. retry-mac.yml then re-runs the Mac job a few times, and the Mac installer is added to this build's release.
+  # Meanwhile this publishes the same code for the in-app Update, with the Windows
   # installer, the Android app and the last Mac installer (it updates itself to this code when opened).
   code-release:
     needs: [android, windows, build]
@@ -131,7 +132,8 @@ jobs:
         id: latest
         run: |
           head=$(git ls-remote origin refs/heads/main | cut -f1)
-          if [ "$head" = "$GITHUB_SHA" ] && [ -n "$RELEASES_TOKEN" ]; then echo "go=1" >> "$GITHUB_OUTPUT"; else echo "Skipping: main is now $head"; fi
+          # Later attempts are Mac retries (retry-mac.yml): the code release from the first attempt is already out.
+          if [ "$head" = "$GITHUB_SHA" ] && [ -n "$RELEASES_TOKEN" ] && [ "$GITHUB_RUN_ATTEMPT" = "1" ]; then echo "go=1" >> "$GITHUB_OUTPUT"; else echo "Skipping: main is now $head"; fi
       - uses: actions/setup-python@v5
         if: steps.latest.outputs.go == '1'
         with: {python-version: "3.12"}

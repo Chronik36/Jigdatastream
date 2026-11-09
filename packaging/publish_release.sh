@@ -7,7 +7,9 @@ set -euo pipefail
 run="$1"; repo="$2"; extra="${3:-}"
 tag="build-$run-${GITHUB_SHA::7}"
 # Patch notes: every change since the last release (its tag ends in that build's commit id).
-prev=$(gh release list -R "$repo" -L 1 --json tagName -q '.[0].tagName' 2>/dev/null || true)
+# A retried Mac job finds its release already made by the code-only release: it then adds the Mac installer to it.
+exists=""; gh release view "$tag" -R "$repo" >/dev/null 2>&1 && exists=1
+prev=$(gh release list -R "$repo" -L 5 --json tagName -q '.[].tagName' 2>/dev/null | grep -vx "$tag" | head -1 || true)
 range="-1"
 if [ -n "$prev" ] && git cat-file -e "${prev##*-}^{commit}" 2>/dev/null; then range="${prev##*-}..HEAD"; fi
 git log $range --no-merges --pretty='- %s' | sed -E 's/ \(#[0-9]+\)$//' | head -40 > notes.txt
@@ -18,8 +20,13 @@ git log $range --no-merges --pretty='- %s' | sed -E 's/ \(#[0-9]+\)$//' | head -
   echo; echo "### What's new"; cat notes.txt; } > body.txt
 cp packaging/README.md README.md
 shopt -s nullglob
-gh release create "$tag" dist/BotTrack*.dmg dist/bottrack-code.zip apk/*.apk win/*.exe README.md dist/BotTrack-Manual*.html \
-  -R "$repo" --title "BotTrack build $run" --notes-file body.txt
+files=(dist/BotTrack*.dmg dist/bottrack-code.zip apk/*.apk win/*.exe README.md dist/BotTrack-Manual*.html)
+if [ -n "$exists" ]; then
+  gh release upload "$tag" "${files[@]}" -R "$repo" --clobber
+  gh release edit "$tag" -R "$repo" --notes-file body.txt
+else
+  gh release create "$tag" "${files[@]}" -R "$repo" --title "BotTrack build $run" --notes-file body.txt
+fi
 # The releases repository's front page shows the same README.
 sha=$(gh api "repos/$repo/contents/README.md" -q .sha 2>/dev/null || true)
 gh api -X PUT "repos/$repo/contents/README.md" -f message="README for build $run" \
