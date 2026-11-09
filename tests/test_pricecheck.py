@@ -72,7 +72,7 @@ def test_saved_prices_are_fixed_once_from_their_emails(tmp_path):
 
 
 class LLM:
-    def chat_json(self, system, user, examples=()):
+    def chat_json(self, system, user, examples=(), **kw):
         return {"kind": "order", "retailer": "Amazon", "order_number": "o1", "total": 4500}
 
 

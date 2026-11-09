@@ -1,0 +1,4661 @@
+[
+ {
+  "name": "Amazon",
+  "courier_code": "amazon",
+  "tracking_numbers": [
+   {
+    "name": "Amazon Logistics",
+    "id": "amazon_logistics",
+    "regex": [
+     "\\s*T\\s*B\\s*[ACM]\\s*(?<SerialNumber>([0-9]\\s*){12,12})\\s*"
+    ],
+    "validation": {},
+    "test_numbers": {
+     "valid": [
+      "TBA000000000000",
+      "TBA010000000000",
+      "TBC 000000000000",
+      "TBM502887274000"
+     ],
+     "invalid": [
+      "TBA50288727400A",
+      "000000000000000",
+      "000000000000",
+      "TBB000000000000"
+     ]
+    }
+   },
+   {
+    "name": "Amazon International",
+    "id": "amazon_international",
+    "regex": [
+     "\\s*[AFC]\\s*(?<SerialNumber>([0-9]\\s*){10,10})\\s*"
+    ],
+    "validation": {},
+    "test_numbers": {
+     "valid": [
+      "C1004444443",
+      "C1004444444"
+     ],
+     "invalid": [
+      "D1234567890"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "Canada Post",
+  "courier_code": "canada_post",
+  "tracking_numbers": [
+   {
+    "name": "Canada Post (16)",
+    "id": "canada_post",
+    "regex": "\\s*(?<SerialNumber>(?<OriginId>([0-9]\\s*){7})([0-9]\\s*){8})(?<CheckDigit>[0-9]\\s*)",
+    "validation": {
+     "checksum": {
+      "name": "mod10",
+      "modulo": 10,
+      "evens_multiplier": 3,
+      "odds_multiplier": 1,
+      "reverse": false
+     }
+    },
+    "tracking_url": "https://www.canadapost-postescanada.ca/track-reperage/en#/search?searchFor=%s",
+    "test_numbers": {
+     "valid": [
+      "0073938000549297",
+      "7035114477138472",
+      "4002847016405018"
+     ],
+     "invalid": [
+      "0073938000549292",
+      "7035114477138471",
+      "5002847016405018"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "Canpar",
+  "courier_code": "canpar",
+  "tracking_numbers": [
+   {
+    "name": "Canpar (22)",
+    "id": "canpar_22",
+    "regex": "\\s*(?<SerialNumber>[CDKLSUXZ]\\s*([0-9]\\s*){21})\\s*",
+    "validation": {},
+    "tracking_url": "https://www.canpar.com/en/track/tracking.jsp?reference=%s&locale=en",
+    "test_numbers": {
+     "valid": [
+      "D576002440000001718010",
+      "D576002440000001428004",
+      "D576002440000002496001",
+      "L576002440000000001004",
+      "L576002440000000004001",
+      "S576002440000000004001",
+      "S576002440000000025001"
+     ],
+     "invalid": [
+      "1576002440000002510003",
+      "D57600244000000251000",
+      "M576002440000002510003"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "DHL",
+  "courier_code": "dhl",
+  "tracking_numbers": [
+   {
+    "name": "DHL Express",
+    "id": "dhl_express",
+    "regex": "\\s*(?<SerialNumber>([0-9]\\s*){9,10})(?<CheckDigit>([0-9]\\s*))",
+    "validation": {
+     "checksum": {
+      "name": "mod7",
+      "modulo": 7
+     }
+    },
+    "tracking_url": "http://www.dhl.com/en/express/tracking.html?brand=DHL&AWB=%s",
+    "test_numbers": {
+     "valid": [
+      "3318810025",
+      "73891051146",
+      "8487135506",
+      "1099255990",
+      "3821724944",
+      "3318810036",
+      "3318810014"
+     ],
+     "invalid": [
+      "3318810010",
+      "3318810034",
+      "3318810011"
+     ]
+    }
+   },
+   {
+    "name": "DHL Express (Piece ID)",
+    "id": "dhl_express_piece_id",
+    "regex": "\\s*(J[A-Z]{2,3})(?<SerialNumber>([0-9]\\s*){9,10})",
+    "validation": {},
+    "tracking_url": "http://www.dhl.com/en/express/tracking.html?brand=DHL&AWB=%s",
+    "test_numbers": {
+     "valid": [
+      "JJD0099999999",
+      "JVGL0999999990"
+     ],
+     "invalid": [
+      "XJD0099999998"
+     ]
+    }
+   },
+   {
+    "name": "DHL E-Commerce",
+    "id": "dhl_ecommerce",
+    "regex": "(?:GM|LX|RX|UV|CN|SG|TH|IN|HK|MY)\\s*(?<SerialNumber>(?=[0-9A-Z\\s]{10,39}\\b)(?=[^0-9A-Z]*[0-9])[0-9A-Z\\s]{10,39})",
+    "validation": {},
+    "tracking_url": "http://www.dhl.com/en/express/tracking.html?brand=DHL&AWB=%s",
+    "test_numbers": {
+     "valid": [
+      "GM2951173225174494",
+      "GM 2 9 5 117 32 25 1 7 44 9 4",
+      "GM295117494011169042",
+      "GM9E44608A27984866BA2D"
+     ],
+     "invalid": [
+      "GS295117494011169041",
+      "GR295117494011169045",
+      "AAAAAAAAAAAAAAAAAA",
+      "ABCDEFGHILJKLMNOPQ",
+      "ABCDEFGHILJKLMNOPQRSTU1234567890"
+     ]
+    }
+   },
+   {
+    "name": "DHL E-Commerce (14)",
+    "id": "dhl_ecommerce_14",
+    "regex": "\\s*\\b(?<SerialNumber>(?:[0-9]\\s*){14})\\b",
+    "validation": {},
+    "tracking_url": "http://www.dhl.com/en/express/tracking.html?brand=DHL&AWB=%s",
+    "test_numbers": {
+     "valid": [
+      "60120172242323",
+      "5108 7693037816",
+      "60120174971147"
+     ],
+     "invalid": [
+      "A60120172242323",
+      "60120172242323B",
+      "160120172242323",
+      "6012017224232301",
+      "601201722X2323",
+      "GS295117494011169041",
+      "GR295117494011169045"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "DPD",
+  "courier_code": "dpd",
+  "tracking_numbers": [
+   {
+    "name": "DPD (28)",
+    "id": "dpd",
+    "regex": [
+     "\\s*",
+     "(?<SerialNumber>",
+     "(?<DestinationZip>([0-9]\\s*){7})",
+     "([0-9]\\s*){14}",
+     "(?<ServiceType>([0-9]\\s*){3})",
+     "(?<CountryCode>([0-9]\\s*){3})",
+     ")",
+     "(?<CheckDigit>[0-9A-Z]\\s*)"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "mod_37_36",
+      "modulo": 36,
+      "alphabet": "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+     }
+    },
+    "tracking_url": "https://www.dpdgroup.com/nl/mydpd/my-parcels/track?lang=en&parcelNumber=%s",
+    "test_numbers": {
+     "valid": [
+      "00 81827 0998 0000 0200 33 350 276 C",
+      "0081 827 0998 0000 0200 45 327 276 N"
+     ],
+     "invalid": [
+      "008182709980000020033350276A",
+      "0081 827 0998 0000 0200 45 000 000 N"
+     ]
+    },
+    "additional": [
+     {
+      "name": "Service Type",
+      "regex_group_name": "ServiceType",
+      "lookup": [
+       {
+        "matches": "101",
+        "name": "D",
+        "description": "normal parcel"
+       },
+       {
+        "matches": "102",
+        "name": "D-HAZ",
+        "description": "normal parcel, hazardous goods"
+       },
+       {
+        "matches": "105",
+        "name": "D-EXW",
+        "description": "normal parcel, ex works"
+       },
+       {
+        "matches": "106",
+        "name": "D-EXW-HAZ",
+        "description": "normal parcel, ex works, hazardous goods"
+       },
+       {
+        "matches": "109",
+        "name": "D-COD",
+        "description": "normal parcel, C.O.D."
+       },
+       {
+        "matches": "110",
+        "name": "D-COD-HAZ",
+        "description": "normal parcel, C.O.D., hazardous goods"
+       },
+       {
+        "matches": "113",
+        "name": "D-SWAP",
+        "description": "normal parcel, exchange"
+       },
+       {
+        "matches": "136",
+        "name": "D",
+        "description": "small parcel"
+       },
+       {
+        "matches": "154",
+        "name": "PARCELLetter",
+        "description": "PARCELLetter"
+       },
+       {
+        "matches": "155",
+        "name": "PM2",
+        "description": "Guarantee"
+       },
+       {
+        "matches": "161",
+        "name": "PM2-COD",
+        "description": "Guarantee, C.O.D."
+       },
+       {
+        "matches": "179",
+        "name": "AM1",
+        "description": "DPD 10:00"
+       },
+       {
+        "matches": "191",
+        "name": "AM1-COD",
+        "description": "DPD 10:00, C.O.D."
+       },
+       {
+        "matches": "225",
+        "name": "AM2",
+        "description": "DPD 12:00"
+       },
+       {
+        "matches": "237",
+        "name": "AM2-COD",
+        "description": "DPD 12:00, C.O.D."
+       },
+       {
+        "matches": "350",
+        "name": "AM0",
+        "description": "DPD 8:30"
+       }
+      ]
+     },
+     {
+      "name": "Country Code",
+      "regex_group_name": "CountryCode",
+      "lookup": [
+       {
+        "matches": "818",
+        "country_code": "EGY",
+        "country_short_code": "EG",
+        "country": "Aegypten"
+       },
+       {
+        "matches": "226",
+        "country_code": "GNQ",
+        "country_short_code": "GQ",
+        "country": "Aequatorial-Guinea"
+       },
+       {
+        "matches": "231",
+        "country_code": "ETH",
+        "country_short_code": "ET",
+        "country": "Aethiopien"
+       },
+       {
+        "matches": "004",
+        "country_code": "AFG",
+        "country_short_code": "AF",
+        "country": "Afghanistan"
+       },
+       {
+        "matches": "248",
+        "country_code": "ALA",
+        "country_short_code": "AX",
+        "country": "Aland-Inseln"
+       },
+       {
+        "matches": "008",
+        "country_code": "ALB",
+        "country_short_code": "AL",
+        "country": "Albanien"
+       },
+       {
+        "matches": "012",
+        "country_code": "DZA",
+        "country_short_code": "DZ",
+        "country": "Algerien"
+       },
+       {
+        "matches": "016",
+        "country_code": "ASM",
+        "country_short_code": "AS",
+        "country": "Amerikanisch-Samoa"
+       },
+       {
+        "matches": "020",
+        "country_code": "AND",
+        "country_short_code": "AD",
+        "country": "Andorra"
+       },
+       {
+        "matches": "024",
+        "country_code": "AGO",
+        "country_short_code": "AO",
+        "country": "Angola"
+       },
+       {
+        "matches": "660",
+        "country_code": "AIA",
+        "country_short_code": "AI",
+        "country": "Anguilla"
+       },
+       {
+        "matches": "010",
+        "country_code": "ATA",
+        "country_short_code": "AQ",
+        "country": "Antarctica"
+       },
+       {
+        "matches": "028",
+        "country_code": "ATG",
+        "country_short_code": "AG",
+        "country": "Antigua & Barbuda"
+       },
+       {
+        "matches": "032",
+        "country_code": "ARG",
+        "country_short_code": "AR",
+        "country": "Argentinien"
+       },
+       {
+        "matches": "051",
+        "country_code": "ARM",
+        "country_short_code": "AM",
+        "country": "Armenien"
+       },
+       {
+        "matches": "533",
+        "country_code": "ABW",
+        "country_short_code": "AW",
+        "country": "Aruba"
+       },
+       {
+        "matches": "031",
+        "country_code": "AZE",
+        "country_short_code": "AZ",
+        "country": "Aserbaidschan"
+       },
+       {
+        "matches": "036",
+        "country_code": "AUS",
+        "country_short_code": "AU",
+        "country": "Australien"
+       },
+       {
+        "matches": "044",
+        "country_code": "BHS",
+        "country_short_code": "BS",
+        "country": "Bahamas"
+       },
+       {
+        "matches": "048",
+        "country_code": "BHR",
+        "country_short_code": "BH",
+        "country": "Bahrain"
+       },
+       {
+        "matches": "050",
+        "country_code": "BGD",
+        "country_short_code": "BD",
+        "country": "Bangladesh"
+       },
+       {
+        "matches": "052",
+        "country_code": "BRB",
+        "country_short_code": "BB",
+        "country": "Barbados"
+       },
+       {
+        "matches": "056",
+        "country_code": "BEL",
+        "country_short_code": "BE",
+        "country": "Belgien"
+       },
+       {
+        "matches": "084",
+        "country_code": "BLZ",
+        "country_short_code": "BZ",
+        "country": "Belize"
+       },
+       {
+        "matches": "204",
+        "country_code": "BEN",
+        "country_short_code": "BJ",
+        "country": "Benin"
+       },
+       {
+        "matches": "060",
+        "country_code": "BMU",
+        "country_short_code": "BM",
+        "country": "Bermudas"
+       },
+       {
+        "matches": "064",
+        "country_code": "BTN",
+        "country_short_code": "BT",
+        "country": "Bhutan"
+       },
+       {
+        "matches": "068",
+        "country_code": "BOL",
+        "country_short_code": "BO",
+        "country": "Bolivien"
+       },
+       {
+        "matches": "535",
+        "country_code": "BES",
+        "country_short_code": "BQ",
+        "country": "Bonaire, Sint Eustatius und Saba"
+       },
+       {
+        "matches": "070",
+        "country_code": "BIH",
+        "country_short_code": "BA",
+        "country": "Bosnien & Herzegowina"
+       },
+       {
+        "matches": "072",
+        "country_code": "BWA",
+        "country_short_code": "BW",
+        "country": "Botswana"
+       },
+       {
+        "matches": "074",
+        "country_code": "BVT",
+        "country_short_code": "BV",
+        "country": "Bouvet-Insel"
+       },
+       {
+        "matches": "076",
+        "country_code": "BRA",
+        "country_short_code": "BR",
+        "country": "Brasilien"
+       },
+       {
+        "matches": "086",
+        "country_code": "IOT",
+        "country_short_code": "IO",
+        "country": "British Indian Ocean Territory"
+       },
+       {
+        "matches": "096",
+        "country_code": "BRN",
+        "country_short_code": "BN",
+        "country": "Brunei Darussalam"
+       },
+       {
+        "matches": "100",
+        "country_code": "BGR",
+        "country_short_code": "BG",
+        "country": "Bulgarien"
+       },
+       {
+        "matches": "854",
+        "country_code": "BFA",
+        "country_short_code": "BF",
+        "country": "Burkina Faso"
+       },
+       {
+        "matches": "108",
+        "country_code": "BDI",
+        "country_short_code": "BI",
+        "country": "Burundi"
+       },
+       {
+        "matches": "136",
+        "country_code": "CYM",
+        "country_short_code": "KY",
+        "country": "Cayman-Inseln"
+       },
+       {
+        "matches": "152",
+        "country_code": "CHL",
+        "country_short_code": "CL",
+        "country": "Chile"
+       },
+       {
+        "matches": "156",
+        "country_code": "CHN",
+        "country_short_code": "CN",
+        "country": "China"
+       },
+       {
+        "matches": "184",
+        "country_code": "COK",
+        "country_short_code": "CK",
+        "country": "Cook Inseln"
+       },
+       {
+        "matches": "188",
+        "country_code": "CRI",
+        "country_short_code": "CR",
+        "country": "Costa Rica"
+       },
+       {
+        "matches": "531",
+        "country_code": "CUW",
+        "country_short_code": "CW",
+        "country": "Curacao"
+       },
+       {
+        "matches": "208",
+        "country_code": "DNK",
+        "country_short_code": "DK",
+        "country": "Daenemark"
+       },
+       {
+        "matches": "276",
+        "country_code": "DEU",
+        "country_short_code": "DE",
+        "country": "Deutschland"
+       },
+       {
+        "matches": "212",
+        "country_code": "DMA",
+        "country_short_code": "DM",
+        "country": "Dominica"
+       },
+       {
+        "matches": "214",
+        "country_code": "DOM",
+        "country_short_code": "DO",
+        "country": "Dominikanische Republik"
+       },
+       {
+        "matches": "262",
+        "country_code": "DJI",
+        "country_short_code": "DJ",
+        "country": "Dschibuti"
+       },
+       {
+        "matches": "218",
+        "country_code": "ECU",
+        "country_short_code": "EC",
+        "country": "Ecuador"
+       },
+       {
+        "matches": "222",
+        "country_code": "SLV",
+        "country_short_code": "SV",
+        "country": "El Salvador"
+       },
+       {
+        "matches": "384",
+        "country_code": "CIV",
+        "country_short_code": "CI",
+        "country": "Elfenbeinkueste"
+       },
+       {
+        "matches": "232",
+        "country_code": "ERI",
+        "country_short_code": "ER",
+        "country": "Eritrea"
+       },
+       {
+        "matches": "233",
+        "country_code": "EST",
+        "country_short_code": "EE",
+        "country": "Estland"
+       },
+       {
+        "matches": "234",
+        "country_code": "FRO",
+        "country_short_code": "FO",
+        "country": "Faeroer Inseln"
+       },
+       {
+        "matches": "238",
+        "country_code": "FLK",
+        "country_short_code": "FK",
+        "country": "Falkland Inseln"
+       },
+       {
+        "matches": "242",
+        "country_code": "FJI",
+        "country_short_code": "FJ",
+        "country": "Fidschi"
+       },
+       {
+        "matches": "246",
+        "country_code": "FIN",
+        "country_short_code": "FI",
+        "country": "Finnland"
+       },
+       {
+        "matches": "250",
+        "country_code": "FRA",
+        "country_short_code": "FR",
+        "country": "Frankreich"
+       },
+       {
+        "matches": "260",
+        "country_code": "ATF",
+        "country_short_code": "TF",
+        "country": "Franzoesische Sued- und Antarktisterritorien"
+       },
+       {
+        "matches": "258",
+        "country_code": "PYF",
+        "country_short_code": "PF",
+        "country": "Franzoesisch-Polynesien"
+       },
+       {
+        "matches": "266",
+        "country_code": "GAB",
+        "country_short_code": "GA",
+        "country": "Gabun"
+       },
+       {
+        "matches": "270",
+        "country_code": "GMB",
+        "country_short_code": "GM",
+        "country": "Gambia"
+       },
+       {
+        "matches": "268",
+        "country_code": "GEO",
+        "country_short_code": "GE",
+        "country": "Georgien"
+       },
+       {
+        "matches": "288",
+        "country_code": "GHA",
+        "country_short_code": "GH",
+        "country": "Ghana"
+       },
+       {
+        "matches": "292",
+        "country_code": "GIB",
+        "country_short_code": "GI",
+        "country": "Gibraltar"
+       },
+       {
+        "matches": "308",
+        "country_code": "GRD",
+        "country_short_code": "GD",
+        "country": "Grenada"
+       },
+       {
+        "matches": "300",
+        "country_code": "GRC",
+        "country_short_code": "GR",
+        "country": "Griechenland"
+       },
+       {
+        "matches": "304",
+        "country_code": "GRL",
+        "country_short_code": "GL",
+        "country": "Groenland"
+       },
+       {
+        "matches": "826",
+        "country_code": "GBR",
+        "country_short_code": "GB",
+        "country": "Grossbritannien & Nordirland"
+       },
+       {
+        "matches": "312",
+        "country_code": "GLP",
+        "country_short_code": "GP",
+        "country": "Guadeloupe"
+       },
+       {
+        "matches": "316",
+        "country_code": "GUM",
+        "country_short_code": "GU",
+        "country": "Guam"
+       },
+       {
+        "matches": "320",
+        "country_code": "GTM",
+        "country_short_code": "GT",
+        "country": "Guatemala"
+       },
+       {
+        "matches": "831",
+        "country_code": "GGY",
+        "country_short_code": "GG",
+        "country": "Guernsey"
+       },
+       {
+        "matches": "324",
+        "country_code": "GIN",
+        "country_short_code": "GN",
+        "country": "Guinea"
+       },
+       {
+        "matches": "624",
+        "country_code": "GNB",
+        "country_short_code": "GW",
+        "country": "Guinea-Bissau"
+       },
+       {
+        "matches": "328",
+        "country_code": "GUY",
+        "country_short_code": "GY",
+        "country": "Guyana"
+       },
+       {
+        "matches": "254",
+        "country_code": "GUF",
+        "country_short_code": "GF",
+        "country": "Guyana (Franzoesisch)"
+       },
+       {
+        "matches": "332",
+        "country_code": "HTI",
+        "country_short_code": "HT",
+        "country": "Haiti"
+       },
+       {
+        "matches": "334",
+        "country_code": "HMD",
+        "country_short_code": "HM",
+        "country": "Heard & Mc Donalds Inseln"
+       },
+       {
+        "matches": "340",
+        "country_code": "HND",
+        "country_short_code": "HN",
+        "country": "Honduras"
+       },
+       {
+        "matches": "344",
+        "country_code": "HKG",
+        "country_short_code": "HK",
+        "country": "Hong Kong"
+       },
+       {
+        "matches": "356",
+        "country_code": "IND",
+        "country_short_code": "IN",
+        "country": "Indien"
+       },
+       {
+        "matches": "360",
+        "country_code": "IDN",
+        "country_short_code": "ID",
+        "country": "Indonesien"
+       },
+       {
+        "matches": "364",
+        "country_code": "IRN",
+        "country_short_code": "IR",
+        "country": "Iran"
+       },
+       {
+        "matches": "368",
+        "country_code": "IRQ",
+        "country_short_code": "IQ",
+        "country": "Iraq"
+       },
+       {
+        "matches": "372",
+        "country_code": "IRL",
+        "country_short_code": "IE",
+        "country": "Irland"
+       },
+       {
+        "matches": "352",
+        "country_code": "ISL",
+        "country_short_code": "IS",
+        "country": "Island"
+       },
+       {
+        "matches": "833",
+        "country_code": "IMN",
+        "country_short_code": "IM",
+        "country": "Isle of Man"
+       },
+       {
+        "matches": "376",
+        "country_code": "ISR",
+        "country_short_code": "IL",
+        "country": "Israel"
+       },
+       {
+        "matches": "380",
+        "country_code": "ITA",
+        "country_short_code": "IT",
+        "country": "Italien"
+       },
+       {
+        "matches": "388",
+        "country_code": "JAM",
+        "country_short_code": "JM",
+        "country": "Jamaika"
+       },
+       {
+        "matches": "392",
+        "country_code": "JPN",
+        "country_short_code": "JP",
+        "country": "Japan"
+       },
+       {
+        "matches": "887",
+        "country_code": "YEM",
+        "country_short_code": "YE",
+        "country": "Jemen"
+       },
+       {
+        "matches": "832",
+        "country_code": "JEY",
+        "country_short_code": "JE",
+        "country": "Jersey"
+       },
+       {
+        "matches": "400",
+        "country_code": "JOR",
+        "country_short_code": "JO",
+        "country": "Jordanien"
+       },
+       {
+        "matches": "092",
+        "country_code": "VGB",
+        "country_short_code": "VG",
+        "country": "Jungferninseln (britisch)"
+       },
+       {
+        "matches": "116",
+        "country_code": "KHM",
+        "country_short_code": "KH",
+        "country": "Kambodscha"
+       },
+       {
+        "matches": "120",
+        "country_code": "CMR",
+        "country_short_code": "CM",
+        "country": "Kamerun"
+       },
+       {
+        "matches": "124",
+        "country_code": "CAN",
+        "country_short_code": "CA",
+        "country": "Kanada"
+       },
+       {
+        "matches": "991",
+        "country_code": "ISC",
+        "country_short_code": "IC",
+        "country": "Kanarische Inseln"
+       },
+       {
+        "matches": "132",
+        "country_code": "CPV",
+        "country_short_code": "CV",
+        "country": "Kapverdische Inseln"
+       },
+       {
+        "matches": "583",
+        "country_code": "FSM",
+        "country_short_code": "FM",
+        "country": "Karolinen Inseln"
+       },
+       {
+        "matches": "398",
+        "country_code": "KAZ",
+        "country_short_code": "KZ",
+        "country": "Kasachstan"
+       },
+       {
+        "matches": "634",
+        "country_code": "QAT",
+        "country_short_code": "QA",
+        "country": "Katar"
+       },
+       {
+        "matches": "404",
+        "country_code": "KEN",
+        "country_short_code": "KE",
+        "country": "Kenia"
+       },
+       {
+        "matches": "417",
+        "country_code": "KGZ",
+        "country_short_code": "KG",
+        "country": "Kirgistan"
+       },
+       {
+        "matches": "296",
+        "country_code": "KIR",
+        "country_short_code": "KI",
+        "country": "Kiribati"
+       },
+       {
+        "matches": "581",
+        "country_code": "UMI",
+        "country_short_code": "UM",
+        "country": "Kleine vorgelagerte Inseln Vereinigter Staaten"
+       },
+       {
+        "matches": "166",
+        "country_code": "CCK",
+        "country_short_code": "CC",
+        "country": "Kokos Inseln"
+       },
+       {
+        "matches": "170",
+        "country_code": "COL",
+        "country_short_code": "CO",
+        "country": "Kolumbien"
+       },
+       {
+        "matches": "174",
+        "country_code": "COM",
+        "country_short_code": "KM",
+        "country": "Komoren"
+       },
+       {
+        "matches": "178",
+        "country_code": "COG",
+        "country_short_code": "CG",
+        "country": "Kongo"
+       },
+       {
+        "matches": "180",
+        "country_code": "COD",
+        "country_short_code": "CD",
+        "country": "Kongo, Dem. Rep."
+       },
+       {
+        "matches": "191",
+        "country_code": "HRV",
+        "country_short_code": "HR",
+        "country": "Kroatien"
+       },
+       {
+        "matches": "192",
+        "country_code": "CUB",
+        "country_short_code": "CU",
+        "country": "Kuba"
+       },
+       {
+        "matches": "414",
+        "country_code": "KWT",
+        "country_short_code": "KW",
+        "country": "Kuwait"
+       },
+       {
+        "matches": "418",
+        "country_code": "LAO",
+        "country_short_code": "LA",
+        "country": "Laos"
+       },
+       {
+        "matches": "426",
+        "country_code": "LSO",
+        "country_short_code": "LS",
+        "country": "Lesotho"
+       },
+       {
+        "matches": "428",
+        "country_code": "LVA",
+        "country_short_code": "LV",
+        "country": "Lettland"
+       },
+       {
+        "matches": "422",
+        "country_code": "LBN",
+        "country_short_code": "LB",
+        "country": "Libanon"
+       },
+       {
+        "matches": "430",
+        "country_code": "LBR",
+        "country_short_code": "LR",
+        "country": "Liberia"
+       },
+       {
+        "matches": "434",
+        "country_code": "LBY",
+        "country_short_code": "LY",
+        "country": "Libyen"
+       },
+       {
+        "matches": "438",
+        "country_code": "LIE",
+        "country_short_code": "LI",
+        "country": "Liechtenstein"
+       },
+       {
+        "matches": "440",
+        "country_code": "LTU",
+        "country_short_code": "LT",
+        "country": "Litauen"
+       },
+       {
+        "matches": "442",
+        "country_code": "LUX",
+        "country_short_code": "LU",
+        "country": "Luxemburg"
+       },
+       {
+        "matches": "446",
+        "country_code": "MAC",
+        "country_short_code": "MO",
+        "country": "Macao"
+       },
+       {
+        "matches": "450",
+        "country_code": "MDG",
+        "country_short_code": "MG",
+        "country": "Madagaskar"
+       },
+       {
+        "matches": "454",
+        "country_code": "MWI",
+        "country_short_code": "MW",
+        "country": "Malawi"
+       },
+       {
+        "matches": "458",
+        "country_code": "MYS",
+        "country_short_code": "MY",
+        "country": "Malaysia"
+       },
+       {
+        "matches": "462",
+        "country_code": "MDV",
+        "country_short_code": "MV",
+        "country": "Malediven"
+       },
+       {
+        "matches": "466",
+        "country_code": "MLI",
+        "country_short_code": "ML",
+        "country": "Mali"
+       },
+       {
+        "matches": "470",
+        "country_code": "MLT",
+        "country_short_code": "MT",
+        "country": "Malta"
+       },
+       {
+        "matches": "504",
+        "country_code": "MAR",
+        "country_short_code": "MA",
+        "country": "Marokko"
+       },
+       {
+        "matches": "584",
+        "country_code": "MHL",
+        "country_short_code": "MH",
+        "country": "Marshall Inseln"
+       },
+       {
+        "matches": "474",
+        "country_code": "MTQ",
+        "country_short_code": "MQ",
+        "country": "Martinique"
+       },
+       {
+        "matches": "478",
+        "country_code": "MRT",
+        "country_short_code": "MR",
+        "country": "Mauretanien"
+       },
+       {
+        "matches": "480",
+        "country_code": "MUS",
+        "country_short_code": "MU",
+        "country": "Mauritius"
+       },
+       {
+        "matches": "175",
+        "country_code": "MYT",
+        "country_short_code": "YT",
+        "country": "Mayotte"
+       },
+       {
+        "matches": "807",
+        "country_code": "MKD",
+        "country_short_code": "MK",
+        "country": "Mazedonien"
+       },
+       {
+        "matches": "484",
+        "country_code": "MEX",
+        "country_short_code": "MX",
+        "country": "Mexiko"
+       },
+       {
+        "matches": "498",
+        "country_code": "MDA",
+        "country_short_code": "MD",
+        "country": "Moldawien"
+       },
+       {
+        "matches": "492",
+        "country_code": "MCO",
+        "country_short_code": "MC",
+        "country": "Monaco"
+       },
+       {
+        "matches": "496",
+        "country_code": "MNG",
+        "country_short_code": "MN",
+        "country": "Mongolei"
+       },
+       {
+        "matches": "499",
+        "country_code": "MNE",
+        "country_short_code": "ME",
+        "country": "Montenegro"
+       },
+       {
+        "matches": "500",
+        "country_code": "MSR",
+        "country_short_code": "MS",
+        "country": "Montserrat"
+       },
+       {
+        "matches": "508",
+        "country_code": "MOZ",
+        "country_short_code": "MZ",
+        "country": "Mosambik"
+       },
+       {
+        "matches": "104",
+        "country_code": "MMR",
+        "country_short_code": "MM",
+        "country": "Myanmar"
+       },
+       {
+        "matches": "516",
+        "country_code": "NAM",
+        "country_short_code": "NA",
+        "country": "Namibia"
+       },
+       {
+        "matches": "520",
+        "country_code": "NRU",
+        "country_short_code": "NR",
+        "country": "Nauru"
+       },
+       {
+        "matches": "524",
+        "country_code": "NPL",
+        "country_short_code": "NP",
+        "country": "Nepal"
+       },
+       {
+        "matches": "540",
+        "country_code": "NCL",
+        "country_short_code": "NC",
+        "country": "Neukaledonien"
+       },
+       {
+        "matches": "554",
+        "country_code": "NZL",
+        "country_short_code": "NZ",
+        "country": "Neuseeland"
+       },
+       {
+        "matches": "558",
+        "country_code": "NIC",
+        "country_short_code": "NI",
+        "country": "Nicaragua"
+       },
+       {
+        "matches": "530",
+        "country_code": "ANT",
+        "country_short_code": "AN",
+        "country": "Niederlaendische Antillen"
+       },
+       {
+        "matches": "528",
+        "country_code": "NLD",
+        "country_short_code": "NL",
+        "country": "Niederlande"
+       },
+       {
+        "matches": "562",
+        "country_code": "NER",
+        "country_short_code": "NE",
+        "country": "Niger"
+       },
+       {
+        "matches": "566",
+        "country_code": "NGA",
+        "country_short_code": "NG",
+        "country": "Nigeria"
+       },
+       {
+        "matches": "570",
+        "country_code": "NIU",
+        "country_short_code": "NU",
+        "country": "Niue"
+       },
+       {
+        "matches": "580",
+        "country_code": "MNP",
+        "country_short_code": "MP",
+        "country": "Noerdliche Marianen"
+       },
+       {
+        "matches": "408",
+        "country_code": "PRK",
+        "country_short_code": "KP",
+        "country": "Nordkorea"
+       },
+       {
+        "matches": "574",
+        "country_code": "NFK",
+        "country_short_code": "NF",
+        "country": "Norfolk Inseln"
+       },
+       {
+        "matches": "578",
+        "country_code": "NOR",
+        "country_short_code": "NO",
+        "country": "Norwegen"
+       },
+       {
+        "matches": "040",
+        "country_code": "AUT",
+        "country_short_code": "AT",
+        "country": "Oesterreich"
+       },
+       {
+        "matches": "512",
+        "country_code": "OMN",
+        "country_short_code": "OM",
+        "country": "Oman"
+       },
+       {
+        "matches": "626",
+        "country_code": "TLS",
+        "country_short_code": "TL",
+        "country": "Osttimor"
+       },
+       {
+        "matches": "586",
+        "country_code": "PAK",
+        "country_short_code": "PK",
+        "country": "Pakistan"
+       },
+       {
+        "matches": "275",
+        "country_code": "PSE",
+        "country_short_code": "PS",
+        "country": "Palaestina"
+       },
+       {
+        "matches": "585",
+        "country_code": "PLW",
+        "country_short_code": "PW",
+        "country": "Palau"
+       },
+       {
+        "matches": "591",
+        "country_code": "PAN",
+        "country_short_code": "PA",
+        "country": "Panama"
+       },
+       {
+        "matches": "598",
+        "country_code": "PNG",
+        "country_short_code": "PG",
+        "country": "Papua-Neuguinea"
+       },
+       {
+        "matches": "600",
+        "country_code": "PRY",
+        "country_short_code": "PY",
+        "country": "Paraguay"
+       },
+       {
+        "matches": "604",
+        "country_code": "PER",
+        "country_short_code": "PE",
+        "country": "Peru"
+       },
+       {
+        "matches": "608",
+        "country_code": "PHL",
+        "country_short_code": "PH",
+        "country": "Philippinen"
+       },
+       {
+        "matches": "612",
+        "country_code": "PCN",
+        "country_short_code": "PN",
+        "country": "Pitcairn"
+       },
+       {
+        "matches": "616",
+        "country_code": "POL",
+        "country_short_code": "PL",
+        "country": "Polen"
+       },
+       {
+        "matches": "620",
+        "country_code": "PRT",
+        "country_short_code": "PT",
+        "country": "Portugal"
+       },
+       {
+        "matches": "630",
+        "country_code": "PRI",
+        "country_short_code": "PR",
+        "country": "Puerto Rico"
+       },
+       {
+        "matches": "638",
+        "country_code": "REU",
+        "country_short_code": "RE",
+        "country": "Reunion"
+       },
+       {
+        "matches": "646",
+        "country_code": "RWA",
+        "country_short_code": "RW",
+        "country": "Ruanda"
+       },
+       {
+        "matches": "642",
+        "country_code": "ROU",
+        "country_short_code": "RO",
+        "country": "Rumaenien"
+       },
+       {
+        "matches": "643",
+        "country_code": "RUS",
+        "country_short_code": "RU",
+        "country": "Russland"
+       },
+       {
+        "matches": "663",
+        "country_code": "MAF",
+        "country_short_code": "MF",
+        "country": "Saint Martin"
+       },
+       {
+        "matches": "894",
+        "country_code": "ZMB",
+        "country_short_code": "ZM",
+        "country": "Samibia"
+       },
+       {
+        "matches": "882",
+        "country_code": "WSM",
+        "country_short_code": "WS",
+        "country": "Samoa"
+       },
+       {
+        "matches": "674",
+        "country_code": "SMR",
+        "country_short_code": "SM",
+        "country": "San Marino"
+       },
+       {
+        "matches": "678",
+        "country_code": "STP",
+        "country_short_code": "ST",
+        "country": "Sao Tome & Principe"
+       },
+       {
+        "matches": "682",
+        "country_code": "SAU",
+        "country_short_code": "SA",
+        "country": "Saudi Arabien"
+       },
+       {
+        "matches": "752",
+        "country_code": "SWE",
+        "country_short_code": "SE",
+        "country": "Schweden"
+       },
+       {
+        "matches": "756",
+        "country_code": "CHE",
+        "country_short_code": "CH",
+        "country": "Schweiz"
+       },
+       {
+        "matches": "686",
+        "country_code": "SEN",
+        "country_short_code": "SN",
+        "country": "Senegal"
+       },
+       {
+        "matches": "688",
+        "country_code": "SRB",
+        "country_short_code": "RS",
+        "country": "Serbien"
+       },
+       {
+        "matches": "690",
+        "country_code": "SYC",
+        "country_short_code": "SC",
+        "country": "Seychellen"
+       },
+       {
+        "matches": "694",
+        "country_code": "SLE",
+        "country_short_code": "SL",
+        "country": "Sierra Leone"
+       },
+       {
+        "matches": "716",
+        "country_code": "ZWE",
+        "country_short_code": "ZW",
+        "country": "Simbabwe"
+       },
+       {
+        "matches": "702",
+        "country_code": "SGP",
+        "country_short_code": "SG",
+        "country": "Singapur"
+       },
+       {
+        "matches": "534",
+        "country_code": "SXM",
+        "country_short_code": "SX",
+        "country": "Sint Maarten (niederlaendischer Teil)"
+       },
+       {
+        "matches": "703",
+        "country_code": "SVK",
+        "country_short_code": "SK",
+        "country": "Slowakei"
+       },
+       {
+        "matches": "705",
+        "country_code": "SVN",
+        "country_short_code": "SI",
+        "country": "Slowenien"
+       },
+       {
+        "matches": "090",
+        "country_code": "SLB",
+        "country_short_code": "SB",
+        "country": "Solomon Inseln"
+       },
+       {
+        "matches": "706",
+        "country_code": "SOM",
+        "country_short_code": "SO",
+        "country": "Somalia"
+       },
+       {
+        "matches": "724",
+        "country_code": "ESP",
+        "country_short_code": "ES",
+        "country": "Spanien"
+       },
+       {
+        "matches": "144",
+        "country_code": "LKA",
+        "country_short_code": "LK",
+        "country": "Sri Lanka"
+       },
+       {
+        "matches": "654",
+        "country_code": "SHN",
+        "country_short_code": "SH",
+        "country": "St. Helena"
+       },
+       {
+        "matches": "659",
+        "country_code": "KNA",
+        "country_short_code": "KN",
+        "country": "St. Kitts und Nevis"
+       },
+       {
+        "matches": "662",
+        "country_code": "LCA",
+        "country_short_code": "LC",
+        "country": "St. Lucia"
+       },
+       {
+        "matches": "666",
+        "country_code": "SPM",
+        "country_short_code": "PM",
+        "country": "St. Pierre & Miquelon"
+       },
+       {
+        "matches": "670",
+        "country_code": "VCT",
+        "country_short_code": "VC",
+        "country": "St. Vincent und die Grenadinen"
+       },
+       {
+        "matches": "736",
+        "country_code": "SDN",
+        "country_short_code": "SD",
+        "country": "Sudan"
+       },
+       {
+        "matches": "710",
+        "country_code": "ZAF",
+        "country_short_code": "ZA",
+        "country": "Suedafrika"
+       },
+       {
+        "matches": "239",
+        "country_code": "SGS",
+        "country_short_code": "GS",
+        "country": "Suedgeorgien und die Suedlichen Sandwichinseln"
+       },
+       {
+        "matches": "410",
+        "country_code": "KOR",
+        "country_short_code": "KR",
+        "country": "Suedkorea"
+       },
+       {
+        "matches": "728",
+        "country_code": "SSD",
+        "country_short_code": "SS",
+        "country": "Suedsudan"
+       },
+       {
+        "matches": "740",
+        "country_code": "SUR",
+        "country_short_code": "SR",
+        "country": "Suriname"
+       },
+       {
+        "matches": "744",
+        "country_code": "SJM",
+        "country_short_code": "SJ",
+        "country": "Svalbard & Jan Mayen Inseln"
+       },
+       {
+        "matches": "748",
+        "country_code": "SWZ",
+        "country_short_code": "SZ",
+        "country": "Swasiland"
+       },
+       {
+        "matches": "760",
+        "country_code": "SYR",
+        "country_short_code": "SY",
+        "country": "Syrien"
+       },
+       {
+        "matches": "762",
+        "country_code": "TJK",
+        "country_short_code": "TJ",
+        "country": "Tadschikistan"
+       },
+       {
+        "matches": "158",
+        "country_code": "TWN",
+        "country_short_code": "TW",
+        "country": "Taiwan"
+       },
+       {
+        "matches": "834",
+        "country_code": "TZA",
+        "country_short_code": "TZ",
+        "country": "Tansania"
+       },
+       {
+        "matches": "764",
+        "country_code": "THA",
+        "country_short_code": "TH",
+        "country": "Thailand"
+       },
+       {
+        "matches": "768",
+        "country_code": "TGO",
+        "country_short_code": "TG",
+        "country": "Togo"
+       },
+       {
+        "matches": "772",
+        "country_code": "TKL",
+        "country_short_code": "TK",
+        "country": "Tokelau"
+       },
+       {
+        "matches": "776",
+        "country_code": "TON",
+        "country_short_code": "TO",
+        "country": "Tonga"
+       },
+       {
+        "matches": "780",
+        "country_code": "TTO",
+        "country_short_code": "TT",
+        "country": "Trinidad & Tobago"
+       },
+       {
+        "matches": "148",
+        "country_code": "TCD",
+        "country_short_code": "TD",
+        "country": "Tschad"
+       },
+       {
+        "matches": "203",
+        "country_code": "CZE",
+        "country_short_code": "CZ",
+        "country": "Tschechien (Republik)"
+       },
+       {
+        "matches": "792",
+        "country_code": "TUR",
+        "country_short_code": "TR",
+        "country": "Tuerkei"
+       },
+       {
+        "matches": "788",
+        "country_code": "TUN",
+        "country_short_code": "TN",
+        "country": "Tunesien"
+       },
+       {
+        "matches": "795",
+        "country_code": "TKM",
+        "country_short_code": "TM",
+        "country": "Turkmenistan"
+       },
+       {
+        "matches": "796",
+        "country_code": "TCA",
+        "country_short_code": "TC",
+        "country": "Turks & Caicos-Inseln"
+       },
+       {
+        "matches": "798",
+        "country_code": "TUV",
+        "country_short_code": "TV",
+        "country": "Tuvalu"
+       },
+       {
+        "matches": "800",
+        "country_code": "UGA",
+        "country_short_code": "UG",
+        "country": "Uganda"
+       },
+       {
+        "matches": "804",
+        "country_code": "UKR",
+        "country_short_code": "UA",
+        "country": "Ukraine"
+       },
+       {
+        "matches": "348",
+        "country_code": "HUN",
+        "country_short_code": "HU",
+        "country": "Ungarn"
+       },
+       {
+        "matches": "858",
+        "country_code": "URY",
+        "country_short_code": "UY",
+        "country": "Uruguay"
+       },
+       {
+        "matches": "850",
+        "country_code": "VIR",
+        "country_short_code": "VI",
+        "country": "US Virgin Islands"
+       },
+       {
+        "matches": "840",
+        "country_code": "USA",
+        "country_short_code": "US",
+        "country": "USA"
+       },
+       {
+        "matches": "860",
+        "country_code": "UZB",
+        "country_short_code": "UZ",
+        "country": "Usbekistan"
+       },
+       {
+        "matches": "548",
+        "country_code": "VUT",
+        "country_short_code": "VU",
+        "country": "Vanuatu"
+       },
+       {
+        "matches": "336",
+        "country_code": "VAT",
+        "country_short_code": "VA",
+        "country": "Vatikan"
+       },
+       {
+        "matches": "862",
+        "country_code": "VEN",
+        "country_short_code": "VE",
+        "country": "Venezuela"
+       },
+       {
+        "matches": "784",
+        "country_code": "ARE",
+        "country_short_code": "AE",
+        "country": "Vereinigte Arabische Emirate"
+       },
+       {
+        "matches": "704",
+        "country_code": "VNM",
+        "country_short_code": "VN",
+        "country": "Vietnam"
+       },
+       {
+        "matches": "876",
+        "country_code": "WLF",
+        "country_short_code": "WF",
+        "country": "Wallis & Futuna"
+       },
+       {
+        "matches": "162",
+        "country_code": "CXR",
+        "country_short_code": "CX",
+        "country": "Weihnachtsinseln"
+       },
+       {
+        "matches": "112",
+        "country_code": "BLR",
+        "country_short_code": "BY",
+        "country": "Weissrussland"
+       },
+       {
+        "matches": "732",
+        "country_code": "ESH",
+        "country_short_code": "EH",
+        "country": "West Sahara"
+       },
+       {
+        "matches": "140",
+        "country_code": "CAF",
+        "country_short_code": "CF",
+        "country": "Zentralafrika"
+       },
+       {
+        "matches": "196",
+        "country_code": "CYP",
+        "country_short_code": "CY",
+        "country": "Zypern"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "name": "DPD (14)",
+    "id": "dpd_14",
+    "regex": [
+     "\\s*(?<SerialNumber>",
+     "([0-9]\\s*){14}",
+     ")",
+     "(?<CheckDigit>[0-9A-Z]\\s*)"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "mod_37_36",
+      "modulo": 36,
+      "alphabet": "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+     }
+    },
+    "tracking_url": "https://www.dpdgroup.com/nl/mydpd/my-parcels/track?lang=en&parcelNumber=%s",
+    "test_numbers": {
+     "valid": [
+      "09 9800 0002 0033 F",
+      "0998 0000 0200 34D"
+     ],
+     "invalid": [
+      "09980000020033D"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "FedEx",
+  "courier_code": "fedex",
+  "tracking_numbers": [
+   {
+    "name": "FedEx Express (12)",
+    "id": "fedex_12",
+    "regex": "\\s*(?<SerialNumber>([0-9]\\s*){11})(?<CheckDigit>[0-9]\\s*)",
+    "validation": {
+     "checksum": {
+      "name": "sum_product_with_weightings_and_modulo",
+      "weightings": [
+       3,
+       1,
+       7,
+       3,
+       1,
+       7,
+       3,
+       1,
+       7,
+       3,
+       1
+      ],
+      "modulo1": 11,
+      "modulo2": 10
+     }
+    },
+    "tracking_url": "https://www.fedex.com/apps/fedextrack/?tracknumbers=%s",
+    "test_numbers": {
+     "valid": [
+      "986578788855",
+      "477179081230",
+      "799531274483",
+      "790535312317",
+      " 7 9 0 5 3 5 3 1 2 3 1 7 ",
+      "974367662710"
+     ],
+     "invalid": [
+      "996578788855"
+     ]
+    }
+   },
+   {
+    "name": "FedEx Express (34)",
+    "id": "fedex_34",
+    "regex": [
+     "\\s*[0-8]\\s*([0-9]\\s*){14}",
+     "(?<DestinationZip>([0-9]\\s*){5})",
+     "(?<SerialNumber>([0-9]\\s*){13})",
+     "(?<CheckDigit>[0-9]\\s*)"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "sum_product_with_weightings_and_modulo",
+      "weightings": [
+       1,
+       7,
+       3,
+       1,
+       7,
+       3,
+       1,
+       7,
+       3,
+       1,
+       7,
+       3,
+       1
+      ],
+      "modulo1": 11,
+      "modulo2": 10
+     }
+    },
+    "tracking_url": "https://www.fedex.com/apps/fedextrack/?tracknumbers=%s",
+    "test_numbers": {
+     "valid": [
+      "1001921334250001000300779017972697",
+      "1001921380360001000300639585804382",
+      "1001901781990001000300617767839437",
+      " 1 0 0 1 9 0 1 7 8 1 9 9 0 0 0 1 0 0 0 3 0 0 6 1 7 7 6 7 8 3 9 4 3 7 ",
+      "1002297871540001000300790695517286",
+      "1027590111820004833500785458233610",
+      "1195266473930007521100871079919940",
+      "1 1 9 52 6 64739 3000 75211 00 8710 799 199 40",
+      "1195271874060007521100871140316925",
+      "1195583874210007521100871140316936"
+     ],
+     "invalid": [
+      "1001901781990001000300617767839438"
+     ]
+    }
+   },
+   {
+    "name": "FedEx ASTRA (32)",
+    "id": "fedex_astra_32",
+    "regex": [
+     "\\s*3\\s*",
+     "(?:[0-9]\\s*){5}",
+     "(?:[0-9]\\s*){3}",
+     "(?:[0-9]\\s*){7}",
+     "(?<SerialNumber>(?:[0-9]\\s*){11})",
+     "(?<CheckDigit>[0-9]\\s*)",
+     "(?:[0-9]\\s*){4}"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "sum_product_with_weightings_and_modulo",
+      "weightings": [
+       3,
+       1,
+       7,
+       3,
+       1,
+       7,
+       3,
+       1,
+       7,
+       3,
+       1
+      ],
+      "modulo1": 11,
+      "modulo2": 10
+     }
+    },
+    "test_numbers": {
+     "valid": [
+      "32971514560102447849175802862014",
+      "32971510360102447848540980802018",
+      "32971508360102447847941133172013",
+      "33810799560000004380417923803212",
+      "3 29715 145 6010244 784917580286 2014"
+     ],
+     "invalid": [
+      "32971514560102447849175802852014",
+      "3297151456010244784917580286201"
+     ]
+    }
+   },
+   {
+    "name": "FedEx Ground",
+    "id": "fedex_ground",
+    "regex": "\\s*(?<SerialNumber>([0-9]\\s*){14})(?<CheckDigit>([0-9]\\s*))",
+    "validation": {
+     "checksum": {
+      "name": "mod10",
+      "modulo": 10,
+      "evens_multiplier": 1,
+      "odds_multiplier": 3,
+      "reverse": false
+     }
+    },
+    "tracking_url": "https://www.fedex.com/apps/fedextrack/?tracknumbers=%s",
+    "test_numbers": {
+     "valid": [
+      "0414 4176 0228 964",
+      "5682 8361 0012 000",
+      " 5 6 8 2   8 3 6 1   0 0 1 2   0 0 0 ",
+      "5682 8361 0012 734"
+     ],
+     "invalid": [
+      "5682 8361 0012 732"
+     ]
+    }
+   },
+   {
+    "name": "FedEx Ground (SSCC-18)",
+    "id": "fedex_ground_sscc_18",
+    "regex": "\\s*(?<ShippingContainerType>([0-9]\\s*){2})(?<SerialNumber>([0-9]\\s*){15})(?<CheckDigit>[0-9]\\s*)",
+    "validation": {
+     "checksum": {
+      "name": "mod10",
+      "modulo": 10,
+      "evens_multiplier": 3,
+      "odds_multiplier": 1,
+      "reverse": false
+     }
+    },
+    "tracking_url": "https://www.fedex.com/apps/fedextrack/?tracknumbers=%s",
+    "test_numbers": {
+     "valid": [
+      "00 0123 4500 0000 0027",
+      " 0 0   0 1 2 3   4 5 0 0   0 0 0 0   0 0 2 7 "
+     ],
+     "invalid": [
+      "000000000000000001"
+     ]
+    },
+    "additional": [
+     {
+      "name": "Container Type",
+      "regex_group_name": "ShippingContainerType",
+      "lookup": [
+       {
+        "matches": "00",
+        "name": "case/carton"
+       },
+       {
+        "matches": "01",
+        "name": "pallet"
+       },
+       {
+        "matches": "02",
+        "name": "larger than a pallet"
+       },
+       {
+        "matches": "04",
+        "name": "internally defined for intra-company use"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "name": "FedEx Ground 96 (22)",
+    "id": "fedex_ground_96",
+    "regex": [
+     "\\s*(?<ApplicationIdentifier>9\\s*6\\s*)",
+     "(?<SCNC>([0-9]\\s*){2})",
+     "(?<ServiceType>([0-9]\\s*){3})",
+     "(?<SerialNumber>(?<ShipperId>([0-9]\\s*){7})(?<PackageId>([0-9]\\s*){7}))",
+     "(?<CheckDigit>[0-9]\\s*)"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "mod10",
+      "modulo": 10,
+      "evens_multiplier": 1,
+      "odds_multiplier": 3,
+      "reverse": false
+     }
+    },
+    "tracking_url": "https://www.fedex.com/apps/fedextrack/?tracknumbers=%s",
+    "test_numbers": {
+     "valid": [
+      "9611020987654312345672",
+      " 9 6 1 1 0 2 0 9 8 7 6 5 4 3 1 2 3 4 5 6 7 2 "
+     ],
+     "invalid": [
+      "9600000000000000000001"
+     ]
+    }
+   },
+   {
+    "name": "FedEx Ground GSN",
+    "id": "fedex_ground_gsn",
+    "regex": [
+     "\\s*(?<ApplicationIdentifier>9\\s*6\\s*)",
+     "(?<SCNC>([0-9]\\s*){2})",
+     "([0-9]\\s*){5}",
+     "(?<GSN>([0-9]\\s*){10})",
+     "[0-9]\\s*",
+     "(?<SerialNumber>([0-9]\\s*){13})",
+     "(?<CheckDigit>[0-9]\\s*)"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "sum_product_with_weightings_and_modulo",
+      "weightings": [
+       1,
+       7,
+       3,
+       1,
+       7,
+       3,
+       1,
+       7,
+       3,
+       1,
+       7,
+       3,
+       1
+      ],
+      "modulo1": 11,
+      "modulo2": 10
+     }
+    },
+    "tracking_url": "https://www.fedex.com/apps/fedextrack/?tracknumbers=%s",
+    "test_numbers": {
+     "valid": [
+      "9622001900000000000000776632517510",
+      "9622001560000000000000794808390594",
+      "9622001560001234567100794808390594",
+      " 9 6 2 2 0 0 1 5 6 0 0 0 1 2 3 4 5 6 7 1 0 0 7 9 4 8 0 8 3 9 0 5 9 4 ",
+      "9632001560123456789900794808390594"
+     ],
+     "invalid": [
+      "9622001560001234567100794808390595",
+      "9622001560001234567100794808390597"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "GOFO Express",
+  "courier_code": "gofo",
+  "tracking_numbers": [
+   {
+    "name": "GOFO Express (US)",
+    "id": "gofo_us",
+    "regex": [
+     "\\s*G\\s*F\\s*U\\s*S\\s*(?<SerialNumber>([0-9]\\s*){14})\\s*"
+    ],
+    "validation": {},
+    "tracking_url": "https://www.gofoexpress.com/tracking.html?searchID=%s",
+    "test_numbers": {
+     "valid": [
+      "GFUS01011884214464",
+      "GFUS01011884214272"
+     ],
+     "invalid": [
+      "GFUS0101188421446"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "Landmark Global LTN",
+  "courier_code": "landmark",
+  "tracking_numbers": [
+   {
+    "name": "Landmark Global LTN",
+    "id": "landmark_global",
+    "regex": [
+     "\\s*L\\s*T\\s*N\\s*(?<SerialNumber>([0-9]\\s*){8})\\s*N\\s*1"
+    ],
+    "validation": {},
+    "tracking_url": "https://track.landmarkglobal.com/?search=%s",
+    "test_numbers": {
+     "valid": [
+      "LTN74207623N1",
+      "LTN74209518N1",
+      "LTN74224021N1"
+     ],
+     "invalid": [
+      "LSN74209518N2",
+      "LSN74209518N1"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "LaserShip",
+  "courier_code": "lasership",
+  "tracking_numbers": [
+   {
+    "name": "LaserShip LX",
+    "id": "lasership_lx",
+    "regex": [
+     "\\s*L\\s*[AIEHNX]\\s*[1-3]\\s*(?<SerialNumber>([0-9]\\s*){7,7})\\s*"
+    ],
+    "validation": {},
+    "test_numbers": {
+     "valid": [
+      "LX17635036",
+      "LX 176 35035",
+      "LX17635034",
+      "LI 129 79072",
+      "LI12976442",
+      "LA28376237",
+      "LA28372694",
+      "LH13830790",
+      "LH13816137",
+      "LH13820469",
+      "LH13831034",
+      "LH13821737",
+      "LH13820881",
+      "LH13820881",
+      "LH13812209",
+      "LH13800911",
+      "LH13795254",
+      "LE10917377",
+      "LE10913900",
+      "LE10913753",
+      "LN30083672"
+     ],
+     "invalid": [
+      "LX9763503N",
+      "LH9176350N6",
+      "XA17635036",
+      "L A 9 7 6 3 5 0 3 6 "
+     ]
+    }
+   },
+   {
+    "name": "LaserShip 1LS7 (15)",
+    "id": "lasership_1ls7",
+    "regex": [
+     "\\s*1\\s*L\\s*S\\s*7\\s*[12]\\s*([0-9]\\s*){4,4}",
+     "(?<SerialNumber>([0-9]\\s*){6,6})\\s*"
+    ],
+    "validation": {},
+    "test_numbers": {
+     "valid": [
+      "1LS717793482164",
+      "1LS724505321754",
+      "1LS720000000000",
+      " 1 L S 7 2 0 0 0 0 0 0 0 0 0 0 "
+     ],
+     "invalid": [
+      "1LX734505321754"
+     ]
+    }
+   },
+   {
+    "name": "LaserShip 1LS7 (18)",
+    "regex": [
+     "\\s*1\\s*L\\s*S\\s*7\\s*",
+     "[12]\\s*([0-9]\\s*){2,2}\\s*0\\s*1\\s*[1234]\\s*",
+     "\\s*(?<SerialNumber>([0-9]\\s*){6,6})",
+     "-\\s*1\\s*"
+    ],
+    "validation": {},
+    "test_numbers": {
+     "valid": [
+      "1LS7119013618127-1",
+      " 1 L S 7 1 1 9 0 1 3 6 1 8 1 2 7 - 1 "
+     ],
+     "invalid": [
+      "1LS7119013618127-2"
+     ]
+    }
+   },
+   {
+    "name": "LaserShip 1LSCX (15)",
+    "id": "lasership_1lscx",
+    "regex": [
+     "\\s*1\\s*L\\s*S\\s*",
+     "\\s*C\\s*X\\s*",
+     "(?<SerialNumber>",
+     "([0-9A-Z]\\s*){10}",
+     ")"
+    ],
+    "validation": {},
+    "test_numbers": {
+     "valid": [
+      "1LS CX VE00 58631Y",
+      "1LSCXVE005BUEFX"
+     ],
+     "invalid": [
+      "1LSCZVE0058631Y"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "Old Dominion Freight Line",
+  "courier_code": "old_dominion",
+  "tracking_numbers": [
+   {
+    "name": "Old Dominion",
+    "regex": [
+     "\\s*(?<SerialNumber>",
+     "(7\\s*7\\s*[78]\\s*|0\\s*7\\s*2\\s*|7\\s*8\\s*0\\s*)",
+     "([0-9]\\s*){7}",
+     ")",
+     "(?<CheckDigit>[0-9]\\s*)"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "luhn",
+      "modulo": 10
+     }
+    },
+    "tracking_url": "https://www.odfl.com/us/en/tools/trace-track-ltl-freight/trace.html?proNumbers=%s",
+    "test_numbers": {
+     "valid": [
+      "07209562763",
+      " 0 7 2 0 9 5 6 2 7 6 3 ",
+      "77767553207",
+      "77806528897",
+      "78045768393"
+     ],
+     "invalid": [
+      "07209562773",
+      "79927398713",
+      "10000000000"
+     ]
+    }
+   },
+   {
+    "name": "Old Dominion Guaranteed Shipment",
+    "regex": [
+     "\\s*(?<SerialNumber>",
+     "8\\s*0\\s*",
+     "([0-9]\\s*){8}",
+     ")",
+     "(?<CheckDigit>[0-9]\\s*)"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "luhn",
+      "modulo": 10
+     }
+    },
+    "tracking_url": "https://www.odfl.com/us/en/tools/trace-track-ltl-freight/trace.html?proNumbers=%s",
+    "test_numbers": {
+     "valid": [
+      "80003280379",
+      " 8 0 0 0 3 2 8 0 3 7 9 ",
+      "80993847369"
+     ],
+     "invalid": [
+      "80003280389",
+      "10000000000"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "OnTrac",
+  "courier_code": "ontrac",
+  "tracking_numbers": [
+   {
+    "name": "OnTrac",
+    "id": "ontrac_c",
+    "regex": "\\s*C\\s*(?<SerialNumber>([0-9]\\s*){13})(?<CheckDigit>[0-9]\\s*)",
+    "validation": {
+     "checksum": {
+      "name": "mod10",
+      "modulo": 10,
+      "evens_multiplier": 1,
+      "odds_multiplier": 2,
+      "reverse": false
+     },
+     "serial_number_format": {
+      "prepend_if": {
+       "matches_regex": "^(?!4).+$",
+       "content": "4"
+      }
+     }
+    },
+    "tracking_url": "http://www.ontrac.com/tracking/?number=%s",
+    "test_numbers": {
+     "valid": [
+      "C11031500001879",
+      "C 110 31 500 00187 9",
+      "C10999911320231",
+      "C11121552953069",
+      "C11121553156000",
+      "C11121552829468"
+     ],
+     "invalid": [
+      "C10000000000000",
+      "C11031500001889"
+     ]
+    }
+   },
+   {
+    "name": "OnTrac D",
+    "id": "ontrac_d",
+    "regex": "\\s*D\\s*(?<SerialNumber>([0-9]\\s*){13})(?<CheckDigit>[0-9]\\s*)",
+    "validation": {
+     "checksum": {
+      "name": "mod10",
+      "modulo": 10,
+      "evens_multiplier": 1,
+      "odds_multiplier": 2,
+      "reverse": false
+     },
+     "serial_number_format": {
+      "prepend_if": {
+       "matches_regex": "^(?!5).+$",
+       "content": "5"
+      }
+     }
+    },
+    "tracking_url": "http://www.ontrac.com/tracking/?number=%s",
+    "test_numbers": {
+     "valid": [
+      "D10011354453707",
+      "D10011345983010",
+      "D 100 113 459 830 10",
+      "D10011342332145"
+     ],
+     "invalid": [
+      "D10011345983012",
+      "D10011342332144"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "Purolator",
+  "courier_code": "purolator",
+  "tracking_numbers": [
+   {
+    "name": "Purolator (12)",
+    "id": "purolator_numeric",
+    "regex": "\\s*(?<SerialNumber>[0-5]\\s*([0-9]\\s*){10})(?<CheckDigit>[0-9])\\s*",
+    "validation": {
+     "checksum": {
+      "name": "luhn"
+     }
+    },
+    "tracking_url": "https://www.purolator.com/en/shipping/tracker?searchValue=%s",
+    "test_numbers": {
+     "valid": [
+      "320595463938",
+      "320606146993",
+      "287809468872",
+      "320610804900",
+      "331426749957",
+      "331434972567"
+     ],
+     "invalid": [
+      "320595463939",
+      "287809468875"
+     ]
+    }
+   },
+   {
+    "name": "Purolator (alpha + 9)",
+    "id": "purolator_alpha",
+    "regex": "\\s*(?<SerialNumber>([A-Z]\\s*){3}([0-9]\\s*){9})\\s*",
+    "validation": {},
+    "tracking_url": "https://www.purolator.com/en/shipping/tracker?searchValue=%s",
+    "test_numbers": {
+     "valid": [
+      "KYV009956937",
+      "CGK002986959",
+      "JFV247545960",
+      "TLR000083964"
+     ],
+     "invalid": [
+      "KY009956937",
+      "331426749957"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "S10 International Standard",
+  "courier_code": "s10",
+  "tracking_numbers": [
+   {
+    "name": "S10",
+    "id": "s10",
+    "regex": "\\s*(?<ServiceType>([A-Z]\\s*){2})(?<SerialNumber>([0-9]\\s*){8})(?<CheckDigit>([0-9]\\s*))(?<CountryCode>([A-Z]\\s*){2})",
+    "validation": {
+     "checksum": {
+      "name": "s10",
+      "weightings": [
+       8,
+       6,
+       4,
+       2,
+       3,
+       5,
+       9,
+       7
+      ],
+      "modulo": 11
+     },
+     "additional": {
+      "exists": [
+       "Courier"
+      ]
+     }
+    },
+    "tracking_url": null,
+    "test_numbers": {
+     "valid": [
+      "RB123456785GB",
+      "RB123456785US",
+      "RB123456785CV",
+      "RB123456785CF"
+     ],
+     "invalid": [
+      "RB123456786US",
+      "RB123456785XX"
+     ]
+    },
+    "additional": [
+     {
+      "name": "Service Type",
+      "regex_group_name": "ServiceType",
+      "lookup": [
+       {
+        "name": "EMS",
+        "matches_regex": "E[A-Z]",
+        "description": "International Express Mail Service"
+       },
+       {
+        "name": "Letter Post Express",
+        "matches_regex": "L[A-Z]",
+        "description": ""
+       },
+       {
+        "name": "Letter Post M-bag",
+        "matches_regex": "M[A-Z]",
+        "description": "Direct sacks of printed matter sent to a single foreign addressee at a single address"
+       },
+       {
+        "name": "Letter Post IBRS",
+        "matches_regex": "Q[A-M]",
+        "description": "International Business Reply Service"
+       },
+       {
+        "name": "Letter Post Registered",
+        "matches_regex": "R[A-Z]",
+        "description": "Prepaid first-class mail that is recorded by the post office before being sent and at each point along its route to safeguard against loss, theft, or damage."
+       },
+       {
+        "name": "Letter Post Misc",
+        "matches_regex": "U[A-Z]",
+        "description": ""
+       },
+       {
+        "name": "Letter Post Insured",
+        "matches_regex": "V[A-Z]",
+        "description": ""
+       },
+       {
+        "name": "Parcel Post",
+        "matches_regex": "C[A-Z]",
+        "description": ""
+       },
+       {
+        "name": "Parcel Post (e-commerce)",
+        "matches_regex": "H[A-Z]",
+        "description": ""
+       },
+       {
+        "name": "Domestic",
+        "matches_regex": "([BDNPZ][A-Z]|A[V-Z]|G[AD])",
+        "description": "Mail designated for domestic, bilateral, or multilateral use"
+       }
+      ]
+     },
+     {
+      "name": "Courier",
+      "regex_group_name": "CountryCode",
+      "lookup": [
+       {
+        "matches": "AF",
+        "country": "Afghanistan",
+        "courier": "Afghan Post",
+        "courier_url": "http://postalcode.afghanpost.gov.af/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/afghanistan.html"
+       },
+       {
+        "matches": "AL",
+        "country": "Albania",
+        "courier": "Posta Shqiptare",
+        "courier_url": "http://www.postashqiptare.al/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/albania.html"
+       },
+       {
+        "matches": "DZ",
+        "country": "Algeria",
+        "courier": "Alg\u00e9rie Poste",
+        "courier_url": "http://www.poste.dz/codepostal/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/algeria.html"
+       },
+       {
+        "matches": "AO",
+        "country": "Angola",
+        "courier": "Correios de Angola",
+        "courier_url": "http://www.correiosdeangola.co.ao/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/angola.html"
+       },
+       {
+        "country": "Antigua and Barbuda",
+        "matches": "AG",
+        "courier": "Antigua Postal Services",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/antigua-and-barbuda.html"
+       },
+       {
+        "matches": "AR",
+        "country": "Argentina",
+        "courier": "Correo Argentino",
+        "courier_url": "http://www.correoargentino.com.ar/formularios/cpa",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/argentina.html"
+       },
+       {
+        "matches": "AM",
+        "country": "Armenia",
+        "courier": "Haypost - Armenian Postal Service",
+        "courier_url": "http://www.haypost.am/view-lang-eng-page-25.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/armenia.html"
+       },
+       {
+        "matches": "AU",
+        "country": "Australia",
+        "courier": "Australia Post",
+        "courier_url": "http://www1.auspost.com.au/postcodes/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/australia.html"
+       },
+       {
+        "matches": "AT",
+        "country": "Austria",
+        "courier": "\u00d6sterreichische Post AG",
+        "courier_url": "http://www.post.at/en/index.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/austria.html"
+       },
+       {
+        "matches": "AZ",
+        "country": "Azerbaijan",
+        "courier": "Azarpo\u00e7t",
+        "courier_url": "http://www.azerpost.az/?options=content&id=188&language=en",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/azerbaijan.html"
+       },
+       {
+        "matches": "BS",
+        "country": "Bahamas",
+        "courier": "Bahamas Postal Service",
+        "courier_url": "http://www.bahamas.gov.bs/postalservice",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/bahamas.html"
+       },
+       {
+        "matches": "BH",
+        "country": "Bahrain",
+        "courier": "Bahrain Post",
+        "courier_url": "http://www.transportation.gov.bh/en/modules.php?name=Content&pa=showpage&pid=97",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/bahrain.html"
+       },
+       {
+        "matches": "BD",
+        "country": "Bangladesh",
+        "courier": "Bangladesh Post Office",
+        "courier_url": "http://www.bangladeshpost.gov.bd/PostCode.asp",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/bangladesh.html"
+       },
+       {
+        "matches": "BB",
+        "country": "Barbados",
+        "courier": "Barbados Postal Service",
+        "courier_url": "http://www.bps.gov.bb/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/barbados.html"
+       },
+       {
+        "matches": "BY",
+        "country": "Belarus",
+        "courier": "Belpochta",
+        "courier_url": "http://zip.belpost.by/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/belarus.html"
+       },
+       {
+        "matches": "BE",
+        "country": "Belgium",
+        "courier": "bpost",
+        "courier_url": "http://www.bpost.be/site/fr/residential/customerservice/search/postal_codes.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/belgium.html"
+       },
+       {
+        "matches": "BZ",
+        "country": "Belize",
+        "courier": "Belize Postal Service",
+        "courier_url": "http://www.belizepostalservice.gov.bz/site/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/belize.html"
+       },
+       {
+        "matches": "BJ",
+        "country": "Benin",
+        "courier": "La Poste du B\u00e9nin",
+        "courier_url": "http://www.laposte.bj/index1.php?id_page=1",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/benin.html"
+       },
+       {
+        "matches": "BT",
+        "country": "Bhutan",
+        "courier": "Bhutan Post",
+        "courier_url": "http://www.bhutanpost.com.bt/postcode/postcode.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/bhutan.html"
+       },
+       {
+        "matches": "BO",
+        "country": "Bolivia",
+        "courier": "ECOBOL \u2013 Empresa de Correos de Bolivia",
+        "courier_url": "http://www.correosbolivia.com/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/bolivia.html"
+       },
+       {
+        "matches": "BA",
+        "country": "Bosnia and Herzegovina",
+        "courier": "JP BH PO\u0160TA d.o.o. Sarajevo",
+        "courier_url": "http://www.post.ba/postanski_brojevi_bih.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/bosnia-and-herzegovina.html"
+       },
+       {
+        "matches": "BW",
+        "country": "Botswana",
+        "courier": "BotswanaPost",
+        "courier_url": "http://www.botspost.co.bw/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/botswana.html"
+       },
+       {
+        "matches": "BR",
+        "country": "Brazil",
+        "courier": "CORREIOS",
+        "courier_url": "http://www.buscacep.correios.com.br/servicos/dnec/index.do",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/brazil.html"
+       },
+       {
+        "matches": "BN",
+        "country": "Brunei Darussalam",
+        "courier": "Brunei Postal Services",
+        "courier_url": "http://www.post.gov.bn/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/brunei-darussalam.html"
+       },
+       {
+        "matches": "BG",
+        "country": "Bulgaria (Rep.)",
+        "courier": "Bulgarian Posts",
+        "courier_url": "http://www.bgpost.bg/?cid=131",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/bulgaria-rep.html"
+       },
+       {
+        "matches": "BF",
+        "country": "Burkina Faso",
+        "courier": "SONAPOST",
+        "courier_url": "http://www.sonapost.bf/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/burkina-faso.html"
+       },
+       {
+        "matches": "BI",
+        "country": "Burundi",
+        "courier": "RNP \u2013 R\u00e9gie nationale des postes",
+        "courier_url": "http://www.poste.bi/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/burundi.html"
+       },
+       {
+        "matches": "KH",
+        "country": "Cambodia",
+        "courier": "Ministry of Posts and Telecommunications",
+        "courier_url": "http://www.mptc.gov.kh/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/cambodia.html"
+       },
+       {
+        "matches": "CM",
+        "country": "Cameroon",
+        "courier": "CAMPOST \u2013 Cameroon Postal Services",
+        "courier_url": "http://campostonline.com/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/cameroon.html"
+       },
+       {
+        "matches": "CA",
+        "country": "Canada",
+        "courier": "Canada Post",
+        "courier_url": "http://www.canadapost.ca/cpotools/apps/fpc/personal/findByCity?execution=e1s1",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/canada.html"
+       },
+       {
+        "country": "Cape Verde",
+        "matches": "CV",
+        "courier": "Correios de Cabo Verde",
+        "courier_url": "http://www.correios.cv/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/cape-verde.html"
+       },
+       {
+        "country": "Central African Rep.",
+        "matches": "CF",
+        "courier": "Direction des services postaux de l'Office National des Postes et de l'\u00c9pargne",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/central-african-rep.html"
+       },
+       {
+        "matches": "TD",
+        "country": "Chad",
+        "courier": "Soci\u00e9t\u00e9 tchadienne des postes et de l'\u00e9pargne",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/chad.html"
+       },
+       {
+        "matches": "CL",
+        "country": "Chile",
+        "courier": "Correos de Chile",
+        "courier_url": "http://www.correos.cl/SitePages/home.aspx",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/chile.html"
+       },
+       {
+        "matches": "CN",
+        "country": "China (People's Rep.)",
+        "courier": "China Post",
+        "courier_url": "http://www.cpdc.com.cn/web/index.php?m=postsearch&c=index&a=init&t=addr",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/china-peoples-rep.html"
+       },
+       {
+        "matches": "HK",
+        "country": "China",
+        "courier": "Hong Kong Post",
+        "courier_url": "http://www.hongkongpost.hk",
+        "upu_reference_url": ""
+       },
+       {
+        "matches": "CO",
+        "country": "Colombia",
+        "courier": "4-72 La Red Postal de Colombia",
+        "courier_url": "http://visor.codigopostal.gov.co/472/visor/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/colombia.html"
+       },
+       {
+        "matches": "KM",
+        "country": "Comoros",
+        "courier": "Societ\u00e9 Nationale des Postes et des Services Financiers",
+        "courier_url": "http://www.lapostecomores.com/bureaux.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/comoros.html"
+       },
+       {
+        "matches": "CG",
+        "country": "Congo (Rep.)",
+        "courier": "Congolese Posts and Savings Company",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/congo-rep.html"
+       },
+       {
+        "country": "Costa Rica",
+        "matches": "CR",
+        "courier": "Correos de Costa Rica",
+        "courier_url": "https://www.correos.go.cr/nosotros/codigopostal/busqueda.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/costa-rica.html"
+       },
+       {
+        "matches": "HR",
+        "country": "Croatia",
+        "courier": "Hrvatska Posta - Croatian Post",
+        "courier_url": "http://www.posta.hr/default.aspx?pretpum&id=3417",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/croatia.html"
+       },
+       {
+        "matches": "CU",
+        "country": "Cuba",
+        "courier": "Ministerio de la Inform\u00e1tica y las comunicaciones de Cuba",
+        "courier_url": "http://www.mic.gov.cu/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/cuba.html"
+       },
+       {
+        "matches": "CY",
+        "country": "Cyprus",
+        "courier": "Cyprus Post",
+        "courier_url": "http://www.mcw.gov.cy/mcw/dps/dps.nsf/index_en/index_en?OpenDocument",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/cyprus.html"
+       },
+       {
+        "matches": "CZ",
+        "country": "Czech Rep.",
+        "courier": "\u010cesk\u00e1 Po\u0161ta",
+        "courier_url": "http://psc.cpost.cz/CleanForm.action?request_locale=en",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/czech-rep.html"
+       },
+       {
+        "matches": "CI",
+        "country": "C\u00f4te d'Ivoire (Rep.)",
+        "courier": "La Poste de C\u00f4te d\u2019Ivoire",
+        "courier_url": "http://www.laposte.ci/bureau.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/cote-divoire-rep.html"
+       },
+       {
+        "matches": "KP",
+        "country": "Dem People's Rep. of Korea",
+        "courier": "Korea Post and Telecommunications Corporation",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/dem-peoples-rep-of-korea.html"
+       },
+       {
+        "matches": "CD",
+        "country": "Democratic Republic of the Congo",
+        "courier": "Congolese Posts and Telecommunications Corporation",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/democratic-republic-of-the-congo.html"
+       },
+       {
+        "matches": "DK",
+        "country": "Denmark",
+        "courier": "Post Danmark",
+        "courier_url": "http://www.postdanmark.dk/en/find_postcode/Pages/home.aspx",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/denmark.html"
+       },
+       {
+        "matches": "DJ",
+        "country": "Djibouti",
+        "courier": "La Poste de Djibouti",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/djibouti.html"
+       },
+       {
+        "matches": "DM",
+        "country": "Dominica",
+        "courier": "General Post Office",
+        "courier_url": "http://publicworks.gov.dm/index.php/divisions/general-post-office/20-gpo-about-us",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/dominica.html"
+       },
+       {
+        "matches": "DO",
+        "country": "Dominican Republic",
+        "courier": "INPOSDOM \u2013 Instituto Postal Dominicano",
+        "courier_url": "http://www.inposdom.gob.do/servicios/codigo-postal",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/dominican-republic.html"
+       },
+       {
+        "matches": "EC",
+        "country": "Ecuador",
+        "courier": "Correos del Ecuador",
+        "courier_url": "http://www.codigopostal.gob.ec/#",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/ecuador.html"
+       },
+       {
+        "matches": "EG",
+        "country": "Egypt",
+        "courier": "Egypt Post",
+        "courier_url": "http://www.egyptpost.org/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/egypt.html"
+       },
+       {
+        "matches": "SV",
+        "country": "El Salvador",
+        "courier": "Correos de El Salvador",
+        "courier_url": "http://www.correos.gob.sv/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/el-salvador.html"
+       },
+       {
+        "matches": "GQ",
+        "country": "Equatorial Guinea",
+        "courier": "Equatorial Guinea Post",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/equatorial-guinea.html"
+       },
+       {
+        "matches": "ER",
+        "country": "Eritrea",
+        "courier": "Eritrean Postal Service",
+        "courier_url": "http://www.eriposta.com/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/eritrea.html"
+       },
+       {
+        "matches": "EE",
+        "country": "Estonia",
+        "courier": "Eesti Post",
+        "courier_url": "http://www.post.ee/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/estonia.html"
+       },
+       {
+        "matches": "ET",
+        "country": "Ethiopia",
+        "courier": "Ethiopian postal service",
+        "courier_url": "http://www.ethiopostal.com/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/ethiopia.html"
+       },
+       {
+        "matches": "FJ",
+        "country": "Fiji",
+        "courier": "Post Fiji",
+        "courier_url": "http://www.postfiji.com.fj/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/fiji.html"
+       },
+       {
+        "matches": "FI",
+        "country": "Finland (including the \u00c5land Islands)",
+        "courier": "Posti Ltd",
+        "courier_url": "http://www.verkkoposti.com/e3/english/postalcodecatalog",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/finland-including-the-aaland-islands.html"
+       },
+       {
+        "matches": "FR",
+        "country": "France",
+        "courier": "La Poste",
+        "courier_url": "http://www.laposte.fr/Entreprise/Outils-Indispensables/Outils/Trouvez-un-code-postal",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/france.html"
+       },
+       {
+        "matches": "GA",
+        "country": "Gabon",
+        "courier": "La Poste SA",
+        "courier_url": "http://www.laposte.ga/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/gabon.html"
+       },
+       {
+        "matches": "GM",
+        "country": "Gambia",
+        "courier": "Gambia Postal services Corporation",
+        "courier_url": "http://www.gampost.gm/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/gambia.html"
+       },
+       {
+        "matches": "GE",
+        "country": "Georgia",
+        "courier": "Georgian Post",
+        "courier_url": "http://www.georgianpost.ge/?site-lang=en&site-path=help/zipcodes/&letter=A",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/georgia.html"
+       },
+       {
+        "matches": "DE",
+        "country": "Germany",
+        "courier": "Deutsche Post",
+        "courier_url": "http://www.postdirekt.de/plzserver/PlzSearchServlet?lang=en_GB&id=viewstreet",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/germany.html"
+       },
+       {
+        "matches": "GH",
+        "country": "Ghana",
+        "courier": "Ghana Post",
+        "courier_url": "http://www.ghanapostgh.com/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/ghana.html"
+       },
+       {
+        "country": "Great Britain",
+        "matches": "GB",
+        "courier": "Royal Mail Group plc",
+        "courier_url": "http://www.royalmail.com/postcode-finder?gear=postcode&campaignid=postcodefinder_redirect",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/great-britain.html"
+       },
+       {
+        "matches": "GR",
+        "country": "Greece",
+        "courier": "Hellenic Post ELTA",
+        "courier_url": "http://www.elta.gr/en-us/findapostcode.aspx",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/greece.html"
+       },
+       {
+        "matches": "GD",
+        "country": "Grenada",
+        "courier": "Grenada Postal Corporation",
+        "courier_url": "http://www.grenadapostal.com/index.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/grenada.html"
+       },
+       {
+        "matches": "GT",
+        "country": "Guatemala",
+        "courier": "El Correo",
+        "courier_url": "http://www.elcorreo.com.gt/cdgcorreo/index.php?option=com_content&view=article&id=104&Itemid=233",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/guatemala.html"
+       },
+       {
+        "matches": "GN",
+        "country": "Guinea",
+        "courier": "Office de la poste guin\u00e9enne",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/guinea.html"
+       },
+       {
+        "country": "Guinea-Bissau",
+        "matches": "GW",
+        "courier": "Correios da Guin\u00e9-Bissau",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/guinea-bissau.html"
+       },
+       {
+        "matches": "GY",
+        "country": "Guyana",
+        "courier": "Guyana Post Office Corporation",
+        "courier_url": "http://guypost.gy/gpoc/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/guyana.html"
+       },
+       {
+        "matches": "HT",
+        "country": "Haiti",
+        "courier": "Office des Postes d\u2019Haiti",
+        "courier_url": "http://postehaiti.gouv.ht/notre-reseau-postal",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/haiti.html"
+       },
+       {
+        "matches": "HN",
+        "country": "Honduras (Rep.)",
+        "courier": "Honducor",
+        "courier_url": "http://honducor.gob.hn/codpost/consulta.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/honduras-rep.html"
+       },
+       {
+        "matches": "HU",
+        "country": "Hungary",
+        "courier": "Magyar Posta",
+        "courier_url": "http://www.posta.hu/ugyfelszolgalat/iranyitoszam_kereso",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/hungary.html"
+       },
+       {
+        "matches": "IS",
+        "country": "Iceland",
+        "courier": "\u00cdslandsp\u00f3stur hf",
+        "courier_url": "http://www.postur.is/en/desktopdefault.aspx/tabid-450/700_read-1715/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/iceland.html"
+       },
+       {
+        "matches": "IN",
+        "country": "India",
+        "courier": "India Post",
+        "courier_url": "http://www.indiapost.gov.in/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/india.html"
+       },
+       {
+        "matches": "ID",
+        "country": "Indonesia",
+        "courier": "Pos Indonesia",
+        "courier_url": "http://kodepos.indonesiaweb.info/en/street/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/indonesia.html"
+       },
+       {
+        "matches": "IR",
+        "country": "Iran (Islamic Rep.)",
+        "courier": "Islamic Republic of Iran Post Co.",
+        "courier_url": "http://www.post.ir/Homepage.aspx?site=PostPortal&lang=fa-IR&tabid=0",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/iran-islamic-rep.html"
+       },
+       {
+        "matches": "IQ",
+        "country": "Iraq",
+        "courier": "Iraqi Post",
+        "courier_url": "http://www.iraqipost.net/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/iraq.html"
+       },
+       {
+        "matches": "IE",
+        "country": "Ireland",
+        "courier": "AN Post - regulatory and International affairs Unit",
+        "courier_url": "http://locator.anpost.ie/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/ireland.html"
+       },
+       {
+        "matches": "IL",
+        "country": "Israel",
+        "courier": "Israel Post",
+        "courier_url": "http://www.israelpost.co.il/zipcode.nsf/demozip?openform",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/israel.html"
+       },
+       {
+        "matches": "IT",
+        "country": "Italy",
+        "courier": "Poste Italiane",
+        "courier_url": "http://www.poste.it/online/cercacap/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/italy.html"
+       },
+       {
+        "matches": "JM",
+        "country": "Jamaica",
+        "courier": "Jamaica Post",
+        "courier_url": "http://www.jamaicapost.gov.jm/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/jamaica.html"
+       },
+       {
+        "matches": "JP",
+        "country": "Japan",
+        "courier": "Japan Post",
+        "courier_url": "http://www.post.japanpost.jp/zipcode/index.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/japan.html"
+       },
+       {
+        "matches": "JO",
+        "country": "Jordan",
+        "courier": "Jordan Post",
+        "courier_url": "http://www.jordanpost.com.jo/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/jordan.html"
+       },
+       {
+        "matches": "KZ",
+        "country": "Kazakhstan",
+        "courier": "Kazpost",
+        "courier_url": "http://www.kazpost.kz/ru/poisk-pochtovogo-indeksa-0",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/kazakhstan.html"
+       },
+       {
+        "matches": "KE",
+        "country": "Kenya",
+        "courier": "Posta Kenya",
+        "courier_url": "http://www.posta.co.ke/postOfficeFind.asp",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/kenya.html"
+       },
+       {
+        "matches": "KI",
+        "country": "Kiribati",
+        "courier": "Kiribati Public Service Public",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/kiribati.html"
+       },
+       {
+        "matches": "KR",
+        "country": "Korea (Rep.)",
+        "courier": "Korea Post",
+        "courier_url": "http://www.epost.go.kr/roadAreaCdEng.retrieveRdEngAreaCdList.comm",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/korea-rep.html"
+       },
+       {
+        "matches": "KW",
+        "country": "Kuwait",
+        "courier": "Kuwait Ministry of Communications",
+        "courier_url": "http://moc.kw/English/index.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/kuwait.html"
+       },
+       {
+        "matches": "KG",
+        "country": "Kyrgyzstan",
+        "courier": "Kyrgyz Post",
+        "courier_url": "http://kyrgyzpost.kg/ru/news.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/kyrgyzstan.html"
+       },
+       {
+        "matches": "LA",
+        "country": "Laos",
+        "courier": "Entreprise des Postes Lao",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/lao-peoples-dem-rep.html"
+       },
+       {
+        "matches": "LV",
+        "country": "Latvia",
+        "courier": "Latvia Post",
+        "courier_url": "http://www.pasts.lv/lv/uzzinas/parbaudit-adresi/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/latvia.html"
+       },
+       {
+        "matches": "LB",
+        "country": "Lebanon",
+        "courier": "LibanPost",
+        "courier_url": "http://www.libanpost.com.lb/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/lebanon.html"
+       },
+       {
+        "matches": "LS",
+        "country": "Lesotho",
+        "courier": "Lesotho Post",
+        "courier_url": "http://lesothopost.org.ls/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/lesotho.html"
+       },
+       {
+        "matches": "LR",
+        "country": "Liberia",
+        "courier": "Ministry of Posts and Telecommunications",
+        "courier_url": "http://www.mopt.gov.lr/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/liberia.html"
+       },
+       {
+        "matches": "LY",
+        "country": "Libya",
+        "courier": "Libya Post",
+        "courier_url": "http://libyapost.ly/en/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/libya.html"
+       },
+       {
+        "matches": "LI",
+        "country": "Liechtenstein",
+        "courier": "Liechtensteinische Post AG",
+        "courier_url": "http://www.post.li/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/liechtenstein.html"
+       },
+       {
+        "matches": "LT",
+        "country": "Lithuania",
+        "courier": "Lietuvos Pastas",
+        "courier_url": "http://www.post.lt/en/help/postal-code-search",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/lithuania.html"
+       },
+       {
+        "matches": "LU",
+        "country": "Luxembourg",
+        "courier": "Post",
+        "courier_url": "http://www.post.lu/en/particuliers/courrier/rechercher-un-code-postal",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/luxembourg.html"
+       },
+       {
+        "matches": "MG",
+        "country": "Madagascar",
+        "courier": "PAOSITRA MALAGASY",
+        "courier_url": "http://www.mtpc.gov.mg/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/madagascar.html"
+       },
+       {
+        "matches": "MW",
+        "country": "Malawi",
+        "courier": "Malawi Posts Corporation",
+        "courier_url": "http://www.malawiposts.com/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/malawi.html"
+       },
+       {
+        "matches": "MY",
+        "country": "Malaysia",
+        "courier": "Pos Malaysia",
+        "courier_url": "http://www.pos.com.my/pos/homepage.aspx",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/malaysia.html"
+       },
+       {
+        "matches": "MV",
+        "country": "Maldives",
+        "courier": "Maldives Post",
+        "courier_url": "http://www.maldivespost.com/index.php?lid=10",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/maldives.html"
+       },
+       {
+        "matches": "ML",
+        "country": "Mali",
+        "courier": "Office national des postes",
+        "courier_url": "http://www.laposte.ml/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/mali.html"
+       },
+       {
+        "matches": "MT",
+        "country": "Malta",
+        "courier": "Malta Post",
+        "courier_url": "http://postcodes.maltapost.com/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/malta.html"
+       },
+       {
+        "matches": "MR",
+        "country": "Mauritania",
+        "courier": "MAURIPOST \u2013 Soci\u00e9t\u00e9 Mauritanienne des Postes",
+        "courier_url": "http://www.mauripost.mr/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/mauritania.html"
+       },
+       {
+        "matches": "MU",
+        "country": "Mauritius",
+        "courier": "Mauritius Post",
+        "courier_url": "http://www.mauritiuspost.mu/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/mauritius.html"
+       },
+       {
+        "matches": "MX",
+        "country": "Mexico",
+        "courier": "Correos de M\u00e9xico",
+        "courier_url": "http://www.correosdemexico.gob.mx/ServiciosLinea/Paginas/ccpostales.aspx",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/mexico.html"
+       },
+       {
+        "matches": "MD",
+        "country": "Moldova",
+        "courier": "Posta Moldovei",
+        "courier_url": "http://www.posta.md/ro/postal_code.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/moldova.html"
+       },
+       {
+        "matches": "MC",
+        "country": "Monaco",
+        "courier": "La Poste Monaco",
+        "courier_url": "http://www.lapostemonaco.mc/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/monaco.html"
+       },
+       {
+        "matches": "MN",
+        "country": "Mongolia",
+        "courier": "Mongol Post - \u041c\u043e\u043d\u0433\u043e\u043b \u0448\u0443\u0443\u0434\u0430\u043d \u043a\u043e\u043c\u043f\u0430\u043d\u0438",
+        "courier_url": "http://www.zipcode.mn/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/mongolia.html"
+       },
+       {
+        "country": "Montenegro (Rep.)",
+        "matches": "ME",
+        "courier": "Po\u0161ta Crne Gore",
+        "courier_url": "http://www.postacg.me/main.php?idstr=177",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/montenegro-rep.html"
+       },
+       {
+        "matches": "MA",
+        "country": "Morocco",
+        "courier": "Barid Al-Maghrib \u2013 Poste Maroc",
+        "courier_url": "http://www.codepostal.ma/search_mot.aspx?keyword=",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/morocco.html"
+       },
+       {
+        "matches": "MZ",
+        "country": "Mozambique",
+        "courier": "Correios de Mo\u00e7ambique",
+        "courier_url": "http://www.correios.co.mz/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/mozambique.html"
+       },
+       {
+        "matches": "MM",
+        "country": "Myanmar",
+        "courier": "Myanmar Post and Telecommunications Department",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/myanmar.html"
+       },
+       {
+        "matches": "NA",
+        "country": "Namibia",
+        "courier": "NAM Post",
+        "courier_url": "https://www.nampost.com.na/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/namibia.html"
+       },
+       {
+        "matches": "NR",
+        "country": "Nauru",
+        "courier": "Nauru General Post Office",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/nauru.html"
+       },
+       {
+        "matches": "NP",
+        "country": "Nepal",
+        "courier": "Nepal Postal Services",
+        "courier_url": "http://www.gpo.gov.np/postalcode.aspx",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/nepal.html"
+       },
+       {
+        "matches": "NL",
+        "country": "Netherlands",
+        "courier": "PostNL",
+        "courier_url": "http://www.postnl.nl/voorthuis/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/netherlands.html"
+       },
+       {
+        "matches": "NZ",
+        "country": "New Zealand (including the Ross Dependency)",
+        "courier": "New Zealand Post",
+        "courier_url": "http://www.nzpost.co.nz/Cultures/en-NZ/OnlineTools/PostCodeFinder/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/new-zealand-including-the-ross-dependency.html"
+       },
+       {
+        "matches": "NI",
+        "country": "Nicaragua",
+        "courier": "Correos de Nicaragua",
+        "courier_url": "http://www.correos.gob.ni/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/nicaragua.html"
+       },
+       {
+        "matches": "NE",
+        "country": "Niger",
+        "courier": "Niger Poste",
+        "courier_url": "http://www.nigerposte.net/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/niger.html"
+       },
+       {
+        "matches": "NG",
+        "country": "Nigeria",
+        "courier": "Nigerian Postal Service",
+        "courier_url": "http://www.nigeriapostcodes.com/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/nigeria.html"
+       },
+       {
+        "matches": "NO",
+        "country": "Norway",
+        "courier": "Posten",
+        "courier_url": "http://adressesok.posten.no/en/postal_codes/search",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/norway.html"
+       },
+       {
+        "matches": "OM",
+        "country": "Oman",
+        "courier": "Oman Post",
+        "courier_url": "http://www.omanpost.om/Portals/2/Skins/skins//tabid/64/Default.aspx",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/oman.html"
+       },
+       {
+        "matches": "PK",
+        "country": "Pakistan",
+        "courier": "Pakistan Post",
+        "courier_url": "http://www.pakpost.gov.pk/postcode/postcode.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/pakistan.html"
+       },
+       {
+        "matches": "PA",
+        "country": "Panama (Rep.)",
+        "courier": "Correos de Panam\u00e1",
+        "courier_url": "http://www.correospanama.gob.pa/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/panama-rep.html"
+       },
+       {
+        "matches": "PG",
+        "country": "Papua New Guinea",
+        "courier": "Post PNG",
+        "courier_url": "http://www.postpng.com.pg/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/papua-new-guinea.html"
+       },
+       {
+        "matches": "PY",
+        "country": "Paraguay",
+        "courier": "Correo Paraguayo",
+        "courier_url": "http://www.correoparaguayo.gov.py/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/paraguay.html"
+       },
+       {
+        "matches": "PE",
+        "country": "Peru",
+        "courier": "SERPOST \u2013 Servicios Postales del Per\u00fa",
+        "courier_url": "http://www.mtc.gob.pe/portal/CPOSTAL/Listado_codigo_postal.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/peru.html"
+       },
+       {
+        "matches": "PH",
+        "country": "Philippines",
+        "courier": "PHLPOST \u2013 Philippine Postal Corporation",
+        "courier_url": "https://www.phlpost.gov.ph/zip-code-search.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/philippines.html"
+       },
+       {
+        "matches": "PL",
+        "country": "Poland",
+        "courier": "Poczta Polska",
+        "courier_url": "http://kody.poczta-polska.pl/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/poland.html"
+       },
+       {
+        "matches": "PT",
+        "country": "Portugal",
+        "courier": "CTT - Correios",
+        "courier_url": "http://www.ctt.pt/feapl_2/app/open/tools.jspx?tool=1",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/portugal.html"
+       },
+       {
+        "matches": "QA",
+        "country": "Qatar",
+        "courier": "Qatar Post",
+        "courier_url": "http://www.qpost.com.qa/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/qatar.html"
+       },
+       {
+        "matches": "RO",
+        "country": "Romania",
+        "courier": "Posta Romana",
+        "courier_url": "http://www.posta-romana.ro/postal_codes",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/romania.html"
+       },
+       {
+        "matches": "RU",
+        "country": "Russian Federation",
+        "courier": "Russian Post",
+        "courier_url": "http://www.russianpost.ru/rp/servise/ru/home/postuslug/searchops",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/russian-federation.html"
+       },
+       {
+        "matches": "RW",
+        "country": "Rwanda",
+        "courier": "National Post Office (Iposita)",
+        "courier_url": "http://i-posita.rw/spip.php?article1",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/rwanda.html"
+       },
+       {
+        "matches": "KN",
+        "country": "Saint Christopher (Saint Kitts) and Nevis",
+        "courier": "St. Kitts & Nevis Postal Services",
+        "courier_url": "http://www.post.gov.kn/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/saint-christopher-saint-kitts-and-nevis.html"
+       },
+       {
+        "matches": "LC",
+        "country": "Saint Lucia",
+        "courier": "Saint Lucia Postal Service",
+        "courier_url": "http://www.stluciapostal.com/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/saint-lucia.html"
+       },
+       {
+        "matches": "VC",
+        "country": "Saint Vincent and the Grenadines",
+        "courier": "SVG Postal Corporation",
+        "courier_url": "http://www.svgpost.gov.vc/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/saint-vincent-and-the-grenadines.html"
+       },
+       {
+        "matches": "WS",
+        "country": "Samoa",
+        "courier": "Samoa Post",
+        "courier_url": "http://www.samoapost.ws/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/samoa.html"
+       },
+       {
+        "matches": "SM",
+        "country": "San Marino",
+        "courier": "Poste San Marino",
+        "courier_url": "http://www.poste.sm/on-line/home.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/san-marino.html"
+       },
+       {
+        "matches": "ST",
+        "country": "Sao Tome and Principe",
+        "courier": "Correios de S\u00e3o Tom\u00e9 e Pr\u00edncipe",
+        "courier_url": "http://www.inh.st/correios.st.htm",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/sao-tome-and-principe.html"
+       },
+       {
+        "matches": "SA",
+        "country": "Saudi Arabia",
+        "courier": "Saudi Post",
+        "courier_url": "http://maps.address.gov.sa",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/saudi-arabia.html"
+       },
+       {
+        "matches": "SN",
+        "country": "Senegal",
+        "courier": "La Poste Senegal",
+        "courier_url": "http://www.laposte.sn/laposte/trouver_codepostal.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/senegal.html"
+       },
+       {
+        "matches": "RS",
+        "country": "Serbia (Rep.)",
+        "courier": "PTT Communications \"Srbija\"",
+        "courier_url": "http://www.posta.rs/struktura/eng/aplikacije/pronadji/nadji-pak-rezultat.asp",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/serbia-rep.html"
+       },
+       {
+        "matches": "SC",
+        "country": "Seychelles",
+        "courier": "Seychelles Postal Service",
+        "courier_url": "http://www.seychellespost.gov.sc/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/seychelles.html"
+       },
+       {
+        "matches": "SL",
+        "country": "Sierra Leone",
+        "courier": "Sierra Leone Postal Services",
+        "courier_url": "http://www.salpost.sl/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/sierra-leone.html"
+       },
+       {
+        "matches": "SG",
+        "country": "Singapore",
+        "courier": "SingPost",
+        "courier_url": "http://www.singpost.com.sg/quick_services/index.htm",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/singapore.html"
+       },
+       {
+        "matches": "SK",
+        "country": "Slovakia",
+        "courier": "Slovensk\u00e1 Posta",
+        "courier_url": "http://psc.posta.sk/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/slovakia.html"
+       },
+       {
+        "matches": "SI",
+        "country": "Slovenia",
+        "courier": "Posta Slovenije d.o.o.",
+        "courier_url": "http://www.posta.si/postne-stevilke-doma",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/slovenia.html"
+       },
+       {
+        "matches": "SB",
+        "country": "Solomon Islands",
+        "courier": "Solomon Post",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/solomon-islands.html"
+       },
+       {
+        "matches": "SO",
+        "country": "Somalia",
+        "courier": "Somali Post",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/somalia.html"
+       },
+       {
+        "matches": "ZA",
+        "country": "South Africa",
+        "courier": "South African Post Office",
+        "courier_url": "http://www.postoffice.co.za/ContactUs/postalcode.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/south-africa.html"
+       },
+       {
+        "matches": "SS",
+        "country": "South Sudan (Rep.)",
+        "courier": "Minister of Telecommunication and Postal Services",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/south-sudan-rep.html"
+       },
+       {
+        "matches": "ES",
+        "country": "Spain",
+        "courier": "Correos y Tel\u00e9grafos",
+        "courier_url": "http://www.correos.es/ss/Satellite/site/pagina-buscador_codigos_postales/sidioma=es_ES",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/spain.html"
+       },
+       {
+        "matches": "LK",
+        "country": "Sri Lanka",
+        "courier": "Sri Lanka Post",
+        "courier_url": "http://www.slpost.gov.lk/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/sri-lanka.html"
+       },
+       {
+        "matches": "SD",
+        "country": "Sudan",
+        "courier": "Sudapost",
+        "courier_url": "http://sudapost.sd/index.php/en/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/sudan.html"
+       },
+       {
+        "matches": "SR",
+        "country": "Suriname",
+        "courier": "SURPOST",
+        "courier_url": "http://www.surpost.com/surpost2/index.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/suriname.html"
+       },
+       {
+        "matches": "SZ",
+        "country": "Swaziland",
+        "courier": "Swaziland Posts & Telecommunications Corporation",
+        "courier_url": "http://www.sptc.co.sz/swazipost/codes.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/swaziland.html"
+       },
+       {
+        "matches": "SE",
+        "country": "Sweden",
+        "courier": "Posten Sweden Post",
+        "courier_url": "http://www.posten.se/oldurls/old_postnummersok.jspv",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/sweden.html"
+       },
+       {
+        "matches": "CH",
+        "country": "Switzerland",
+        "courier": "La Poste Suisse",
+        "courier_url": "http://www.swisspost.ch/post-startseite.htm",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/switzerland.html"
+       },
+       {
+        "matches": "SY",
+        "country": "Syrian Arab Rep.",
+        "courier": "Syrian Post",
+        "courier_url": "http://www.syrianpost.gov.sy/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/syrian-arab-rep.html"
+       },
+       {
+        "matches": "TJ",
+        "country": "Tajikistan",
+        "courier": "Tajikistan\u2019s communications service agency",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/tajikistan.html"
+       },
+       {
+        "matches": "TZ",
+        "country": "Tanzania (United Rep.)",
+        "courier": "Tanzania Posts Corporation",
+        "courier_url": "http://www.posta.co.tz/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/tanzania-united-rep.html"
+       },
+       {
+        "matches": "TH",
+        "country": "Thailand",
+        "courier": "Thailand Post",
+        "courier_url": "http://www.thailandpost.com/search.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/thailand.html"
+       },
+       {
+        "matches": "MK",
+        "country": "The former Yugoslav Republic of Macedonia",
+        "courier": "Macedonian Post & Telecommunications",
+        "courier_url": "http://www.posta.mk/pravilno_adresiranje.html",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/the-former-yugoslav-republic-of-macedonia.html"
+       },
+       {
+        "matches": "TL",
+        "country": "Timor-Leste (Dem. Rep.)",
+        "courier": "Correios de Timor Leste",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/timor-leste-dem-rep.html"
+       },
+       {
+        "matches": "TG",
+        "country": "Togo",
+        "courier": "La Poste du Togo",
+        "courier_url": "http://www.laposte.tg/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/togo.html"
+       },
+       {
+        "matches": "TO",
+        "country": "Tonga (including Niuafo'ou)",
+        "courier": "Tonga Post",
+        "courier_url": "http://tongapost.to/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/tonga-including-niuafoou.html"
+       },
+       {
+        "matches": "TT",
+        "country": "Trinidad and Tobago",
+        "courier": "Trinidad and Tobago Postal Corporation",
+        "courier_url": "http://www.ttpost.net/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/trinidad-and-tobago.html"
+       },
+       {
+        "matches": "TN",
+        "country": "Tunisia",
+        "courier": "La Poste Tunisienne",
+        "courier_url": "http://www.poste.tn/codes.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/tunisia.html"
+       },
+       {
+        "matches": "TR",
+        "country": "Turkey",
+        "courier": "Turkey Post",
+        "courier_url": "http://postakodu.ptt.gov.tr/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/turkey.html"
+       },
+       {
+        "matches": "TM",
+        "country": "Turkmenistan",
+        "courier": "Turkmenpost",
+        "courier_url": "http://www.turkmenpost.gov.tm/about_index.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/turkmenistan.html"
+       },
+       {
+        "matches": "TV",
+        "country": "Tuvalu",
+        "courier": "Tuvalu Philatelic Bureau",
+        "courier_url": null,
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/tuvalu.html"
+       },
+       {
+        "matches": "UG",
+        "country": "Uganda",
+        "courier": "Posta Uganda",
+        "courier_url": "http://www.ugapost.co.ug/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/uganda.html"
+       },
+       {
+        "matches": "UA",
+        "country": "Ukraine",
+        "courier": "Ukrposhta",
+        "courier_url": "http://services.ukrposhta.com/postindex_new/default.aspx?lang=en",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/ukraine.html"
+       },
+       {
+        "matches": "AE",
+        "country": "United Arab Emirates",
+        "courier": "Emirates Post",
+        "courier_url": "http://www.emiratespost.com/content/english/index.jsp;jsessionid=35fbe352a6c441a491929d81d54fa0c6",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/united-arab-emirates.html"
+       },
+       {
+        "matches": "US",
+        "country": "United States of America",
+        "courier": "United States Postal Service",
+        "courier_url": "http://zip4.usps.com/zip4/welcome.jsp",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/united-states-of-america.html"
+       },
+       {
+        "matches": "UY",
+        "country": "Uruguay",
+        "courier": "Correo Uruguayo",
+        "courier_url": "http://www.correo.com.uy/index.asp?codPag=codPost&switchMapa=codPost",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/uruguay.html"
+       },
+       {
+        "matches": "UZ",
+        "country": "Uzbekistan",
+        "courier": "Post of Uzbekistan",
+        "courier_url": "http://www.pochta.uz/index.php/en/postal-indexes/9",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/eastern-europe-and-northern-asia/uzbekistan.html"
+       },
+       {
+        "matches": "VU",
+        "country": "Vanuatu",
+        "courier": "Vanuatu Post",
+        "courier_url": "http://www.vanuatupost.vu/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/vanuatu.html"
+       },
+       {
+        "matches": "VA",
+        "country": "Vatican",
+        "courier": "Vatican post",
+        "courier_url": "http://www.vaticanstate.va/EN/Services/Philatelic_and_Numismatic_Office/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/western-europe/vatican.html"
+       },
+       {
+        "matches": "VE",
+        "country": "Venezuela",
+        "courier": "IPOSTEL \u2013 Instituto Postal Telegr\u00e1fico de Venezuela",
+        "courier_url": "http://www.ipostel.gob.ve/nlinea/codigo_postal.php",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/americas/venezuela.html"
+       },
+       {
+        "matches": "VN",
+        "country": "Viet Nam",
+        "courier": "VNPT \u2013 Vietnam Posts and Telecommunications Group",
+        "courier_url": "http://postcode.vnpost.vn/services/search.aspx",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/viet-nam.html"
+       },
+       {
+        "matches": "YE",
+        "country": "Yemen",
+        "courier": "Yemen Post",
+        "courier_url": "http://www.post.ye/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/southern-asia-and-oceania/yemen.html"
+       },
+       {
+        "matches": "ZM",
+        "country": "Zambia",
+        "courier": "Zambia Postal Services Corporation (ZAMPOST)",
+        "courier_url": "http://www.zampost.com.zm/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/zambia.html"
+       },
+       {
+        "matches": "ZW",
+        "country": "Zimbabwe",
+        "courier": "Zimpost \u2013 Zimbabwe Posts",
+        "courier_url": "http://www.zimpost.co.zw/",
+        "upu_reference_url": "http://www.upu.int/en/the-upu/member-countries/africa/zimbabwe.html"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "Spee-Dee Delivery",
+  "courier_code": "speedee",
+  "tracking_numbers": [
+   {
+    "name": "Spee-Dee (20)",
+    "id": "speedee",
+    "regex": "\\s*S\\s*P\\s*(?<SerialNumber>([0-9]\\s*){18})\\s*",
+    "validation": {},
+    "tracking_url": "https://www.speedeedelivery.com/track/?tracking=%s",
+    "test_numbers": {
+     "valid": [
+      "SP029692510000920746",
+      "SP029692510000901479",
+      "SP029692510000688332",
+      "SP029692510000279301",
+      "SP029692450001607639"
+     ],
+     "invalid": [
+      "029692510000920746",
+      "SX029692510000920746"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "UPS",
+  "courier_code": "ups",
+  "tracking_numbers": [
+   {
+    "name": "UPS",
+    "id": "ups",
+    "regex": [
+     "\\s*1\\s*Z\\s*(?<SerialNumber>",
+     "(?<ShipperId>(?:[A-Z0-9]\\s*){6,6})",
+     "(?<ServiceType>(?:[A-Z0-9]\\s*){2,2})",
+     "(?<PackageId>(?:[A-Z0-9]\\s*){7,7}))",
+     "(?<CheckDigit>[0-9]\\s*)"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "mod10",
+      "modulo": 10,
+      "evens_multiplier": 1,
+      "odds_multiplier": 2,
+      "reverse": false
+     }
+    },
+    "tracking_url": "https://wwwapps.ups.com/WebTracking/track?track=yes&trackNums=%s",
+    "test_numbers": {
+     "valid": [
+      "1Z5R89390357567127",
+      "1Z879E930346834440",
+      "1Z410E7W0392751591",
+      "1Z8V92A70367203024",
+      " 1 Z 8 V 9 2 A 7 0 3 6 7 2 0 3 0 2 4 ",
+      "1ZXX3150YW44070023"
+     ],
+     "invalid": [
+      "2Z5R89390357567127",
+      "1A5R89390357567127",
+      "1Z1111111111111111"
+     ]
+    },
+    "additional": [
+     {
+      "name": "Service Type",
+      "regex_group_name": "ServiceType",
+      "lookup": [
+       {
+        "matches": "01",
+        "name": "UPS United States Next Day Air (Red)"
+       },
+       {
+        "matches": "02",
+        "name": "UPS United States Second Day Air (Blue)"
+       },
+       {
+        "matches": "03",
+        "name": "UPS United States Ground"
+       },
+       {
+        "matches": "12",
+        "name": "UPS United States Third Day Select"
+       },
+       {
+        "matches": "13",
+        "name": "UPS United States Next Day Air Saver (Red Saver)"
+       },
+       {
+        "matches": "15",
+        "name": "UPS United States Next Day Air Early A.M."
+       },
+       {
+        "matches": "22",
+        "name": "UPS United States Ground - Returns Plus - Three Pickup Attempts"
+       },
+       {
+        "matches": "32",
+        "name": "UPS United States Next Day Air Early A.M. - COD"
+       },
+       {
+        "matches": "33",
+        "name": "UPS United States Next Day Air Early A.M. - Saturday Delivery, COD"
+       },
+       {
+        "matches": "41",
+        "name": "UPS United States Next Day Air Early A.M. - Saturday Delivery"
+       },
+       {
+        "matches": "42",
+        "name": "UPS United States Ground - Signature Required"
+       },
+       {
+        "matches": "44",
+        "name": "UPS United States Next Day Air - Saturday Delivery"
+       },
+       {
+        "matches": "66",
+        "name": "UPS United States Worldwide Express"
+       },
+       {
+        "matches": "72",
+        "name": "UPS United States Ground - Collect on Delivery"
+       },
+       {
+        "matches": "78",
+        "name": "UPS United States Ground - Returns Plus - One Pickup Attempt"
+       },
+       {
+        "matches": "90",
+        "name": "UPS United States Ground - Returns - UPS Prints and Mails Label"
+       },
+       {
+        "matches": "A0",
+        "name": "UPS United States Next Day Air Early A.M. - Adult Signature Required"
+       },
+       {
+        "matches": "A1",
+        "name": "UPS United States Next Day Air Early A.M. - Saturday Delivery, Adult Signature Required"
+       },
+       {
+        "matches": "A2",
+        "name": "UPS United States Next Day Air - Adult Signature Required"
+       },
+       {
+        "matches": "A8",
+        "name": "UPS United States Ground - Adult Signature Required"
+       },
+       {
+        "matches": "A9",
+        "name": "UPS United States Next Day Air Early A.M. - Adult Signature Required, COD"
+       },
+       {
+        "matches": "AA",
+        "name": "UPS United States Next Day Air Early A.M. - Saturday Delivery, Adult Signature Required, COD"
+       },
+       {
+        "matches": "YW",
+        "name": "UPS SurePost - Delivered by the USPS"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "name": "UPS Waybill",
+    "regex": [
+     "\\s*(?<ServiceType>([AHJKTV]\\s*){1})",
+     "(?<SerialNumber>(?:[0-9]\\s*){9})",
+     "(?<CheckDigit>[0-9]\\s*){1}"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "mod10",
+      "modulo": 10,
+      "evens_multiplier": 1,
+      "odds_multiplier": 2,
+      "reverse": false
+     }
+    },
+    "tracking_url": "https://wwwapps.ups.com/WebTracking/track?track=yes&trackNums=%s",
+    "test_numbers": {
+     "valid": [
+      "K1506235620",
+      "K 150 623 562 0",
+      "K2479825491",
+      "J4603636537",
+      "V0490119172",
+      "V0431105627"
+     ],
+     "invalid": [
+      "K1506235622",
+      "K2479825492",
+      "J4603636538",
+      "V0411335627",
+      "V0423305841"
+     ]
+    },
+    "additional": [
+     {
+      "name": "Service Type",
+      "regex_group_name": "ServiceType",
+      "lookup": [
+       {
+        "matches": "J",
+        "name": "UPS Next Day Express"
+       },
+       {
+        "matches": "K",
+        "name": "UPS Ground"
+       },
+       {
+        "matches": "V",
+        "name": "UPS WorldWide Express Saver"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "United States Postal Service",
+  "courier_code": "usps",
+  "tracking_numbers": [
+   {
+    "name": "USPS 20",
+    "id": "usps_20",
+    "regex": [
+     "\\s*(?<SerialNumber>",
+     "(?<ServiceType>([0-9]\\s*){2})",
+     "(?<ShipperId>([0-9]\\s*){9})",
+     "(?<PackageId>([0-9]\\s*){8})",
+     ")",
+     "(?<CheckDigit>[0-9]\\s*)"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "mod10",
+      "modulo": 10,
+      "evens_multiplier": 3,
+      "odds_multiplier": 1,
+      "reverse": false
+     }
+    },
+    "tracking_url": "https://tools.usps.com/go/TrackConfirmAction?tLabels=%s",
+    "test_numbers": {
+     "valid": [
+      "0307 1790 0005 2348 3741",
+      " 0 3 0 7   1 7 9 0   0 0 0 5   2 3 4 8   3 7 4 1 ",
+      "7112 3456 7891 2345 6787"
+     ],
+     "invalid": [
+      "0307 1790 0005 2348 3742"
+     ]
+    },
+    "additional": [
+     {
+      "name": "Service Type",
+      "regex_group_name": "ServiceType",
+      "lookup": [
+       {
+        "matches": "01",
+        "name": "Delivery Confirmation",
+        "description": "Priority Mail or First-Class Mail Parcels"
+       },
+       {
+        "matches": "02",
+        "name": "Delivery Confirmation",
+        "description": "Package Services, Parcel Select or Standard Mail Parcels"
+       },
+       {
+        "matches_regex": "0[34]",
+        "name": "Delivery Confirmation",
+        "description": "Retail"
+       },
+       {
+        "matches": "05",
+        "name": "Delivery Confirmation",
+        "description": "Priority Mail or First-Class Mail Parcels, insured over $50"
+       },
+       {
+        "matches": "06",
+        "name": "Delivery Confirmation",
+        "description": "Package Services, Parcel Select or Standard Mail Parcels, insured over $50"
+       },
+       {
+        "matches": "07",
+        "name": "Delivery Confirmation",
+        "description": "Priority Mail, insured $50 or under"
+       },
+       {
+        "matches": "08",
+        "name": "Delivery Confirmation",
+        "description": "Package Services, Parcel Select or Standard Mail Parcels, insured $50 or under"
+       },
+       {
+        "matches": "14",
+        "name": "Delivery Confirmation",
+        "description": "Software vendors only, by approval"
+       },
+       {
+        "matches": "21",
+        "name": "Signature Confirmation",
+        "description": "Priority Mail or First-Class Mail Parcels"
+       },
+       {
+        "matches": "22",
+        "name": "Signature Confirmation",
+        "description": "Package Services, Parcel Select or Standard Mail Parcels"
+       },
+       {
+        "matches_regex": "2[34]",
+        "name": "Signature Confirmation",
+        "description": "Retail"
+       },
+       {
+        "matches": "25",
+        "name": "Signature Confirmation",
+        "description": "Priority Mail or First-Class Mail Parcels, insured, all values"
+       },
+       {
+        "matches": "26",
+        "name": "Signature Confirmation",
+        "description": "Package Services, Parcel Select or Standard Mail Parcels, insured, all values"
+       },
+       {
+        "matches": "34",
+        "name": "Signature Confirmation",
+        "description": "Software vendors only, by approval"
+       },
+       {
+        "matches": "50",
+        "name": "Electronic File Header",
+        "description": "Used in the file header record only, never on a package"
+       },
+       {
+        "matches": "56",
+        "name": "Passive Enroute Scan",
+        "description": "A free scan as the parcel passes through a sorting plant, with no confirmation service attached"
+       },
+       {
+        "matches": "73",
+        "name": "Insured Mail",
+        "description": "Insured only, value over $50"
+       },
+       {
+        "matches": "82",
+        "name": "Merchandise Return",
+        "description": "With Delivery Confirmation"
+       },
+       {
+        "matches": "83",
+        "name": "Merchandise Return",
+        "description": "With Delivery Confirmation, insured value $50 or under"
+       },
+       {
+        "matches": "85",
+        "name": "Merchandise Return",
+        "description": "With Delivery Confirmation, insured value over $50"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "name": "USPS IMpb N",
+    "id": "usps_impb_n",
+    "regex": [
+     "\\s*((?<RoutingApplicationId>4\\s*2\\s*0\\s*)(?<DestinationZip>([0-9]\\s*){5}(?=([0-9]\\s*){22}(?![0-9])|([0-9]\\s*){26}(?![0-9])))(?<DestinationZipPlus4>([0-9]\\s*){4}(?=([0-9]\\s*){22}(?![0-9])))?)?",
+     "(?<SerialNumber>",
+     "(?<ApplicationIdentifier>9\\s*4\\s*)",
+     "(?<ServiceType>([0-9]\\s*){3})",
+     "(?=9\\s*([0-9]\\s*){8}(([0-9]\\s*){15}|([0-9]\\s*){11}|([0-9]\\s*){7})[0-9]\\s*(?![0-9])",
+     "|[0-8]\\s*([0-9]\\s*){5}(([0-9]\\s*){14}|([0-9]\\s*){10})[0-9]\\s*(?![0-9]))",
+     "(?<ShipperId>9\\s*([0-9]\\s*){8}|[0-8]\\s*([0-9]\\s*){5})",
+     "(?<PackageId>([0-9]\\s*){15}|([0-9]\\s*){14}|([0-9]\\s*){11}|([0-9]\\s*){10}|([0-9]\\s*){7})",
+     ")",
+     "(?<CheckDigit>[0-9]\\s*)"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "mod10",
+      "modulo": 10,
+      "evens_multiplier": 3,
+      "odds_multiplier": 1,
+      "reverse": true
+     }
+    },
+    "tracking_url": "https://tools.usps.com/go/TrackConfirmAction?tLabels=%s",
+    "test_numbers": {
+     "valid": [
+      "420787459400111206206406260787",
+      "9400111206206406260787",
+      "9400 1112 0108 0805 4830 16",
+      "9405803699300124287899",
+      "9434611206206406227577",
+      "9434611206206407667136",
+      "9400111206206407628746",
+      "9400111206206407628845"
+     ],
+     "invalid": [
+      "9434611206206407667131",
+      "9434611306206407667222",
+      "2334611306206407667222"
+     ]
+    },
+    "additional": [
+     {
+      "name": "Application Identifier",
+      "regex_group_name": "ApplicationIdentifier",
+      "lookup": [
+       {
+        "matches": "94",
+        "name": "Online or vendor label",
+        "description": "Issued through USPS WebTools, or an authorized PC Postage provider"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "name": "USPS Legacy",
+    "id": "usps_legacy",
+    "regex": [
+     "\\s*(?:(?<RoutingApplicationId>4\\s*2\\s*0\\s*)(?<DestinationZip>([0-9]\\s*){5})(?<DestinationZipPlus4>([0-9]\\s*){4})?)?",
+     "(?<SerialNumber>",
+     "(?<ApplicationIdentifier>9\\s*1\\s*)?",
+     "(?<ServiceType>([0-9]\\s*){2})",
+     "(?<ShipperId>([0-9]\\s*){9})",
+     "(?<PackageId>([0-9]\\s*){8})",
+     ")",
+     "(?<CheckDigit>[0-9]\\s*)"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "mod10",
+      "modulo": 10,
+      "evens_multiplier": 3,
+      "odds_multiplier": 1,
+      "reverse": false
+     },
+     "serial_number_format": {
+      "prepend_if": {
+       "matches_regex": "^(?!9\\s*1).+",
+       "content": "91"
+      }
+     }
+    },
+    "tracking_url": "https://tools.usps.com/go/TrackConfirmAction?tLabels=%s",
+    "test_numbers": {
+     "valid": [
+      "420 22153 9101026837331000039521",
+      "9101 1234 5678 9000 0000 13",
+      "7196 9010 7560 0307 7385"
+     ],
+     "invalid": [
+      "9101 1234 5678 9000 0000 14",
+      "7196 9010 7560 0307 7386"
+     ]
+    },
+    "additional": [
+     {
+      "name": "Service Type",
+      "regex_group_name": "ServiceType",
+      "lookup": [
+       {
+        "matches": "01",
+        "name": "Delivery Confirmation",
+        "description": "Priority Mail or First-Class Mail Parcels"
+       },
+       {
+        "matches": "02",
+        "name": "Delivery Confirmation",
+        "description": "Package Services, Parcel Select or Standard Mail Parcels"
+       },
+       {
+        "matches_regex": "0[34]",
+        "name": "Delivery Confirmation",
+        "description": "Retail"
+       },
+       {
+        "matches": "05",
+        "name": "Delivery Confirmation",
+        "description": "Priority Mail or First-Class Mail Parcels, insured over $50"
+       },
+       {
+        "matches": "06",
+        "name": "Delivery Confirmation",
+        "description": "Package Services, Parcel Select or Standard Mail Parcels, insured over $50"
+       },
+       {
+        "matches": "07",
+        "name": "Delivery Confirmation",
+        "description": "Priority Mail, insured $50 or under"
+       },
+       {
+        "matches": "08",
+        "name": "Delivery Confirmation",
+        "description": "Package Services, Parcel Select or Standard Mail Parcels, insured $50 or under"
+       },
+       {
+        "matches": "14",
+        "name": "Delivery Confirmation",
+        "description": "Software vendors only, by approval"
+       },
+       {
+        "matches": "21",
+        "name": "Signature Confirmation",
+        "description": "Priority Mail or First-Class Mail Parcels"
+       },
+       {
+        "matches": "22",
+        "name": "Signature Confirmation",
+        "description": "Package Services, Parcel Select or Standard Mail Parcels"
+       },
+       {
+        "matches_regex": "2[34]",
+        "name": "Signature Confirmation",
+        "description": "Retail"
+       },
+       {
+        "matches": "25",
+        "name": "Signature Confirmation",
+        "description": "Priority Mail or First-Class Mail Parcels, insured, all values"
+       },
+       {
+        "matches": "26",
+        "name": "Signature Confirmation",
+        "description": "Package Services, Parcel Select or Standard Mail Parcels, insured, all values"
+       },
+       {
+        "matches": "34",
+        "name": "Signature Confirmation",
+        "description": "Software vendors only, by approval"
+       },
+       {
+        "matches": "50",
+        "name": "Electronic File Header",
+        "description": "Used in the file header record only, never on a package"
+       },
+       {
+        "matches": "56",
+        "name": "Passive Enroute Scan",
+        "description": "A free scan as the parcel passes through a sorting plant, with no confirmation service attached"
+       },
+       {
+        "matches": "73",
+        "name": "Insured Mail",
+        "description": "Insured only, value over $50"
+       },
+       {
+        "matches": "82",
+        "name": "Merchandise Return",
+        "description": "With Delivery Confirmation"
+       },
+       {
+        "matches": "83",
+        "name": "Merchandise Return",
+        "description": "With Delivery Confirmation, insured value $50 or under"
+       },
+       {
+        "matches": "85",
+        "name": "Merchandise Return",
+        "description": "With Delivery Confirmation, insured value over $50"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "name": "USPS IMpb C",
+    "id": "usps_impb_c",
+    "regex": [
+     "\\s*(?:(?<RoutingApplicationId>4\\s*2\\s*0\\s*)(?<DestinationZip>([0-9]\\s*){5})(?<DestinationZipPlus4>([0-9]\\s*){4}(?=([0-9]\\s*){22}(?![0-9])))?)?",
+     "(?<SerialNumber>",
+     "(?<ApplicationIdentifier>9\\s*2\\s*(?=([0-9]\\s*){3}9)|9\\s*3\\s*(?=([0-9]\\s*){3}[0-8])|9\\s*5\\s*)",
+     "(?<ServiceType>([0-9]\\s*){3})",
+     "(?=9\\s*([0-9]\\s*){8}(([0-9]\\s*){11}|([0-9]\\s*){7})[0-9]\\s*(?![0-9])",
+     "|[0-8]\\s*([0-9]\\s*){5}(([0-9]\\s*){14}|([0-9]\\s*){10})[0-9]\\s*(?![0-9]))",
+     "(?<ShipperId>9\\s*([0-9]\\s*){8}|[0-8]\\s*([0-9]\\s*){5})",
+     "(?<PackageId>([0-9]\\s*){14}|([0-9]\\s*){11}|([0-9]\\s*){10}|([0-9]\\s*){7})",
+     ")",
+     "(?<CheckDigit>[0-9]\\s*)"
+    ],
+    "validation": {
+     "checksum": {
+      "name": "mod10",
+      "modulo": 10,
+      "evens_multiplier": 3,
+      "odds_multiplier": 1,
+      "reverse": false
+     }
+    },
+    "tracking_url": "https://tools.usps.com/go/TrackConfirmAction?tLabels=%s",
+    "test_numbers": {
+     "valid": [
+      "4201002334249200190132607600833457",
+      "4201028200009261290113185417468510",
+      " 4 2 0 1 0 2 8 2 0 0 0 0 9 2 6 1 2 9 0 1 1 3 1 8 5 4 1 7 4 6 8 5 1 0 ",
+      "9505 5110 6960 5048 6006 24",
+      "92748931507708513018050063",
+      "92001903060085300042901077",
+      "9361 2898 7870 0317 6337 95",
+      "9261292700768711948021",
+      "420 11213 92 6129098349792366623 8",
+      "92 6129098349792366623 8",
+      "420902459261290336128704042634",
+      "420941179261290336128704062441",
+      "420926029261290336128704067248",
+      "420902729261290336128704124163",
+      "420950549261290336128704133837",
+      "420193809261290336128704280838",
+      "420900469261290336128704216936"
+     ],
+     "invalid": [
+      "61299998820821171811",
+      "9200000000000000000000",
+      "420000000000000000000000000000",
+      "420000009200000000000000000000",
+      "4201028200009261290113185417468511"
+     ]
+    },
+    "additional": [
+     {
+      "name": "Service Type",
+      "regex_group_name": "ServiceType",
+      "lookup": [
+       {
+        "matches": "612",
+        "name": "Parcel Select"
+       }
+      ]
+     },
+     {
+      "name": "Application Identifier",
+      "regex_group_name": "ApplicationIdentifier",
+      "lookup": [
+       {
+        "matches": "92",
+        "name": "Commercial mailer",
+        "description": "Nine digit mailer ID, and may have been carried by another company before USPS"
+       },
+       {
+        "matches": "93",
+        "name": "Commercial mailer",
+        "description": "Six digit mailer ID, and may have been carried by another company before USPS"
+       },
+       {
+        "matches": "95",
+        "name": "USPS Retail",
+        "description": "Issued at a post office counter, an automated postal center, or a self-service kiosk"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "Yodel",
+  "courier_code": "yodel",
+  "tracking_numbers": [
+   {
+    "name": "Yodel",
+    "id": "yodel",
+    "regex": [
+     "\\s*J\\s*(J\\s*)?D\\s*(?<SerialNumber>([0-9]\\s*){16})\\s*"
+    ],
+    "validation": {},
+    "tracking_url": "https://www.yodel.co.uk/tracking/%s",
+    "test_numbers": {
+     "valid": [
+      "JJD0002257639032011",
+      "JJD0002255380054291",
+      "JD0002242617644732",
+      "JD0002254405060992",
+      "J J D 0 0 0 2 2 5 7 6 3 9 0 3 2 0 2 0"
+     ],
+     "invalid": [
+      "JD000225440506099",
+      "JC0002254405060992"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "YunExpress",
+  "courier_code": "yunexpress",
+  "tracking_numbers": [
+   {
+    "name": "YunExpress",
+    "id": "yunexpress",
+    "regex": [
+     "\\s*Y\\s*T\\s*(?<SerialNumber>([0-9]\\s*){16})\\s*"
+    ],
+    "validation": {},
+    "tracking_url": "https://www.yuntrack.com/parcelTracking?id=%s",
+    "test_numbers": {
+     "valid": [
+      "YT2229521272164446",
+      "YT2229521272164447",
+      " Y T 2 2 2 9 5 2 1 2 7 2 1 6 4 4 4 7 "
+     ],
+     "invalid": [
+      "YT123456789012345"
+     ]
+    }
+   }
+  ]
+ }
+]

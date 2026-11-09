@@ -85,6 +85,29 @@ JSON keys. Leave out any key that is unknown or doesn't apply to the kind, and n
   "size": string, the item's size if shown (sales)
 }}"""
 
+def _schema():
+    """The reply's shape, for engines with structured output (Ollama): every key the prompt lists, kind required."""
+    text, num = {"type": ["string", "null"]}, {"type": ["number", "null"]}
+    day = {"type": ["string", "null"], "description": "YYYY-MM-DD"}
+    props = {
+        "kind": {"type": "string", "enum": ["order", "botting_expense", "sale", "other"]},
+        "retailer": text, "order_number": text, "order_date": day,
+        "items": {"type": "array", "items": {"type": "object", "properties": {
+            "name": {"type": "string"}, "quantity": num, "price": num}, "required": ["name"]}},
+        "total": num, "currency": text, "shipping_address": text, "shipping_name": text,
+        "tracking_number": text, "carrier": text,
+        "shipping_status": {"type": ["string", "null"], "enum": STATUSES + [None]},
+        "estimated_delivery": day, "vendor": text,
+        "expense_category": {"type": ["string", "null"], "enum": EXPENSE_CATEGORIES + [None]},
+        "billing_period": {"type": ["string", "null"], "enum": BILLING_PERIODS + [None]},
+        "description": text, "platform": text, "sale_price": num, "fees": num, "payout": num, "size": text,
+    }
+    return {"type": "object", "properties": props, "required": ["kind"]}
+
+
+REPLY_SCHEMA = _schema()
+
+
 TRACKING_PATTERNS = [
     ("UPS", re.compile(r"\b1Z[0-9A-Z]{16}\b")),
     ("Amazon", re.compile(r"\bTBA\d{12}\b")),
@@ -94,8 +117,13 @@ TRACKING_PATTERNS = [
 
 
 def find_tracking(text):
-    """Return (tracking_number, carrier) for the first well-known format in text."""
-    compact = re.sub(r"(?<=\d) (?=\d)", "", text)
+    """Return (tracking_number, carrier) for the first tracking number in text: any carrier format whose check
+    digit is right (tracknum.py), else the older loose patterns."""
+    from . import tracknum
+    found = tracknum.find_all(text or "")
+    if found:
+        return found[0]
+    compact = re.sub(r"(?<=\d) (?=\d)", "", text or "")
     for carrier, pattern in TRACKING_PATTERNS:
         m = pattern.search(compact)
         if m:
@@ -106,7 +134,8 @@ def find_tracking(text):
     return None, None
 
 
-CARRIER_LINK = re.compile(r"(ups|usps|fedex|dhl|ontrac|lasership|narvar|aftership|parcelsapp)\.(com|net|io)", re.I)
+CARRIER_LINK = re.compile(r"(ups|usps|fedex|dhl|ontrac|lasership|narvar|aftership|parcelsapp|ontracshipping|"
+                          r"canadapost|purolator)\.(com|net|io|ca)", re.I)
 
 
 def find_tracking_url(text, tracking):
@@ -125,6 +154,10 @@ def find_tracking_url(text, tracking):
 def carrier_for(tracking):
     if not tracking:
         return None
+    from . import tracknum
+    carrier = tracknum.identify(tracking)[0]
+    if carrier:
+        return carrier
     for carrier, pattern in TRACKING_PATTERNS:
         if pattern.fullmatch(tracking):
             return carrier
@@ -286,12 +319,26 @@ def _str(value):
 
 # Cancel and refund emails, read from the email itself so the model's guess can't miss them. A store's
 # "cancel anytime" or "how to cancel" footer, or one item of several cancelled, isn't a cancelled order.
+_CANT = r"(could ?n.t|could not|can.?not|ca n.t|was unable to|were unable to|(was|were|are|is) not able to|unable to)"
 CANCEL_SUBJECT = re.compile(r"\bcancel+(ed|ation)\b|\bcancel+ing your order\b|\bwe('ve| have) cancel+ed\b|"
-                            r"\b(order|purchase) (could ?n.t|could not|was unable to|can.t|cannot) be (processed|fulfilled|completed)\b",
-                            re.I)
+                            rf"\b(order|purchase)( #?\s?[\w-]+)? {_CANT} be (processed|fulfilled|completed|shipped)\b|"
+                            rf"\b{_CANT} (fulfill|fill|complete|process|ship)( your| this)? (order|purchase)\b|"
+                            r"\b(order|purchase)\b.{0,30}\bvoid(ed)?\b|\bvoided\b.{0,30}\b(order|purchase)\b|"
+                            r"\bhad to cancel\b", re.I)
 CANCEL_BODY = re.compile(r"\b(your |this )?(order|purchase)( #?\s?[\w-]+)? (has been|was|is|got|have been) cancel+ed\b|"
                          r"\bwe('ve| have) cancel+ed your (order|purchase)\b|\border cancel+ation\b|"
-                         r"\bcancel+ation (confirmation|notice)\b|\byour order is cancel+ed\b", re.I)
+                         r"\bcancel+ation (confirmation|notice)\b|\byour order is cancel+ed\b|"
+                         # "We had to cancel your order", "We canceled your order W123"
+                         r"\bwe(('ve|'d| have| had)( been)?)? (had to |have had to |needed to |were forced to )?cancel+(ed)? "
+                         r"(your|this|the) (order|purchase)\b|"
+                         # "Order P0123 could not be completed and has been cancelled"
+                         r"\b(order|purchase)\b[^.\n]{0,60}?\b(has been|have been|was|is|had been|got) "
+                         r"(cancel+ed|voided)\b|\b(your |this )?order( #?\s?(?=[\w-]*\d)[\w-]+)? (has been|was) declined\b|"
+                         rf"\b(order|purchase)( #?\s?[\w-]+)? {_CANT} be (processed|fulfilled|completed|shipped)\b|"
+                         rf"\b{_CANT} (fulfill|fill|complete|process|ship)( your| this| the)? (order|purchase)\b", re.I)
+# "If we have to cancel your order", "we may cancel": a policy line, not news.
+CANCEL_IF = re.compile(r"\b(if|may|might|can|could|would|will|unless|in case|reserve the right|right to|in the event)\b"
+                       r"[^.\n!?]{0,40}$", re.I)
 PARTIAL_CANCEL = re.compile(r"\b(some|one|an?) (of (your|the) )?items?\b[^.\n]{0,40}\bcancel|\bpartial(ly)? cancel|"
                             r"\bitems? (were|was|have been|has been) cancel+ed\b", re.I)
 NOT_CANCEL = re.compile(r"\bcancel+(ed)? (any ?time|at any time)\b|\b(how|want|wish|like|need) to cancel\b|"
@@ -307,8 +354,9 @@ def cancel_signal(email):
         return None
     if CANCEL_SUBJECT.search(subject) and not NOT_CANCEL.search(subject):
         return "cancelled"
-    if CANCEL_BODY.search(opening) and not NOT_CANCEL.search(CANCEL_BODY.search(opening).group(0)):
-        return "cancelled"
+    for m in CANCEL_BODY.finditer(opening):
+        if not NOT_CANCEL.search(m.group(0)) and not CANCEL_IF.search(opening[max(0, m.start() - 60):m.start()]):
+            return "cancelled"
     if REFUND_SUBJECT.search(subject) and not re.search(r"\brefund (policy|request)\b", subject, re.I):
         return "refunded"
     return None
@@ -407,7 +455,8 @@ def normalize(data, email):
     if signal == "cancelled" or (signal == "refunded" and status not in ("returned", "refunded")):
         status = signal  # the email says so outright; the model often calls a cancel email "ordered"
 
-    return {
+    from .grounding import ground_order
+    return ground_order({
         "kind": "order",
         "retailer": _str(data.get("retailer")) or _sender_name(email.sender),
         "order_number": _str(data.get("order_number")) or find_order_number(email),
@@ -423,7 +472,7 @@ def normalize(data, email):
         "carrier": carrier,
         "shipping_status": status,
         "estimated_delivery": _date(data.get("estimated_delivery")),
-    }
+    }, email)
 
 
 def _recipient(email):
@@ -625,7 +674,7 @@ def extract_raw(llm, email, max_body_chars=12000, examples=(), platforms=(), res
     user = email_prompt(email, max_body_chars, platforms, resale) + (hint or "")
 
     def ask(text):
-        return llm.chat_json(SYSTEM_PROMPT, text, examples=examples) if examples else llm.chat_json(SYSTEM_PROMPT, text)
+        return llm.chat_json(SYSTEM_PROMPT, text, examples=examples, schema=REPLY_SCHEMA)
     raw = ask(user)
     if raw.get("kind") == "order" and (platform := sale_signal(email, platforms)):
         return raw, normalize(as_sale(raw, platform), email)  # a "you sold it" read as a purchase

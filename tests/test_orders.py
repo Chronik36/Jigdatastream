@@ -16,7 +16,7 @@ class FakeLLM:
     def __init__(self, replies):
         self.replies = replies  # subject -> dict
 
-    def chat_json(self, system, user):
+    def chat_json(self, system, user, **kw):
         subject = user.split("\n")[1].removeprefix("Subject: ")
         return self.replies[subject]
 
@@ -176,7 +176,7 @@ class SyncTests(unittest.TestCase):
         from jigstream.llm import LLMError
 
         class Broken:
-            def chat_json(self, s, u):
+            def chat_json(self, s, u, **kw):
                 raise LLMError("Model did not return JSON")
 
         store = Store(db.connect(":memory:"))
@@ -306,7 +306,7 @@ def test_ad_senders_skip_the_model_after_three_ads():
     asked = []
 
     class LLM:
-        def chat_json(self, system, user):
+        def chat_json(self, system, user, **kw):
             asked.append(user.split("\n")[1])
             return {"kind": "other"}
     ads = [mail(f"Deals week {i} - save $20 on your order", sender="Shop <news@shop.com>", mid=f"<ad{i}@x>") for i in range(3)]

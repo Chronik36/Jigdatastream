@@ -157,7 +157,7 @@ SHOP_PRODUCT = {"pkmn-pe-etb": {"price": 5499, "available": True, "variants": [{
 
 
 class FakeAI:
-    def chat_json(self, system, user, examples=()):
+    def chat_json(self, system, user, examples=(), **kw):
         if "search words" in system:
             return {"searches": ["prismatic evolutions elite trainer box"], "skip_words": ["sticker"]}
         return {"keep": [1, 2]}

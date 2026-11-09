@@ -360,6 +360,30 @@ def _words(text):
                                                               "from"}
 
 
+LAYOUT_LINES = 120
+
+
+def layout(text):
+    """An email's layout, without its values: its short label-like lines ("order #", "subtotal $#", "ship to")
+    with every number masked. Two emails from the same template (one store's shipping notice, or any store on
+    the same Shopify theme) share most of these lines even when every order detail differs."""
+    lines = set()
+    for line in (text or "").splitlines()[:LAYOUT_LINES * 3]:
+        line = re.sub(r"\[https?://[^\]]*\]", "", line.lower())
+        line = re.sub(r"\d[\d,.]*", "#", line)
+        line = re.sub(r"[^a-z#$:]+", " ", line).strip()
+        if 2 < len(line) <= 40 and re.search(r"[a-z]{3}", line):
+            lines.add(line)
+        if len(lines) >= LAYOUT_LINES:
+            break
+    return lines
+
+
+def same_layout(a, b):
+    """0..1: how much of two layouts match."""
+    return len(a & b) / (len(a | b) or 1) if a and b else 0.0
+
+
 def _same_store(a, b):
     return bool(a and b and (a == b or a.endswith("." + b) or b.endswith("." + a)))
 
@@ -383,12 +407,13 @@ def describe(lesson):
 
 
 class Picker:
-    """Chooses what's shown before each email: the user's own closest corrected examples (by sender domain and
-    subject), and as hints the shared lessons for the same store. With no close examples, the same default pair
+    """Chooses what's shown before each email: the user's own closest corrected examples (by sender domain,
+    email layout and subject), and as hints the shared lessons for the same store. With no close examples, the same default pair
     every time, which keeps the engine's prompt cache warm."""
 
     def __init__(self, own, lessons=(), default=(), per_email=PER_EMAIL):
-        self.pool = [(o["sender_domain"], _words(o["subject"]), o["prompt"], o["answer"]) for o in own]
+        self.pool = [(o["sender_domain"], _words(o["subject"]), layout(o.get("layout") or o["prompt"]), o["prompt"],
+                      o["answer"]) for o in own]
         self.lessons = list(lessons)
         self.default = list(default)
         self.per_email = per_email
@@ -397,10 +422,14 @@ class Picker:
         return len(self.pool) + len(self.lessons) or len(self.default)
 
     def __call__(self, email):
+        from .extract import compact
         domain, words = _domain(email.sender), _words(email.subject)
+        shape = layout(compact(email.body or "")) if self.pool else set()
         scored = []
-        for i, (d, w, prompt, answer) in enumerate(self.pool):
-            score = (3 if _same_store(d, domain) else 0) + 2 * len(words & w) / (len(words | w) or 1)
+        for i, (d, w, lay, prompt, answer) in enumerate(self.pool):
+            # Same store, then same layout (a correction on this very template is the best guide), then subject.
+            score = (3 if _same_store(d, domain) else 0) + 2 * len(words & w) / (len(words | w) or 1) \
+                + 3 * same_layout(shape, lay)
             if score >= 1:
                 scored.append((score, -i, prompt, answer))
         scored.sort(reverse=True)
@@ -429,7 +458,8 @@ def picker(store, default):
     own = []
     for ex in store.examples():
         own.append({"sender_domain": _domain(ex["sender"]), "subject": ex["subject"] or "",
-                    "prompt": (ex["prompt"] or "")[:EXAMPLE_CHARS], "answer": ex["corrected"]})
+                    "prompt": (ex["prompt"] or "")[:EXAMPLE_CHARS], "layout": ex["prompt"] or "",
+                    "answer": ex["corrected"]})
     return Picker(own, shared(store.db), default)
 
 
