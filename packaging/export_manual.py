@@ -31,19 +31,32 @@ def inline(html):
     return re.sub(r'((?:src=|href=|url\()["\']?)/static/([^"\')\s]+)', data, html)
 
 
+def check(status, location, html):
+    """Refuse to write anything but the real manual (a gate's redirect page once went out as the manual)."""
+    if status != 200:
+        raise SystemExit(f"manual export failed: /manual answered HTTP {status}"
+                         + (f" (redirect to {location})" if location else ""))
+    if 'id="welcome"' not in html or 'id="faq"' not in html:
+        raise SystemExit("manual export failed: /manual didn't return the manual page")
+
+
 def main(out):
     out = Path(out).resolve()  # before moving into the temp folder
     cwd = os.getcwd()
     with tempfile.TemporaryDirectory() as tmp:
         os.chdir(tmp)
-        os.environ.update(BOTTRACK_HOME=tmp, UI_THEME="light")
+        # FILEVAULT_MODE=off: the build Mac's disk isn't encrypted, and the FileVault screen would be
+        # exported in place of the manual (build 152 shipped that redirect page).
+        os.environ.update(BOTTRACK_HOME=tmp, UI_THEME="light", FILEVAULT_MODE="off")
         from jigstream import accountkeys
         empty = Path(tmp) / "pub.txt"
         empty.write_text("")
         accountkeys.PUBLIC_FILE = empty  # the manual opens without a key
         from jigstream.app import create_app
-        html = create_app(str(Path(tmp) / "m.db")).test_client().get("/manual").get_data(as_text=True)
+        resp = create_app(str(Path(tmp) / "m.db")).test_client().get("/manual")
+        html = resp.get_data(as_text=True)
         os.chdir(cwd)
+    check(resp.status_code, resp.headers.get("Location"), html)
     html = html.replace("</head>", PRINT + "</head>", 1)
     html = re.sub(r"<title>.*?</title>", "<title>BotTrack Manual</title>", html, count=1, flags=re.S)
     out.parent.mkdir(parents=True, exist_ok=True)

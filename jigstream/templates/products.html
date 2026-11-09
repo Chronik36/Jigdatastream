@@ -61,14 +61,24 @@ a site that blocks automated visits is reported and you can type its price in.</
 
 <div class="panel" id="research">
   <div class="pr-head"><h3>Research</h3></div>
-  <form class="pr-form" method="post" action="/products/research" data-loader="Searching the stores" data-loader-msg="Target and {{shops|length}} Shopify stores, a few searches each. This takes up to a minute.">
+  <form class="pr-form" method="post" action="/products/research">
     <textarea name="query" placeholder="What are you looking for? e.g. Pokémon elite trainer boxes, or Jordan 4 retro" required>{{research.query if not research['for']}}</textarea>
-    <button>Research</button>
+    <button {{'disabled' if research.running}}>Research</button>
   </form>
+  {% if research.running %}<p class="muted" id="pr-running" style="margin-top:12px">Researching “{{research.query}}”: <span id="pr-step">{{research.step}}</span>… You can use the rest of the app meanwhile; this takes up to about two minutes.</p>
+  <script>(function () {
+    const tick = () => fetch('/products/research/status', {cache: 'no-store'}).then(r => r.json()).then(s => {
+      if (!s.running) { location.reload(); return; }
+      document.getElementById('pr-step').textContent = s.step + (s.seconds ? ' (' + s.seconds + 's)' : '');
+      setTimeout(tick, 2000);
+    }).catch(() => setTimeout(tick, 4000));
+    setTimeout(tick, 1500);
+  })();</script>{% endif %}
   <p class="pr-sub" style="margin:8px 0 0">Names, SKUs, prices and stock come from what each store lists right now. The local AI only picks the search words and drops results that don't fit; it never supplies a price or SKU.</p>
   {% if research.error %}<p class="bad" style="margin-top:12px">Research failed: {{research.error}}</p>{% endif %}
-  {% if research.query and not research.error %}
+  {% if research.query and not research.error and not research.running %}
   <p class="muted" style="margin:14px 0 8px"><b style="color:var(--text)">{{research.query}}</b>{% if research.searches %} · searched {% for w in research.searches %}“{{w}}”{{', ' if not loop.last}}{% endfor %}{% endif %}</p>
+  {% if research.note %}<p class="pr-sub">{{research.note}}</p>{% endif %}
   {% if research.errors %}<p class="pr-sub">Couldn't search: {% for name, e in research.errors.items() %}<span title="{{e}}">{{name}}</span>{{', ' if not loop.last}}{% endfor %} (hover for why).</p>{% endif %}
   {% if research['items'] %}
   <form method="post" action="/products/add" style="display:block;margin:8px 0 0">

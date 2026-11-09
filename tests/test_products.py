@@ -38,7 +38,8 @@ def fresh(monkeypatch, tmp_path):
     products._last.clear()
     products._paused.clear()
     products._page_inputs.clear()
-    products.last_research.update(query="", searches=[], items=[], errors={}, error=None, **{"for": None})
+    products.last_research.update(query="", searches=[], items=[], errors={}, error=None, running=False, step="",
+                                  started=None, note="", **{"for": None})
     monkeypatch.setattr(products.stock, "MIN_GAP", {"target": 0, "bestbuy": 0})
     monkeypatch.setattr(products, "SHOP_GAP", 0)
     products.update_state.update(running=False, done=0, total=0, current="", finished=None)
@@ -221,6 +222,8 @@ def test_page_flow(monkeypatch, tmp_path):
     stores(monkeypatch)
     monkeypatch.setattr(products, "_client", lambda config=None: FakeAI())
     client.post("/products/research", data={"query": "pokemon prismatic evolutions elite trainer box"})
+    products._research_thread.join(10)  # research runs beside the page
+    assert client.get("/products/research/status").get_json()["running"] is False
     page = client.get("/products").get_data(as_text=True)
     assert "Track selected" in page and "Target TCIN" in page and "Kith $" in page
 
@@ -255,3 +258,54 @@ def test_page_flow(monkeypatch, tmp_path):
     assert status["x-whatnot"]["state"] == "blocked"
     client.post("/products/sources/goat/toggle")
     assert "goat" in products.load()["off"]
+
+
+def test_research_never_waits_long_on_a_busy_ai(monkeypatch, tmp_path):
+    """Oct 23 report: research hung while a sync kept the local model busy. The page now answers at once,
+    shows progress, the AI gets a short wait with no second ask, and the budget skips the AI filter."""
+    stores(monkeypatch)
+    real = products.LLMClient("http://127.0.0.1:9", "m", timeout=300)
+    monkeypatch.setattr(products, "_client", lambda config=None: real)
+    quick = products._quick_client()
+    assert quick.timeout == products.RESEARCH_AI_TIMEOUT and quick.ask_again is False
+
+    asked = []
+
+    class Busy:
+        def chat_json(self, system, user, examples=()):
+            asked.append(system)
+            if "search words" in system:
+                return {"searches": ["prismatic evolutions elite trainer box", "pokemon etb"], "skip_words": []}
+            raise AssertionError("the filter should be skipped once the budget is used up")
+    monkeypatch.setattr(products, "_client", lambda config=None: Busy())
+    searches, items, _ = products.research("pokemon etb", budget=0)
+    assert searches == ["prismatic evolutions elite trainer box"] and items  # first search kept, second skipped
+    assert len(asked) == 1 and "Stopped after 1 of 2" in products.last_research["note"]
+
+    import threading
+    gate = threading.Event()
+
+    def slow(q):
+        gate.wait(5)
+        return ["w"], [], {}
+    client = create_app(str(tmp_path / "a.db")).test_client()
+    products._start_research("slow one", run=slow)
+    first = products._research_thread
+    r = client.post("/products/research", data={"query": "anything"})
+    assert r.status_code == 302 and products._research_thread is first  # answered at once; one at a time
+    page = client.get("/products").get_data(as_text=True)
+    assert "Researching “slow one”" in page and client.get("/products/research/status").get_json()["running"]
+    gate.set()
+    products._research_thread.join(10)
+    assert not products.last_research["running"]
+
+
+def test_llm_ask_again_off_raises_without_second_ask(monkeypatch):
+    from jigstream import llm
+    c = llm.LLMClient("http://x", "m")
+    c.ask_again = False
+    calls = []
+    monkeypatch.setattr(c, "_chat", lambda *a, **k: calls.append(1) or "not json")
+    with pytest.raises(llm.LLMError):
+        c.chat_json("s", "u")
+    assert len(calls) == 1

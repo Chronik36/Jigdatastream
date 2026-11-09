@@ -69,7 +69,9 @@ _last = {}  # host -> time of last request
 _paused = {}  # host -> time a block pause ends
 _page_inputs = {}  # (product id, platform key) -> what the local AI was shown, so a correction can teach it
 update_state = {"running": False, "done": 0, "total": 0, "current": "", "finished": None}
-last_research = {"query": "", "searches": [], "items": [], "errors": {}, "error": None, "for": None}
+last_research = {"query": "", "searches": [], "items": [], "errors": {}, "error": None, "for": None,
+                 "running": False, "step": "", "started": None, "note": ""}
+_research_thread = None
 
 
 class SourceError(Exception):
@@ -420,6 +422,8 @@ DEFAULT_SHOPS = [("Kith", "kith.com"), ("Undefeated", "undefeated.com"), ("Bodeg
                  ("Jimmy Jazz", "jimmyjazz.com")]
 TARGET_SEARCH = "https://redsky.target.com/redsky_aggregations/v1/web/plp_search_v2"
 SHOP_GAP = 1.0  # Shopify product pages are light; still one request a second per store
+RESEARCH_AI_TIMEOUT = 45  # seconds: research's two small AI questions; the AI is optional there
+RESEARCH_BUDGET = 120  # seconds: after this no new store searches start and the AI filter is skipped
 SKU_LOOKUPS = 3  # per store and search: how many results get their product page read for SKUs
 
 WORDS_PROMPT = (
@@ -440,10 +444,26 @@ def shops(data=None):
     return data["shops"]
 
 
+def _quick_client(config=None):
+    """The local AI for research: a short wait and no second ask. While a sync keeps the model busy, research
+    goes on without it instead of queueing behind hundreds of emails (the Oct 23 "hung up" report)."""
+    client = _client(config)
+    if isinstance(client, LLMClient):
+        client.timeout = min(client.timeout, RESEARCH_AI_TIMEOUT)
+        client.ask_again = False
+        client.max_tokens = client.max_tokens or 400
+    return client
+
+
+def _step(text):
+    last_research["step"] = text
+    logger.info("products: research: %s", text)
+
+
 def search_words_for(query, config=None):
     """(searches, skip words) for a description, from the local AI; the description itself if the AI is off."""
     try:
-        answer = _client(config).chat_json(WORDS_PROMPT, query)
+        answer = _quick_client(config).chat_json(WORDS_PROMPT, query)
         searches = [str(s).strip()[:80] for s in answer.get("searches") or [] if str(s).strip()][:4]
         skip = {str(w).strip().lower() for w in answer.get("skip_words") or [] if str(w).strip()}
         if searches:
@@ -569,7 +589,7 @@ def ai_filter(query, items, config=None):
     listing = "\n".join(f"{i + 1}. {it['name']}" + (f" ({it['type']})" if it["type"] else "")
                         for i, it in enumerate(items[:40]))
     try:
-        keep = _client(config).chat_json(FILTER_PROMPT, f"Request: {query}\n\nResults:\n{listing}").get("keep")
+        keep = _quick_client(config).chat_json(FILTER_PROMPT, f"Request: {query}\n\nResults:\n{listing}").get("keep")
         idx = {int(k) - 1 for k in keep if str(k).strip().isdigit()} if isinstance(keep, list) else set()
     except (LLMError, ValueError, AttributeError, TypeError) as e:
         logger.info("products: local AI didn't filter results (%s); showing all", e)
@@ -578,14 +598,26 @@ def ai_filter(query, items, config=None):
     return kept or items
 
 
-def research(query, config=None, data=None, use_ai=True):
-    """Real listings for a description: (search words used, products, store errors)."""
+def research(query, config=None, data=None, use_ai=True, budget=None):
+    """Real listings for a description: (search words used, products, store errors).
+
+    Never runs long: the AI questions wait RESEARCH_AI_TIMEOUT at most, and once RESEARCH_BUDGET seconds have
+    gone no new search starts and the AI filter is skipped, so you get what was found so far."""
     data = data or load()
-    searches, skip = search_words_for(query, config) if use_ai else ([" ".join(query.split()[:8])], set())
-    offers, errors = [], {}
+    deadline = time.time() + (RESEARCH_BUDGET if budget is None else budget)
+    if use_ai:
+        _step("Asking the local AI for search words")
+        searches, skip = search_words_for(query, config)
+    else:
+        searches, skip = [" ".join(query.split()[:8])], set()
+    offers, errors, done = [], {}, []
     jobs = [("Target", lambda w: target_search(w))] + [
         (s["name"], lambda w, s=s: shop_search(s, w)) for s in shops(data) if not s.get("off")]
-    for words in searches:
+    for n, words in enumerate(searches, 1):
+        if done and time.time() > deadline:
+            last_research["note"] = (f"Stopped after {len(done)} of {len(searches)} searches to keep it quick.")
+            break
+        _step(f"Searching the stores for “{words}” ({n} of {len(searches)})")
         with ThreadPoolExecutor(max_workers=6) as pool:  # different stores at once; each store stays paced
             futures = {pool.submit(fn, words): name for name, fn in jobs if name not in errors}
             for fut, name in futures.items():
@@ -594,12 +626,14 @@ def research(query, config=None, data=None, use_ai=True):
                 except Exception as e:  # one store's failure or odd answer leaves the others' results
                     errors[name] = str(e) if isinstance(e, SourceError) else f"unexpected answer ({e})"
                     logger.info("products: research search at %s: %s", name, e)
+        done.append(words)
     items = group_offers(offers, skip)
-    if use_ai:
+    if use_ai and time.time() < deadline:
+        _step(f"Asking the local AI which of {len(items)} results fit")
         items = ai_filter(query, items, config)
-    logger.info("products: research “%s” searched %s -> %d products from %d listings", query[:80], searches,
+    logger.info("products: research “%s” searched %s -> %d products from %d listings", query[:80], done,
                 len(items), len(offers))
-    return searches, items[:30], errors
+    return done, items[:30], errors
 
 
 def similar(p, config=None, data=None):
@@ -770,12 +804,25 @@ def products_page():
 
 
 def _run_research(query, pid=None, run=None):
-    last_research.update(query=query, searches=[], items=[], errors={}, error=None, **{"for": pid})
+    last_research.update(query=query, searches=[], items=[], errors={}, error=None, running=True, note="",
+                         step="Starting", started=time.time(), **{"for": pid})
     try:
         last_research["searches"], last_research["items"], last_research["errors"] = (run or research)(query)
     except Exception as e:  # a store's odd answer should never take the page down
         last_research["error"] = str(e)
         logger.exception("products: research failed")
+    finally:
+        last_research.update(running=False, step="")
+
+
+def _start_research(query, pid=None, run=None):
+    """Research runs beside the page (it waits on stores and the local AI), and the page shows how it's going."""
+    global _research_thread
+    if last_research["running"]:
+        return
+    last_research.update(running=True, step="Starting", started=time.time())
+    _research_thread = threading.Thread(target=_run_research, args=(query, pid, run), daemon=True)
+    _research_thread.start()
 
 
 @bp.post("/products/research")
@@ -783,8 +830,15 @@ def research_route():
     query = (request.form.get("query") or "").strip()
     if not query:
         return _back(error="Describe what you're looking for first.")
-    _run_research(query)
+    _start_research(query)
     return _back("research")
+
+
+@bp.get("/products/research/status")
+def research_status():
+    r = last_research
+    return {"running": r["running"], "step": r["step"],
+            "seconds": round(time.time() - r["started"]) if r["running"] and r["started"] else 0}
 
 
 @bp.post("/products/<pid>/similar")
@@ -793,7 +847,7 @@ def similar_route(pid):
     p = find(data, pid)
     if not p:
         return _back()
-    _run_research(f"Similar to {p['name']}", pid, lambda q: similar(p, data=data))
+    _start_research(f"Similar to {p['name']}", pid, lambda q: similar(p, data=data))
     return _back("research")
 
 

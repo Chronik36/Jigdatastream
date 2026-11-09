@@ -74,6 +74,7 @@ class LLMClient:
         self.api_key = api_key
         self.timeout = timeout
         self.adapter = adapter  # a LoRA adapter folder from the Training page (MLX engine only)
+        self.ask_again = True  # one more ask when the reply isn't JSON; quick helpers turn it off
 
     def chat_json(self, system, user, examples=()):
         """examples: (email text, correct JSON string) pairs shown to the model before the real email."""
@@ -86,6 +87,8 @@ class LLMClient:
         if kept is not None:  # cut off part way: what it got through is still right
             logger.info("model %s reply was cut off; kept the part that finished", self.model)
             return kept
+        if not self.ask_again:
+            raise LLMError(f"Model did not return JSON: {content[:300]}")
         # Empty (it spent the reply thinking) or prose instead of JSON: ask once more, plainly.
         logger.warning("model %s returned unusable output, asking again: %s", self.model, content[:500])
         content = self._chat(system, user + "\n\nReply with the JSON object only: no explanation, no thinking.",
