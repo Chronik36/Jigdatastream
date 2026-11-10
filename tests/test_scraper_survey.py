@@ -140,8 +140,8 @@ def test_values_the_email_does_not_show_are_dropped():
                      "shipping_address": "99 Other Street, Elsewhere, CA 90001", "total": 48.30,
                      "tracking_number": "1Z999AA10123456784"}, e)
     assert got["order_number"] == "ZX-4410"          # the model's number wasn't in the email; the email's is
-    assert got["shipping_name"] is None
-    assert got["shipping_address"] is None
+    assert got["shipping_name"] == "Pat Example"     # made-up values give way to the email's own ship-to lines
+    assert got["shipping_address"].startswith("12 Sample Road")
     assert got["tracking_number"] == "1Z999AA10123456784"  # not shown, but a real UPS number: kept
 
 

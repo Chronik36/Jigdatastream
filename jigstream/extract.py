@@ -341,7 +341,7 @@ CANCEL_IF = re.compile(r"\b(if|may|might|can|could|would|will|unless|in case|res
                        r"[^.\n!?]{0,40}$", re.I)
 PARTIAL_CANCEL = re.compile(r"\b(some|one|an?) (of (your|the) )?items?\b[^.\n]{0,40}\bcancel|\bpartial(ly)? cancel|"
                             r"\bitems? (were|was|have been|has been) cancel+ed\b", re.I)
-NOT_CANCEL = re.compile(r"\bcancel+(ed)? (any ?time|at any time)\b|\b(how|want|wish|like|need) to cancel\b|"
+NOT_CANCEL = re.compile(r"\b(noise|echo)[- ]cancel+(ing|ation|ed)\b|\bcancel+(ed)? (any ?time|at any time)\b|\b(how|want|wish|like|need) to cancel\b|"
                         r"\bcancel your (subscription|membership)\b|\brequest(ed)? (a |to )?cancel", re.I)
 REFUND_SUBJECT = re.compile(r"\brefund(ed| issued| processed| confirmation| complete| on the way)?\b", re.I)
 ORDER_NUMBER = re.compile(r"\border\s*(?:number|no\.?|num|id)?\s*[:#]?\s*#?\s*([A-Z0-9][A-Z0-9-]{4,})\b", re.I)
@@ -352,6 +352,9 @@ def cancel_signal(email):
     subject, opening = email.subject or "", (email.body or "")[:1500]
     if PARTIAL_CANCEL.search(subject) or (not CANCEL_SUBJECT.search(subject) and PARTIAL_CANCEL.search(opening)):
         return None
+    from .rulefields import ITEM_CANCEL, REST_COMING
+    if ITEM_CANCEL.search(f"{subject}\n{opening}") and REST_COMING.search(opening):
+        return None  # some items cancelled, the rest of the order still coming
     if CANCEL_SUBJECT.search(subject) and not NOT_CANCEL.search(subject):
         return "cancelled"
     for m in CANCEL_BODY.finditer(opening):
@@ -363,10 +366,17 @@ def cancel_signal(email):
 
 
 def find_order_number(email):
+    """The order number the email shows (see rulefields.find_order_number), else the first "Order ..." word
+    with a digit in it."""
+    from . import rulefields
+    found = rulefields.find_order_number(rulefields.INVISIBLE.sub("", email.subject or ""),
+                                         rulefields.lines_of((email.body or "")[:8000]))
+    if found:
+        return found
     for text in (email.subject or "", (email.body or "")[:3000]):
-        m = ORDER_NUMBER.search(text)
-        if m and re.search(r"\d", m.group(1)):
-            return m.group(1)
+        for m in ORDER_NUMBER.finditer(text):
+            if re.search(r"\d", m.group(1)) and not re.search(r"ending in\s*$", text[:m.start()], re.I):
+                return m.group(1)
     return None
 
 
@@ -455,17 +465,33 @@ def normalize(data, email):
     if signal == "cancelled" or (signal == "refunded" and status not in ("returned", "refunded")):
         status = signal  # the email says so outright; the model often calls a cancel email "ordered"
 
-    from .grounding import ground_order
+    # The email's own labelled fields (rulefields) fill what the model left out, and win where the model's
+    # answer isn't in the email or the summary lines add up to a different total.
+    from .grounding import ground_order, address_shown, name_shown
+    from . import rulefields
+    rules = rulefields.read(email)
+    if rules["total"] is not None and (total is None or (rules["sum_ok"] and round(total, 2) != rules["total"])):
+        total = rules["total"]
+    address, name = _str(data.get("shipping_address")), _str(data.get("shipping_name"))
+    if rules["address"] and (not address or not address_shown(address, f"{email.subject}\n{email.body}")):
+        address = rules["address"]
+    if rules["name"] and (not name or not name_shown(name, f"{email.subject}\n{email.body}")):
+        name = rules["name"]
+    if not tracking and rules["tracking"]:
+        tracking, carrier = rules["tracking"], rules["carrier"]
+    if status == "unknown" and tracking:
+        status = "shipped"
+
     return ground_order({
         "kind": "order",
         "retailer": _str(data.get("retailer")) or _sender_name(email.sender),
-        "order_number": _str(data.get("order_number")) or find_order_number(email),
+        "order_number": _str(data.get("order_number")) or rules["order_number"] or find_order_number(email),
         "order_date": _date(data.get("order_date")) or email_day,
         "items": items,
         "total": total,
         "currency": currency,
-        "shipping_address": _str(data.get("shipping_address")),
-        "shipping_name": _str(data.get("shipping_name")),
+        "shipping_address": address,
+        "shipping_name": name,
         "recipient_email": _recipient(email),
         "tracking_number": tracking,
         "tracking_url": find_tracking_url(email.body, tracking) if tracking else None,
