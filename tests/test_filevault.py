@@ -28,7 +28,7 @@ def test_filevault_off_blocks_the_app_until_it_is_on(app, monkeypatch):
     r = c.get("/orders")
     assert r.status_code == 302 and r.headers["Location"].startswith("/filevault")
     page = c.get("/filevault?next=/orders").get_data(as_text=True)
-    assert "FileVault is required" in page and "Remind me tomorrow" not in page
+    assert "FileVault is strongly recommended" in page and "Remind me tomorrow" not in page
     assert c.post("/filevault/later", data={"next": "/orders"}).headers["Location"].endswith("/filevault")
     assert c.get("/filevault/status").get_json() == {"on": False}
     state["on"] = True
@@ -51,3 +51,32 @@ def test_reading_fdesetup(monkeypatch):
         monkeypatch.setattr(filevault.subprocess, "run",
                             lambda *a, out=out, **k: subprocess.CompletedProcess(a, 0, out, ""))
         assert filevault._ask() is want
+
+
+def test_i_understand_lets_a_headless_mac_run_without_filevault(app, monkeypatch):
+    monkeypatch.setattr(filevault, "_ask", lambda: False)
+    filevault._cache["at"] = 0
+    c = mac(app)
+    page = c.get("/filevault?next=/orders").get_data(as_text=True)
+    assert "Use BotTrack without FileVault" in page and "fdesetup authrestart" in page
+    # the box has to be ticked
+    assert c.post("/filevault/accept", data={"next": "/orders"}).headers["Location"].startswith("/filevault")
+    assert c.get("/orders").status_code == 302
+    r = c.post("/filevault/accept", data={"next": "/orders", "understand": "yes"})
+    assert r.headers["Location"].endswith("/orders")
+    assert os.environ.get("FILEVAULT_ACCEPTED") and "FILEVAULT_ACCEPTED=" in open(".env").read()
+    orders = c.get("/orders")
+    assert orders.status_code == 200 and "FileVault is off on this Mac" not in orders.get_data(as_text=True)
+    assert "running without FileVault" in c.get("/filevault").get_data(as_text=True)
+    c.post("/filevault/ask-again")
+    assert not filevault.accepted() and c.get("/orders").status_code == 302
+
+
+def test_a_phone_cannot_choose_to_skip_filevault(app, monkeypatch):
+    monkeypatch.setattr(filevault, "_ask", lambda: False)
+    filevault._cache["at"] = 0
+    phone = app.test_client()
+    phone.environ_base["REMOTE_ADDR"] = "192.168.1.50"
+    assert "Use BotTrack without FileVault" not in phone.get("/filevault").get_data(as_text=True)
+    phone.post("/filevault/accept", data={"understand": "yes"})
+    assert not filevault.accepted()
