@@ -4,8 +4,11 @@ An app can't turn FileVault on (macOS needs your password and a restart), so Bot
 (no admin needed) and, while it's off, opens on a screen with the steps and a button to System Settings. That screen
 re-checks by itself and lets you in the moment FileVault is on or turning on. Nothing here touches your data.
 
-FileVault is required (jacob, 2026-10-28): BotTrack doesn't open past that screen until it's on, phones included.
-If the Mac can't say either way, BotTrack opens as usual rather than locking anyone out. FILEVAULT_MODE in .env is
+FileVault is strongly asked for (jacob, 2026-10-28), but a Mac with no screen or keyboard can't type the FileVault
+password after a restart (jacob, 2026-11-10). So the screen has "I understand, use BotTrack without FileVault": ticked and
+pressed on the Mac itself, it saves FILEVAULT_ACCEPTED in .env and BotTrack opens as usual from then on, phones included.
+BotTrack's own encryption (sealed .env secrets, the card key in the Keychain) works the same either way.
+"Ask again" on the FileVault page takes the choice back. If the Mac can't say either way, BotTrack opens as usual rather than locking anyone out. FILEVAULT_MODE in .env is
 for testing only: "block" (the default), "remind" ("Remind me tomorrow" lets you in for a day), "banner", or "off".
 """
 import logging
@@ -64,9 +67,14 @@ def snoozed():
         return False
 
 
+def accepted():
+    """True once someone on this Mac chose to run BotTrack without FileVault."""
+    return bool(os.environ.get("FILEVAULT_ACCEPTED", "").strip())
+
+
 def needs_screen():
     m = mode()
-    if m in ("off", "banner") or is_on() is not False:
+    if m in ("off", "banner") or accepted() or is_on() is not False:
         return False
     return m == "block" or not snoozed()
 
@@ -85,7 +93,7 @@ def init_app(app):
 
     @app.context_processor
     def filevault_banner():
-        return {"filevault_banner": mode() != "off" and is_on() is False
+        return {"filevault_banner": mode() != "off" and not accepted() and is_on() is False
                 and not request.path.startswith("/filevault")}
 
 
@@ -94,8 +102,9 @@ def page():
     nxt = request.args.get("next", "/")
     if not nxt.startswith("/") or nxt.startswith("//"):
         nxt = "/"
+    from .mobile import from_this_mac
     return render_template("filevault.html", on=is_on(fresh=True), mode=mode(), settings_url=SETTINGS_URL,
-                           next=nxt.rstrip("?") or "/")
+                           next=nxt.rstrip("?") or "/", accepted=accepted(), on_mac=from_this_mac())
 
 
 @bp.get("/filevault/status")
@@ -113,6 +122,30 @@ def later():
     logger.info("FileVault reminder snoozed for a day")
     nxt = request.form.get("next", "/")
     return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else "/")
+
+
+@bp.post("/filevault/accept")
+def accept():
+    """Run without FileVault. Only from the Mac itself, and only with the "I understand" box ticked."""
+    from .config import save_env
+    from .mobile import from_this_mac
+    if not from_this_mac() or request.form.get("understand") != "yes":
+        return redirect(url_for("filevault.page", next=request.form.get("next", "/")))
+    save_env({"FILEVAULT_ACCEPTED": datetime.now().isoformat(timespec="minutes")})
+    logger.warning("Running without FileVault: chosen on this Mac")
+    nxt = request.form.get("next", "/")
+    return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else "/")
+
+
+@bp.post("/filevault/ask-again")
+def ask_again():
+    """Takes back "use BotTrack without FileVault", so the FileVault screen shows again while it's off."""
+    from .config import save_env
+    from .mobile import from_this_mac
+    if from_this_mac():
+        save_env({"FILEVAULT_ACCEPTED": ""})
+        logger.info("FileVault choice taken back")
+    return redirect(url_for("filevault.page"))
 
 
 @bp.post("/filevault/open")
