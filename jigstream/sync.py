@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from . import resale, sales
 from .extract import MONEY, extract, looks_like_purchase, platforms_named, purchase_proof, resale_hits
 from .llm import LLMError, from_config as llm_for
-from .mail import fetch_emails, newest_emails
+from .mail import bottrack_own, fetch_emails, newest_emails
 from . import packs
 from .training import few_shot
 
@@ -62,9 +62,17 @@ def quiet_senders(db):
     return {a for a, n in other.items() if n >= QUIET_AFTER and a not in useful}
 
 
+# Left out of the log line for each email, so logs sent to the developer never carry names or addresses.
+PRIVATE = ("kind", "items", "shipping_address", "shipping_name", "recipient_email", "account")
+
+
 def process(email, store, llm, config, counts, log, examples=(), platforms=(), quiet=(), words=()):
     """Read one email and save what it is. words: your resale product words. Returns the result, or None when
     the email was skipped or failed."""
+    if bottrack_own(email.subject):  # BotTrack's own mail, like a friend's logs: never their orders in yours
+        store.record_email(email, "skipped")
+        counts["skipped"] += 1
+        return
     seller = bool(platforms_named(email, platforms))  # a selling app's payout or trade-in reads differently
     if seller and MONEY.search(f"{email.subject}\n{email.body[:20000]}"):
         quiet = ()
@@ -98,7 +106,7 @@ def process(email, store, llm, config, counts, log, examples=(), platforms=(), q
     store.save(email, result)
     counts[result["kind"]] = counts.get(result["kind"], 0) + 1
     logger.info("%s in %.1fs: %s | %s -> %s", result["kind"], time.monotonic() - started, email.sender,
-                email.subject[:80], {k: v for k, v in result.items() if k not in ("kind", "items")})
+                email.subject[:80], {k: v for k, v in result.items() if k not in PRIVATE})
     if result["kind"] != "other":
         label = result.get("retailer") or result.get("vendor") or result.get("platform")
         log(f"  {result['kind']:<16} {label or '?'}: {email.subject[:60]}")

@@ -227,6 +227,17 @@ def original_recipients(msg, forwarded=None):
     return ", ".join(out)
 
 
+# Emails BotTrack itself sends: Send logs, provider ideas, shared learning, access requests, keys and the link
+# notes. A friend's logs can hold their orders, so these are never read as orders, expenses or sales.
+OWN_SUBJECTS = ("BotTrack logs", "BotTrack provider suggestion", "BotTrack shared learning", "BotTrack training pack",
+                "BotTrack shared steps", "BotTrack access request", "BotTrack link ", "Your BotTrack key")
+
+
+def bottrack_own(subject):
+    """True for an email BotTrack sent (see OWN_SUBJECTS), forwarded or not."""
+    return re.sub(r"^((re|fwd?|fw)\s*:\s*)+", "", (subject or "").strip(), flags=re.I).startswith(OWN_SUBJECTS)
+
+
 def parse_message(raw):
     msg = email.message_from_bytes(raw, policy=policy.default)
     date = ""

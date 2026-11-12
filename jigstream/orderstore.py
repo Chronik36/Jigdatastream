@@ -138,6 +138,33 @@ def _setup(con):
     con.executescript(INDEXES)
     con.commit()
     _reread_cancels(con)
+    _forget_own_mail(con)
+
+
+def _forget_own_mail(con):
+    """Once: take back orders, expenses and sales read from BotTrack's own emails. A friend's Send logs email
+    listed their orders, and older builds read it like a store's email, so their orders showed up as yours."""
+    from .mail import bottrack_own
+    con.execute("CREATE TABLE IF NOT EXISTS store_fixes (name TEXT PRIMARY KEY)")
+    if con.execute("SELECT 1 FROM store_fixes WHERE name = 'forget_own_mail'").fetchone():
+        return
+    ids = {r[0] for r in con.execute("SELECT message_id, subject FROM emails") if bottrack_own(r[1])}
+    if ids:
+        for row in con.execute("SELECT id, message_ids FROM tracked_orders").fetchall():
+            had = json.loads(row[1] or "[]")
+            left = [i for i in had if i not in ids]
+            if len(left) == len(had):
+                continue
+            if left:
+                con.execute("UPDATE tracked_orders SET message_ids = ? WHERE id = ?", (json.dumps(left), row[0]))
+            else:
+                con.execute("DELETE FROM tracked_orders WHERE id = ?", (row[0],))
+        for table in ("expenses", "sales"):
+            if con.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone():
+                con.executemany(f"DELETE FROM {table} WHERE message_id = ?", [(i,) for i in ids])
+        con.executemany("UPDATE emails SET kind = 'skipped' WHERE message_id = ?", [(i,) for i in ids])
+    con.execute("INSERT INTO store_fixes VALUES ('forget_own_mail')")
+    con.commit()
 
 
 def _reread_cancels(con):
