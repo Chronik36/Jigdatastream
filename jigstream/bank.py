@@ -513,7 +513,7 @@ def accounts(con):
 
 
 def transactions(con, show="all", account_id=None, limit=2000):
-    """Charges with what each matched. show: all, matched, unmatched, ignored, refunds."""
+    """Charges with what each matched. show: all, matched, unmatched, ignored, refunds. limit=None: every one."""
     ensure(con)
     where, args = [], []
     if account_id:
@@ -524,14 +524,65 @@ def transactions(con, show="all", account_id=None, limit=2000):
                   "unmatched": "t.match_kind IS NULL AND COALESCE(t.match_how, '') != 'ignored' AND t.amount > 0",
                   "ignored": "t.match_how = 'ignored'",
                   "refunds": "t.amount < 0"}.get(show, "1"))
-    q = ("SELECT t.*, a.name AS account_name,"
+    q = ("SELECT t.*, a.name AS account_name, a.source AS account_source, a.institution AS account_institution,"
+         " a.mask AS account_mask,"
          " o.retailer AS order_retailer, o.order_number AS order_number, o.shipping_status AS order_status,"
          " e.vendor AS expense_vendor, e.category AS expense_category, e.description AS expense_description"
          " FROM bank_transactions t LEFT JOIN bank_accounts a ON a.id = t.account_id"
          " LEFT JOIN tracked_orders o ON t.match_kind = 'order' AND o.id = t.match_id"
          " LEFT JOIN expenses e ON t.match_kind = 'expense' AND e.id = t.match_id"
          f" WHERE {' AND '.join(where)} ORDER BY t.date DESC, t.id DESC LIMIT ?")
-    return [dict(r) for r in con.execute(q, (*args, limit))]
+    return [dict(r) for r in con.execute(q, (*args, -1 if limit is None else limit))]
+
+
+EXPORT_HEADERS = ["Date", "Time", "Account", "Bank", "Card / account ending", "From", "Description", "Type", "Amount",
+                  "Currency", "Pending", "Bank category", "Paid for", "Store / vendor", "Order number", "Order status",
+                  "Expense category", "Expense note", "Matched how"]
+
+
+def _cell(value):
+    """Text a spreadsheet would run as a formula (=, +, -, @ first) gets a leading quote so it stays text."""
+    text = "" if value is None else str(value)
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
+def export_rows(con, show="all", account_id=None, search=""):
+    """Every transaction the Bank page would show for this tab, account and search box, newest first."""
+    rows = transactions(con, show, account_id, limit=None)
+    words = (search or "").strip().lower()
+    if words:  # the same text the page's search box looks through
+        rows = [t for t in rows if words in " ".join(str(t.get(k) or "") for k in (
+            "date", "description", "category", "account_name", "order_retailer", "order_number",
+            "expense_vendor", "expense_category")).lower()]
+    return rows
+
+
+def export_csv(con, show="all", account_id=None, search=""):
+    """A CSV of bank and card transactions: charges as positive amounts, refunds/payments as negative."""
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(EXPORT_HEADERS)
+    for t in export_rows(con, show, account_id, search):
+        if t.get("match_kind") == "order":
+            paid, who = "Order", t.get("order_retailer")
+        elif t.get("match_kind") == "expense":
+            paid, who = "Receipt", t.get("expense_vendor")
+        elif t.get("match_how") == "ignored":
+            paid, who = "Ignored", None
+        else:
+            paid, who = ("Not matched" if (t.get("amount") or 0) > 0 else ""), None
+        status = t.get("order_status") if paid == "Order" else None
+        w.writerow([
+            t.get("date") or "", t.get("time") or "", _cell(t.get("account_name")), _cell(t.get("account_institution")),
+            _cell(t.get("account_mask")), "Plaid" if t.get("account_source") == "plaid" else "Statement file",
+            _cell(t.get("description")), "Charge" if (t.get("amount") or 0) > 0 else "Refund / payment",
+            f"{t['amount']:.2f}" if t.get("amount") is not None else "", t.get("currency") or "",
+            "Yes" if t.get("pending") else "", _cell(t.get("category")), paid, _cell(who),
+            _cell(t.get("order_number") if paid == "Order" else None), status or "",
+            _cell((t.get("expense_category") or "").replace("_", " ") if paid == "Receipt" else None),
+            _cell(t.get("expense_description") if paid == "Receipt" else None),
+            {"auto": "Automatically", "manual": "By hand"}.get(t.get("match_how"), "") if paid in ("Order", "Receipt") else ""])
+    return out.getvalue()
 
 
 def stats(con):

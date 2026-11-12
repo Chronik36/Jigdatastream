@@ -3,7 +3,9 @@ import logging
 import os
 import threading
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from datetime import date
+
+from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from . import bank, db, plaid
 from .extract import EXPENSE_CATEGORIES
@@ -72,6 +74,26 @@ def bank_page():
     return render_template("bank.html", rows=bank.transactions(c, show, account), stats=bank.stats(c), show=show,
                            shows=SHOW, account=account, accounts=bank.accounts(c), plaid=plaid.settings(c),
                            items=plaid.items(c), plaid_state=plaid.state, categories=EXPENSE_CATEGORIES)
+
+
+@pages.get("/bank/export.csv")
+def bank_export():
+    """Download the transactions on the Bank page as a CSV: the tab, account and search you have open."""
+    c = _con()
+    show = request.args.get("show", "all")
+    show = show if show in SHOW or show in ("orders", "receipts") else "all"
+    account = request.args.get("account", type=int)
+    text = bank.export_csv(c, show, account, request.args.get("q", ""))
+    name = "bank-and-card-transactions"
+    if account:
+        acct = c.execute("SELECT name FROM bank_accounts WHERE id = ?", (account,)).fetchone()
+        if acct and acct["name"]:
+            name += "-" + "".join(ch if ch.isalnum() else "-" for ch in acct["name"].lower()).strip("-")[:40]
+    if show != "all":
+        name += "-" + show
+    logger.info("bank transactions exported to CSV (%s, %s rows)", show, text.count("\n") - 1)
+    return Response("\ufeff" + text, mimetype="text/csv", headers={  # the BOM makes Excel read it as UTF-8
+        "Content-Disposition": f'attachment; filename="{name}-{date.today().isoformat()}.csv"'})
 
 
 @pages.post("/bank/import")

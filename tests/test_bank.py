@@ -223,3 +223,46 @@ def test_plaid_status_notices_a_bank_linked_in_the_browser(tmp_path, monkeypatch
     assert "handOff" in page and "bank/plaid?link=1" in page
     plaid.exchange(c, "pub", "American Express")
     assert client.get("/bank/plaid/status").get_json()["changed"] != before
+
+
+def test_export_csv_lists_every_transaction_with_its_match(tmp_path):
+    import csv as _csv
+    app = create_app(db_path=str(tmp_path / "t.db"))
+    app.config["TESTING"] = True
+    c = db.connect(str(tmp_path / "t.db"))
+    bank.ensure(c)
+    seed(c)
+    c.commit()
+    bank.import_file(c, "chase.csv", CHASE.encode(), "Test Card 0000")
+    bank.import_file(c, "bank.csv", BANK.encode(), "Test Checking 9999")
+    client = app.test_client()
+    r = client.get("/bank/export.csv")
+    assert r.status_code == 200 and r.mimetype == "text/csv"
+    assert "attachment" in r.headers["Content-Disposition"]
+    rows = list(_csv.DictReader(io.StringIO(r.get_data(as_text=True).lstrip("﻿"))))
+    assert len(rows) == c.execute("SELECT COUNT(*) FROM bank_transactions").fetchone()[0]
+    nike = next(x for x in rows if x["Description"].startswith("NIKE"))
+    assert (nike["Amount"], nike["Type"], nike["Paid for"], nike["Store / vendor"], nike["Order number"]) == \
+        ("130.00", "Charge", "Order", "Nike", "C001")
+    assert nike["Account"] == "Test Card 0000" and nike["From"] == "Statement file"
+    refund = next(x for x in rows if x["Description"].startswith("Payment"))
+    assert refund["Type"] == "Refund / payment" and refund["Amount"].startswith("-")
+    # Filters on the page carry over: tab, account and the search box
+    acct = c.execute("SELECT id FROM bank_accounts WHERE name = 'Test Checking 9999'").fetchone()[0]
+    only = list(_csv.DictReader(io.StringIO(client.get(f"/bank/export.csv?account={acct}").get_data(as_text=True).lstrip("﻿"))))
+    assert {x["Account"] for x in only} == {"Test Checking 9999"}
+    refunds = list(_csv.DictReader(io.StringIO(client.get("/bank/export.csv?show=refunds").get_data(as_text=True).lstrip("﻿"))))
+    assert refunds and all(x["Type"] == "Refund / payment" for x in refunds)
+    found = list(_csv.DictReader(io.StringIO(client.get("/bank/export.csv?q=whop").get_data(as_text=True).lstrip("﻿"))))
+    assert [x["Description"] for x in found] == ["WHOP.COM CYBER"]
+
+
+def test_export_csv_keeps_formula_text_as_text(tmp_path):
+    c = db.connect(str(tmp_path / "t.db"))
+    bank.ensure(c)
+    acct = bank.account_for(c, "=Made Up Card")
+    c.execute("INSERT INTO bank_transactions (uid, account_id, date, description, amount) VALUES"
+              " ('x1', ?, '2026-01-02', '=HYPERLINK(\"x\")', 9.5)", (acct,))
+    c.commit()
+    text = bank.export_csv(c)
+    assert "'=HYPERLINK" in text and "'=Made Up Card" in text and "9.50" in text
