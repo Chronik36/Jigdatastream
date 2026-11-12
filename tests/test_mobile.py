@@ -65,6 +65,11 @@ def test_phone_must_sign_in_and_never_reaches_mac_only_pages(app):
     assert c.post("/update/rollback", data={"csrf": t}).status_code == 403
     assert c.post("/profiles/export", data={"csrf": t}).status_code == 403
     assert c.get("/cards/1/reveal").status_code == 403
+    # Bank page from a phone: Sync banks now and Export CSV work, linking banks and keys stay on the Mac
+    assert c.post("/bank/plaid/sync", data={"csrf": t}).status_code == 302
+    assert c.post("/bank/plaid/keys", data={"csrf": t}).status_code == 403
+    r = c.get("/bank/export.csv")
+    assert r.status_code == 200 and r.mimetype == "text/csv"
     assert c.post("/m/setup", data={"on": "1", "csrf": t}).status_code == 404
     page = c.get("/orders").get_data(as_text=True)
     assert 'href="/setup" title="Setup"' not in page and 'href="/logs" title' not in page and 'href="/m/app"' in page

@@ -37,8 +37,9 @@ LOCK_AFTER, LOCK_WINDOW = 5, 15 * 60  # failed sign-ins per address, and for how
 # show full card numbers, or export cards. Everything else in BotTrack works from a phone.
 PHONE_BLOCKED = ("/setup", "/logs", "/bank/plaid", "/update/rollback", "/profiles/export", "/m/api/link")
 PHONE_BLOCKED_ENDPOINTS = {"cards_reveal", "storeaccounts.reveal"}
-# Inside a blocked path but fine from a phone: sending the (scrubbed) logs, without browsing them.
-PHONE_ALLOWED = {"send_logs_page", "send_logs"}
+# Inside a blocked path but fine from a phone: sending the (scrubbed) logs, without browsing them, and
+# "Sync banks now" on the Bank page (it only pulls new charges; keys and bank links stay Mac-only).
+PHONE_ALLOWED = {"send_logs_page", "send_logs", "bank.plaid_sync"}
 failures = {}  # ip -> [times of recent failed sign-ins]
 
 
