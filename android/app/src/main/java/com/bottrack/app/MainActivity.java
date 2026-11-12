@@ -22,6 +22,7 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.URLUtil;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -230,6 +231,9 @@ public class MainActivity extends Activity {
         s.setUserAgentString(s.getUserAgentString() + " BotTrackApp/" + BuildConfig.VERSION_CODE);
         CookieManager.getInstance().setAcceptCookie(true);
 
+        // Export CSV and other BotTrack downloads: a WebView ignores them unless the app saves them itself.
+        web.setDownloadListener((url, agent, disposition, mime, length) -> saveDownload(url, agent, disposition, mime));
+
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
@@ -290,6 +294,34 @@ public class MainActivity extends Activity {
         main.postDelayed(() -> {
             if (web == started && !loaded[0]) unreachable();
         }, CONNECT_TIMEOUT_MS);
+    }
+
+    /**
+     * Save a file BotTrack sends (like Export CSV) to the phone's Downloads folder. Only files from the
+     * paired Mac; the request carries the sign-in cookie so the Mac knows it's this phone.
+     */
+    private void saveDownload(String url, String agent, String disposition, String mime) {
+        Uri u = url == null ? null : Uri.parse(url);
+        if (u == null || !sameServer(u, home)) {
+            if (u != null) startActivity(new Intent(Intent.ACTION_VIEW, u));
+            return;
+        }
+        String name = URLUtil.guessFileName(url, disposition, mime);
+        try {
+            DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+            DownloadManager.Request req = new DownloadManager.Request(u)
+                    .setTitle(name)
+                    .setMimeType(mime)
+                    .addRequestHeader("User-Agent", agent)
+                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            String cookies = CookieManager.getInstance().getCookie(url);
+            if (cookies != null) req.addRequestHeader("Cookie", cookies);
+            dm.enqueue(req);
+            Toast.makeText(this, "Saving " + name + " to Downloads…", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Couldn't save that file: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     /**
