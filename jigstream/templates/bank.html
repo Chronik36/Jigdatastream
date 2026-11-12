@@ -57,7 +57,10 @@ instead of you downloading files. It takes about 10 minutes to set up.</p>
 <a href="/bank?show={{s}}{{('&account=' ~ account) if account}}" class="{{'on' if show == s}}">{{s|title}}</a>{% endfor %}
 {% if account %}<a href="/bank?show={{show}}">All accounts ✕</a>{% endif %}</div>
 <input id="q" placeholder="Search description or store" size="30" style="margin:0">
-<form method="post" action="/bank/rematch" class="ghost" style="margin:0"><button>Match again</button></form></div>
+<form method="post" action="/bank/rematch" class="ghost" style="margin:0"><button>Match again</button></form>
+<a id="export" class="btn ghost" href="/bank/export.csv?show={{show}}{{('&account=' ~ account) if account}}" download
+ title="Download the transactions shown here (this tab, account and search) as a CSV file for Excel, Numbers or Google Sheets">Export CSV</a>
+{% if show != "all" or account %}<a class="muted m" href="/bank/export.csv" download title="Every imported and synced transaction, all accounts">Export everything</a>{% endif %}</div>
 <table><thead><tr><th>Date</th><th>Description</th><th>Account</th><th>Amount</th><th>Paid for</th><th></th></tr></thead><tbody>
 {% for t in rows %}<tr data-f="">
 <td>{{t.date}}{% if t.pending %} <span class="pill">pending</span>{% endif %}</td>
@@ -81,8 +84,9 @@ instead of you downloading files. It takes about 10 minutes to set up.</p>
 
 {% include "_match_dialog.html" %}
 <script>
-const q = document.getElementById('q');
+const q = document.getElementById('q'), exp = document.getElementById('export'), expBase = exp.getAttribute('href');
 q.addEventListener('input', () => { const t = q.value.toLowerCase();
+  exp.setAttribute('href', expBase + (q.value.trim() ? '&q=' + encodeURIComponent(q.value.trim()) : ''));
   document.querySelectorAll('tbody tr[data-f]').forEach(tr => tr.style.display = tr.textContent.toLowerCase().includes(t) ? '' : 'none'); });
 </script>
 {% endblock %}
